@@ -1,0 +1,11 @@
+Retrieval Augmented Generation (RAG)
+
+RAG is a technique that combines the power of large language models with external knowledge retrieval. The process works in three main steps:
+
+1. Document Indexing: Documents are split into chunks and converted into vector embeddings using an embedding model. These embeddings are stored in a vector database for efficient similarity search.
+
+2. Query Processing: When a user asks a question, it is also converted into a vector embedding using the same embedding model.
+
+3. Answer Generation: The most relevant document chunks are retrieved based on semantic similarity, and these chunks are provided as context to the language model to generate an accurate answer.
+
+RAG is particularly useful for applications that need to answer questions based on specific, up-to-date, or private information that the language model wasn't trained on. It helps reduce hallucinations and provides more accurate, grounded responses.

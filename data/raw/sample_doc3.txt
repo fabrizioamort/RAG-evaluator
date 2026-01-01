@@ -1,0 +1,17 @@
+Evaluation Metrics for RAG Systems
+
+Evaluating RAG systems requires measuring both retrieval quality and generation quality:
+
+Retrieval Metrics:
+- Precision: What percentage of retrieved documents are relevant?
+- Recall: What percentage of relevant documents were retrieved?
+- MRR (Mean Reciprocal Rank): Average of reciprocal ranks of first relevant document
+- NDCG (Normalized Discounted Cumulative Gain): Considers ranking quality
+
+Generation Metrics:
+- Faithfulness: Is the answer derived only from the retrieved context?
+- Answer Relevance: Does the answer actually address the question?
+- Context Precision: How relevant are the retrieved documents?
+- Context Recall: Are all relevant pieces of information in the retrieved context?
+
+Tools like DeepEval and Ragas provide automated frameworks for computing these metrics, making it easier to compare different RAG approaches and track improvements over time.

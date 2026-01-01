@@ -1,0 +1,11 @@
+Vector Databases and Embeddings
+
+Vector databases are specialized storage systems designed to efficiently store and search vector embeddings. Unlike traditional databases that work with structured data, vector databases excel at similarity search using techniques like approximate nearest neighbor (ANN) algorithms.
+
+Popular vector databases include:
+- ChromaDB: An open-source embedding database focused on simplicity
+- Pinecone: A managed vector database with high scalability
+- Weaviate: An open-source vector search engine with GraphQL API
+- Qdrant: A vector similarity search engine with extended filtering support
+
+Embeddings are dense vector representations of text, images, or other data types. In the context of text, embedding models like OpenAI's text-embedding-3-small convert text into numerical vectors that capture semantic meaning. Similar texts will have similar vector representations, enabling semantic search capabilities.
