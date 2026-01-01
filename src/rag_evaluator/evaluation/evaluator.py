@@ -44,8 +44,8 @@ class RAGEvaluator:
             # Query the RAG implementation
             response = rag_impl.query(test_case["question"])
 
-            # Create DeepEval test case
-            llm_test_case = LLMTestCase(
+            # Create DeepEval test case (TODO: use for actual metric evaluation)
+            _llm_test_case = LLMTestCase(
                 input=test_case["question"],
                 actual_output=response["answer"],
                 expected_output=test_case.get("expected_answer", ""),
@@ -67,9 +67,7 @@ class RAGEvaluator:
 
         return results
 
-    def compare_implementations(
-        self, implementations: list[BaseRAG]
-    ) -> dict[str, dict[str, Any]]:
+    def compare_implementations(self, implementations: list[BaseRAG]) -> dict[str, dict[str, Any]]:
         """Compare multiple RAG implementations.
 
         Args:

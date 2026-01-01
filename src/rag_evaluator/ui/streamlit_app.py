@@ -21,7 +21,7 @@ def main() -> None:
     # Sidebar for configuration
     with st.sidebar:
         st.header("Configuration")
-        rag_type = st.selectbox(
+        _rag_type = st.selectbox(
             "Select RAG Implementation",
             [
                 "ChromaDB Semantic Search",
@@ -34,7 +34,7 @@ def main() -> None:
         st.divider()
 
         st.header("Evaluation Settings")
-        top_k = st.slider("Top K Results", min_value=1, max_value=10, value=5)
+        _top_k = st.slider("Top K Results", min_value=1, max_value=10, value=5)
 
     # Main content area with tabs
     tab1, tab2, tab3 = st.tabs(["Query", "Evaluate", "Compare"])
@@ -60,9 +60,7 @@ def main() -> None:
 
         col1, col2 = st.columns(2)
         with col1:
-            test_set_file = st.file_uploader(
-                "Upload Test Set (JSON)", type=["json"]
-            )
+            test_set_file = st.file_uploader("Upload Test Set (JSON)", type=["json"])
         with col2:
             st.info(
                 """

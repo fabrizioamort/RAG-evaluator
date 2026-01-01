@@ -3,7 +3,7 @@ name = "rag-evaluator"
 version = "0.1.0"
 description = "Compare and evaluate different RAG (Retrieval Augmented Generation) methodologies and technologies"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<4.0"
 authors = [
     {name = "Fabri", email = ""}
 ]
@@ -12,6 +12,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 
 dependencies = [
@@ -67,14 +68,14 @@ packages = ["src/rag_evaluator"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
