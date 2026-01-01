@@ -33,7 +33,7 @@ class RAGEvaluator:
                 - performance_metrics: Speed, cost
                 - detailed_results: Per-question results
         """
-        results = {
+        results: dict[str, Any] = {
             "rag_implementation": rag_impl.name,
             "test_cases_count": len(self.test_cases),
             "detailed_results": [],
