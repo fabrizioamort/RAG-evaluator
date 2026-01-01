@@ -1,5 +1,12 @@
 # RAG Evaluator
 
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue.svg)](https://github.com/python/mypy)
+[![Testing: pytest](https://img.shields.io/badge/testing-pytest-green.svg)](https://github.com/pytest-dev/pytest)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+
 A comprehensive evaluation framework for comparing different RAG (Retrieval Augmented Generation) methodologies and technologies.
 
 ## Overview
@@ -134,6 +141,15 @@ Key configuration options in `.env`:
 - Python 3.11+
 - OpenAI API key
 - Neo4j database (for Graph RAG implementation)
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
+
+- Setting up the development environment
+- Code quality standards and testing requirements
+- How to add new RAG implementations
+- Pull request process
 
 ## License
 
