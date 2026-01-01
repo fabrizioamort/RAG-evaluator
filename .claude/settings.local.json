@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv init:*)",
+      "Bash(find:*)",
+      "Bash(tree:*)",
+      "Bash(uv sync:*)"
+    ]
+  }
+}

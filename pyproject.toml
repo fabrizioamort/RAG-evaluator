@@ -1,0 +1,87 @@
+[project]
+name = "rag-evaluator"
+version = "0.1.0"
+description = "Compare and evaluate different RAG (Retrieval Augmented Generation) methodologies and technologies"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    {name = "Fabri", email = ""}
+]
+keywords = ["RAG", "evaluation", "LLM", "vector-database", "graph-rag"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    # Core LLM and embedding
+    "langchain>=0.1.0",
+    "langchain-community>=0.0.20",
+    "openai>=1.12.0",
+
+    # Vector databases
+    "chromadb>=0.4.22",
+
+    # Graph RAG
+    "neo4j>=5.16.0",
+    "langchain-neo4j>=0.0.1",
+
+    # Evaluation
+    "deepeval>=0.21.0",
+
+    # Document processing
+    "pypdf>=4.0.0",
+    "python-docx>=1.1.0",
+    "unstructured>=0.12.0",
+
+    # Web UI
+    "streamlit>=1.31.0",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.2.0",
+    "mypy>=1.8.0",
+    "ipython>=8.20.0",
+    "ipdb>=0.13.13",
+]
+
+[project.scripts]
+rag-eval = "rag_evaluator.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rag_evaluator"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=src/rag_evaluator --cov-report=term-missing"
