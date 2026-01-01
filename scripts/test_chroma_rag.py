@@ -38,7 +38,7 @@ def main() -> None:
 
     # Get initial metrics
     metrics = rag.get_metrics()
-    print(f"\n3. Initial Metrics:")
+    print("\n3. Initial Metrics:")
     print(f"   - Total chunks: {metrics['total_chunks']}")
     print(f"   - Collection: {metrics['collection_name']}")
 
@@ -62,7 +62,7 @@ def main() -> None:
 
     # Final metrics
     final_metrics = rag.get_metrics()
-    print(f"\n5. Final Metrics:")
+    print("\n5. Final Metrics:")
     print(f"   - Total queries: {final_metrics['total_queries']}")
     print(f"   - Avg retrieval time: {final_metrics['avg_retrieval_time']:.3f}s")
 
