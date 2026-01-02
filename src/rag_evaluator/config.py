@@ -59,5 +59,22 @@ class Settings(BaseSettings):
         default="data/processed", description="Processed documents directory"
     )
 
+    # DeepEval Configuration
+    deepeval_async_mode: bool = Field(
+        default=False, description="Enable async mode for DeepEval (may hit rate limits)"
+    )
+    openai_timeout: int = Field(
+        default=600, description="OpenAI API timeout in seconds (default: 600s/10min)"
+    )
+    deepeval_per_task_timeout: int = Field(
+        default=900, description="DeepEval per-task timeout in seconds (default: 900s/15min)"
+    )
+    deepeval_per_attempt_timeout: int = Field(
+        default=300, description="DeepEval per-attempt timeout in seconds (default: 300s/5min)"
+    )
+    deepeval_max_retries: int = Field(
+        default=3, description="DeepEval maximum retry attempts (default: 3)"
+    )
+
 
 settings = Settings()

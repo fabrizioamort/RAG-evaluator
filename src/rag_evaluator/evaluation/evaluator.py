@@ -38,26 +38,31 @@ class RAGEvaluator:
                 threshold=settings.eval_faithfulness_threshold,
                 model=settings.openai_model,
                 include_reason=True,
+                async_mode=settings.deepeval_async_mode,
             ),
             AnswerRelevancyMetric(
                 threshold=settings.eval_answer_relevancy_threshold,
                 model=settings.openai_model,
                 include_reason=True,
+                async_mode=settings.deepeval_async_mode,
             ),
             ContextualPrecisionMetric(
                 threshold=settings.eval_contextual_precision_threshold,
                 model=settings.openai_model,
                 include_reason=True,
+                async_mode=settings.deepeval_async_mode,
             ),
             ContextualRecallMetric(
                 threshold=settings.eval_contextual_recall_threshold,
                 model=settings.openai_model,
                 include_reason=True,
+                async_mode=settings.deepeval_async_mode,
             ),
             HallucinationMetric(
                 threshold=settings.eval_hallucination_threshold,
                 model=settings.openai_model,
                 include_reason=True,
+                async_mode=settings.deepeval_async_mode,
             ),
         ]
 
@@ -120,13 +125,24 @@ class RAGEvaluator:
 
             # Extract context strings from response
             context_list = response.get("context", [])
+            # Ensure context is never None (DeepEval requires a list)
+            if context_list is None:
+                context_list = []
+            # Ensure all context items are strings
+            context_list = [str(item) if item is not None else "" for item in context_list]
+
+            # Extract ground truth context for evaluation
+            ground_truth_context = test_case.get("ground_truth_context", [])
+            if ground_truth_context is None:
+                ground_truth_context = []
 
             # Create DeepEval test case
             llm_test_case = LLMTestCase(
                 input=test_case["question"],
                 actual_output=response["answer"],
                 expected_output=test_case.get("expected_answer", ""),
-                retrieval_context=context_list,
+                context=ground_truth_context,  # Ground truth context for metrics like Hallucination
+                retrieval_context=context_list,  # Actually retrieved context
             )
             deepeval_test_cases.append(llm_test_case)
 
@@ -150,23 +166,42 @@ class RAGEvaluator:
             print(f"{'=' * 60}\n")
 
         # Run DeepEval evaluation
-        evaluation_results = evaluate(deepeval_test_cases, self.metrics, print_results=verbose)  # type: ignore[operator]
+        evaluation_results = evaluate(deepeval_test_cases, self.metrics)  # type: ignore[operator]
 
-        # Calculate aggregate metrics
-        metrics_summary = self._calculate_metrics_summary(deepeval_test_cases, evaluation_results)
+        # Extract metric scores from evaluation results
+        # evaluation_results.test_results contains individual test results with metrics_data
+        if hasattr(evaluation_results, "test_results"):
+            for i, test_result in enumerate(evaluation_results.test_results):
+                if i < len(detailed_results):
+                    # Extract scores from metrics_data
+                    metrics_dict: dict[str, float | None] = {
+                        "faithfulness": None,
+                        "answer_relevancy": None,
+                        "contextual_precision": None,
+                        "contextual_recall": None,
+                        "hallucination": None,
+                    }
 
-        # Add metric details to detailed results
-        for i, test_case_obj in enumerate(deepeval_test_cases):
-            if i < len(detailed_results):
-                detailed_results[i]["metrics"] = {
-                    "faithfulness": getattr(test_case_obj, "faithfulness_score", None),
-                    "answer_relevancy": getattr(test_case_obj, "answer_relevancy_score", None),
-                    "contextual_precision": getattr(
-                        test_case_obj, "contextual_precision_score", None
-                    ),
-                    "contextual_recall": getattr(test_case_obj, "contextual_recall_score", None),
-                    "hallucination": getattr(test_case_obj, "hallucination_score", None),
-                }
+                    # Iterate through metrics_data to extract scores
+                    if hasattr(test_result, "metrics_data"):
+                        for metric_data in test_result.metrics_data:
+                            metric_name = metric_data.name.lower().replace(" ", "_")
+                            # Map DeepEval metric names to our naming convention
+                            if "faithfulness" in metric_name:
+                                metrics_dict["faithfulness"] = metric_data.score
+                            elif "answer" in metric_name and "relevancy" in metric_name:
+                                metrics_dict["answer_relevancy"] = metric_data.score
+                            elif "contextual" in metric_name and "precision" in metric_name:
+                                metrics_dict["contextual_precision"] = metric_data.score
+                            elif "contextual" in metric_name and "recall" in metric_name:
+                                metrics_dict["contextual_recall"] = metric_data.score
+                            elif "hallucination" in metric_name:
+                                metrics_dict["hallucination"] = metric_data.score
+
+                    detailed_results[i]["metrics"] = metrics_dict
+
+        # Calculate aggregate metrics from detailed results
+        metrics_summary = self._calculate_metrics_summary_from_detailed(detailed_results)
 
         # Calculate pass rate
         pass_rate = self._calculate_pass_rate(detailed_results)
@@ -199,14 +234,13 @@ class RAGEvaluator:
 
         return results
 
-    def _calculate_metrics_summary(
-        self, test_cases: list[LLMTestCase], evaluation_results: Any
+    def _calculate_metrics_summary_from_detailed(
+        self, detailed_results: list[dict[str, Any]]
     ) -> dict[str, float]:
-        """Calculate aggregate metrics from evaluation results.
+        """Calculate aggregate metrics from detailed results.
 
         Args:
-            test_cases: List of evaluated test cases
-            evaluation_results: Results from DeepEval evaluation
+            detailed_results: List of detailed test case results
 
         Returns:
             Dictionary with average scores for each metric
@@ -219,33 +253,13 @@ class RAGEvaluator:
             "hallucination": [],
         }
 
-        # Extract scores from test cases
-        for test_case in test_cases:
-            if (
-                hasattr(test_case, "faithfulness_score")
-                and test_case.faithfulness_score is not None
-            ):
-                metric_scores["faithfulness"].append(test_case.faithfulness_score)
-            if (
-                hasattr(test_case, "answer_relevancy_score")
-                and test_case.answer_relevancy_score is not None
-            ):
-                metric_scores["answer_relevancy"].append(test_case.answer_relevancy_score)
-            if (
-                hasattr(test_case, "contextual_precision_score")
-                and test_case.contextual_precision_score is not None
-            ):
-                metric_scores["contextual_precision"].append(test_case.contextual_precision_score)
-            if (
-                hasattr(test_case, "contextual_recall_score")
-                and test_case.contextual_recall_score is not None
-            ):
-                metric_scores["contextual_recall"].append(test_case.contextual_recall_score)
-            if (
-                hasattr(test_case, "hallucination_score")
-                and test_case.hallucination_score is not None
-            ):
-                metric_scores["hallucination"].append(test_case.hallucination_score)
+        # Extract scores from detailed results
+        for result in detailed_results:
+            metrics = result.get("metrics", {})
+            for metric_name in metric_scores.keys():
+                score = metrics.get(metric_name)
+                if score is not None:
+                    metric_scores[metric_name].append(score)
 
         # Calculate averages
         summary = {}

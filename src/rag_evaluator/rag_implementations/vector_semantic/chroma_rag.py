@@ -38,8 +38,10 @@ class ChromaSemanticRAG(BaseRAG):
             metadata={"hnsw:space": "cosine"},
         )
 
-        # Initialize OpenAI client
-        self.openai_client = OpenAI(api_key=settings.openai_api_key)
+        # Initialize OpenAI client with timeout
+        self.openai_client = OpenAI(
+            api_key=settings.openai_api_key, timeout=settings.openai_timeout
+        )
 
         # Text splitter for chunking documents
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -174,17 +176,23 @@ Question: {question}
 Answer:"""
 
         # Call OpenAI API
-        response = self.openai_client.chat.completions.create(
-            model=settings.openai_model,
-            messages=[
+        # Note: Some models like gpt-5-nano don't support temperature parameter
+        completion_params: dict[str, Any] = {
+            "model": settings.openai_model,
+            "messages": [
                 {
                     "role": "system",
                     "content": "You are a helpful assistant that answers questions based on the provided context.",
                 },
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.0,
-        )
+        }
+
+        # Only add temperature for models that support it (not gpt-5-nano)
+        if "nano" not in settings.openai_model.lower():
+            completion_params["temperature"] = 0.0
+
+        response = self.openai_client.chat.completions.create(**completion_params)
 
         answer = response.choices[0].message.content or "No answer generated"
 

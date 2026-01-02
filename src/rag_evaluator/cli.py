@@ -1,6 +1,7 @@
 """CLI entry point for RAG Evaluator."""
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -46,24 +47,24 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         # Check if input directory exists
         input_dir = Path(args.input_dir)
         if not input_dir.exists():
-            print(f"❌ Error: Input directory not found: {args.input_dir}")
+            print(f"Error: Input directory not found: {args.input_dir}")
             return 1
 
         # Get RAG implementation
         rag_impl = get_rag_implementation(args.rag_type)
 
         # Prepare documents
-        print(f"\n📄 Preparing documents with {rag_impl.name}...")
+        print(f"\nPreparing documents with {rag_impl.name}...")
         rag_impl.prepare_documents(str(input_dir))
 
-        print("✅ Documents prepared successfully!")
+        print("Documents prepared successfully!")
         return 0
 
     except ValueError as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         return 1
     except Exception as e:
-        print(f"❌ Error preparing documents: {e}")
+        print(f"Error preparing documents: {e}")
         return 1
 
 
@@ -76,6 +77,15 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success, 1 for error)
     """
+    # Set DeepEval timeout environment variables
+    os.environ["DEEPEVAL_PER_TASK_TIMEOUT_SECONDS_OVERRIDE"] = str(
+        settings.deepeval_per_task_timeout
+    )
+    os.environ["DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE"] = str(
+        settings.deepeval_per_attempt_timeout
+    )
+    os.environ["DEEPEVAL_RETRY_MAX_ATTEMPTS"] = str(settings.deepeval_max_retries)
+
     print(f"Evaluating: {args.rag_type}")
     print(f"Test set: {args.test_set}")
     print(f"Output directory: {args.output}")
@@ -84,20 +94,20 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         # Check if test set exists
         test_set_path = Path(args.test_set)
         if not test_set_path.exists():
-            print(f"❌ Error: Test set not found: {args.test_set}")
+            print(f"Error: Test set not found: {args.test_set}")
             print(
                 f"\nCreate a test set at {args.test_set} or use --test-set to specify a different path"
             )
             return 1
 
         # Initialize evaluator
-        print("\n🔧 Loading test set...")
+        print("\nLoading test set...")
         evaluator = RAGEvaluator(test_set_path=str(test_set_path))
-        print(f"✅ Loaded {len(evaluator.test_cases)} test cases")
+        print(f"Loaded {len(evaluator.test_cases)} test cases")
 
         # Handle 'all' option
         if args.rag_type == "all":
-            print("\n⚠️  'all' option not yet fully implemented")
+            print("\nWarning: 'all' option not yet fully implemented")
             print("Currently evaluating: vector_semantic")
             rag_types = ["vector_semantic"]
         else:
@@ -114,48 +124,48 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
             rag_impl = get_rag_implementation(rag_type)
 
             # Run evaluation
-            print("\n🚀 Running evaluation...")
+            print("\nRunning evaluation...")
             results = evaluator.evaluate(rag_impl, verbose=args.verbose)
             all_results[rag_impl.name] = results
 
             # Print summary
-            print("\n📊 Results:")
+            print("\nResults:")
             print(f"  Pass Rate: {results['pass_rate']:.1f}%")
             print(f"  Test Cases: {results['test_cases_count']}")
             print(f"  Time: {results['total_evaluation_time']:.2f}s")
 
         # Generate reports
-        print(f"\n📝 Generating reports in: {args.output}")
+        print(f"\nGenerating reports in: {args.output}")
         report_gen = ReportGenerator(output_dir=args.output)
 
         if len(all_results) == 1:
             # Single implementation report
             results = next(iter(all_results.values()))
             files = report_gen.generate_report(results, output_format="both")
-            print("\n✅ Reports generated:")
-            print(f"  • JSON: {files['json']}")
-            print(f"  • Markdown: {files['markdown']}")
+            print("\nReports generated:")
+            print(f"  - JSON: {files['json']}")
+            print(f"  - Markdown: {files['markdown']}")
         else:
             # Comparison report
             files = report_gen.generate_comparison_report(all_results, output_format="both")
-            print("\n✅ Comparison reports generated:")
-            print(f"  • JSON: {files['json']}")
-            print(f"  • Markdown: {files['markdown']}")
+            print("\nComparison reports generated:")
+            print(f"  - JSON: {files['json']}")
+            print(f"  - Markdown: {files['markdown']}")
 
         print("\n" + "=" * 70)
-        print("✅ Evaluation completed successfully!")
+        print("Evaluation completed successfully!")
         print("=" * 70)
 
         return 0
 
     except ValueError as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         return 1
     except FileNotFoundError as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         return 1
     except Exception as e:
-        print(f"❌ Error during evaluation: {e}")
+        print(f"Error during evaluation: {e}")
         if args.verbose:
             import traceback
 

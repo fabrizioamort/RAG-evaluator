@@ -55,7 +55,7 @@ cp .env.example .env
 
 ```bash
 # Prepare documents for RAG implementations
-uv run rag-eval prepare --input-dir data/raw --output-dir data/processed
+uv run rag-eval prepare --input-dir data/raw
 
 # Run evaluation on a specific RAG implementation
 uv run rag-eval evaluate --rag-type vector_semantic
@@ -239,8 +239,9 @@ Key configuration options in `.env`:
 
 **LLM Configuration:**
 - `OPENAI_API_KEY` - Your OpenAI API key (required)
-- `OPENAI_MODEL` - Model for answer generation (default: gpt-4-turbo-preview)
+- `OPENAI_MODEL` - Model for answer generation (default: gpt-4-turbo-preview, supports gpt-5-nano)
 - `EMBEDDING_MODEL` - Model for embeddings (default: text-embedding-3-small)
+- `OPENAI_TIMEOUT` - API timeout in seconds (default: 600)
 
 **Database Configuration:**
 - `CHROMA_PERSIST_DIRECTORY` - ChromaDB storage location (default: ./data/chroma_db)
@@ -255,6 +256,28 @@ Key configuration options in `.env`:
 - `EVAL_CONTEXTUAL_PRECISION_THRESHOLD` - Context precision threshold (default: 0.7)
 - `EVAL_CONTEXTUAL_RECALL_THRESHOLD` - Context recall threshold (default: 0.7)
 - `EVAL_HALLUCINATION_THRESHOLD` - Hallucination detection threshold (default: 0.7)
+
+**DeepEval Configuration:**
+- `DEEPEVAL_ASYNC_MODE` - Enable parallel evaluation (default: False, set to False to avoid rate limits)
+- `DEEPEVAL_PER_TASK_TIMEOUT` - Per-task timeout in seconds (default: 900)
+- `DEEPEVAL_PER_ATTEMPT_TIMEOUT` - Per-attempt timeout in seconds (default: 300)
+- `DEEPEVAL_MAX_RETRIES` - Maximum retry attempts (default: 3)
+
+## Platform Support
+
+**Windows Compatibility:**
+- CLI output optimized for Windows console (no emoji characters that cause encoding errors)
+- Proper handling of file paths and line endings
+- All features tested on Windows 10/11
+
+**Model Compatibility:**
+- Supports both standard OpenAI models (gpt-4-turbo, gpt-4o) and newer models (gpt-5-nano)
+- Automatic temperature parameter adjustment for models that don't support it (e.g., gpt-5-nano)
+
+**Rate Limiting:**
+- Configurable async mode to prevent API rate limit errors
+- Automatic retry logic with exponential backoff
+- Timeout configuration for long-running evaluations
 
 ## Requirements
 

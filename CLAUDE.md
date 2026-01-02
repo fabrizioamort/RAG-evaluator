@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 RAG Evaluator is a Python project that compares and evaluates different RAG (Retrieval Augmented Generation) implementations. It uses **uv** for dependency management and provides both CLI and Streamlit UI interfaces.
 
 The project evaluates four RAG approaches:
+
 1. Vector semantic search (ChromaDB)
 2. Hybrid search (semantic + keyword)
 3. Graph RAG (Neo4j + LangChain)
@@ -15,6 +16,7 @@ The project evaluates four RAG approaches:
 ## Development Commands
 
 ### Environment Setup
+
 ```bash
 # Install all dependencies (including dev tools)
 uv sync --all-extras
@@ -30,6 +32,7 @@ uv add --dev package-name
 ```
 
 ### Running the Application
+
 ```bash
 # Run CLI commands
 uv run rag-eval prepare --input-dir data/raw
@@ -41,6 +44,7 @@ uv run python scripts/run_streamlit.py
 ```
 
 ### Testing
+
 ```bash
 # Run all tests
 uv run pytest
@@ -59,6 +63,7 @@ uv run pytest tests/integration/
 ```
 
 ### Code Quality
+
 ```bash
 # Format code with ruff
 uv run ruff format .
@@ -91,11 +96,13 @@ The project uses an **abstract base class pattern** for RAG implementations:
 ### Key Components
 
 **RAG Implementations** (`src/rag_evaluator/rag_implementations/`):
+
 - Each subdirectory contains a specific RAG approach
 - All implementations follow the `BaseRAG` interface
 - Implementations should be self-contained within their module
 
 **Evaluation Framework** (`src/rag_evaluator/evaluation/`):
+
 - `evaluator.py` - Main evaluation logic using DeepEval with 5 metrics:
   - Faithfulness, Answer Relevancy, Contextual Precision, Contextual Recall, Hallucination
 - `report_generator.py` - Generates JSON and Markdown evaluation reports
@@ -105,16 +112,19 @@ The project uses an **abstract base class pattern** for RAG implementations:
 - Reports saved to `reports/` directory with timestamps
 
 **Configuration** (`src/rag_evaluator/config.py`):
+
 - Uses Pydantic Settings for environment-based configuration
 - All settings loaded from `.env` file
 - Type-safe configuration access via `settings` object
 
 **CLI** (`src/rag_evaluator/cli.py`):
+
 - Entry point defined in pyproject.toml as `rag-eval`
 - Three main commands: `prepare`, `evaluate`, `ui`
 - Uses argparse for command-line parsing
 
 **UI** (`src/rag_evaluator/ui/streamlit_app.py`):
+
 - Streamlit-based web interface
 - Three tabs: Query, Evaluate, Compare
 - Can be launched via CLI or directly
@@ -138,6 +148,7 @@ To add a new RAG implementation:
 7. Create integration tests in `tests/integration/`
 
 Example structure:
+
 ```python
 from rag_evaluator.common.base_rag import BaseRAG
 
@@ -201,6 +212,7 @@ class NewRAG(BaseRAG):
 ### Running Evaluations
 
 **Basic Evaluation:**
+
 ```bash
 # Prepare documents first (one-time)
 uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
@@ -213,6 +225,7 @@ uv run rag-eval evaluate --rag-type vector_semantic --verbose
 ```
 
 **Custom Test Sets:**
+
 ```bash
 # Use custom test set
 uv run rag-eval evaluate --test-set path/to/my_tests.json
@@ -222,6 +235,7 @@ uv run rag-eval evaluate --output my_reports/
 ```
 
 **Using the Script:**
+
 ```bash
 # Alternative approach with more options
 uv run python scripts/run_evaluation.py --rag-type vector_semantic --verbose
@@ -234,6 +248,7 @@ uv run python scripts/run_evaluation.py --rag-type vector_semantic --verbose
    - Each case needs: `question`, `expected_answer`, `ground_truth_context`
 
 2. **RAG Response Structure**: Ensure `query()` returns:
+
    ```python
    {
        "answer": str,
@@ -281,3 +296,4 @@ uv run python scripts/run_evaluation.py --rag-type vector_semantic --verbose
 - Evaluation results should be reproducible
 - The Streamlit UI should provide clear visualization of comparisons
 - Keep dependencies minimal and well-justified
+- Always use Context7 MCP when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
