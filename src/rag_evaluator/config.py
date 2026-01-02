@@ -34,6 +34,24 @@ class Settings(BaseSettings):
     eval_test_set_path: str = Field(
         default="data/test_set.json", description="Path to evaluation test set"
     )
+    eval_reports_dir: str = Field(default="reports", description="Evaluation reports directory")
+
+    # DeepEval Metric Thresholds (0.0 to 1.0)
+    eval_faithfulness_threshold: float = Field(
+        default=0.7, description="Minimum threshold for faithfulness metric"
+    )
+    eval_answer_relevancy_threshold: float = Field(
+        default=0.7, description="Minimum threshold for answer relevancy metric"
+    )
+    eval_contextual_precision_threshold: float = Field(
+        default=0.7, description="Minimum threshold for contextual precision metric"
+    )
+    eval_contextual_recall_threshold: float = Field(
+        default=0.7, description="Minimum threshold for contextual recall metric"
+    )
+    eval_hallucination_threshold: float = Field(
+        default=0.7, description="Minimum threshold for hallucination metric"
+    )
 
     # Data directories
     raw_data_dir: str = Field(default="data/raw", description="Raw documents directory")

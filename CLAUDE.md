@@ -96,9 +96,13 @@ The project uses an **abstract base class pattern** for RAG implementations:
 - Implementations should be self-contained within their module
 
 **Evaluation Framework** (`src/rag_evaluator/evaluation/`):
-- `evaluator.py` - Main evaluation logic using DeepEval
-- Evaluates accuracy (faithfulness, relevance, precision), speed, and cost
+- `evaluator.py` - Main evaluation logic using DeepEval with 5 metrics:
+  - Faithfulness, Answer Relevancy, Contextual Precision, Contextual Recall, Hallucination
+- `report_generator.py` - Generates JSON and Markdown evaluation reports
+- Loads test cases from JSON dataset (default: `data/test_set.json`)
 - Supports single implementation evaluation or multi-implementation comparison
+- All metric thresholds configurable via `.env`
+- Reports saved to `reports/` directory with timestamps
 
 **Configuration** (`src/rag_evaluator/config.py`):
 - Uses Pydantic Settings for environment-based configuration
@@ -194,13 +198,65 @@ class NewRAG(BaseRAG):
 6. Write tests for the new functionality
 7. Run quality checks before committing
 
+### Running Evaluations
+
+**Basic Evaluation:**
+```bash
+# Prepare documents first (one-time)
+uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
+
+# Run evaluation
+uv run rag-eval evaluate --rag-type vector_semantic
+
+# Run with verbose output
+uv run rag-eval evaluate --rag-type vector_semantic --verbose
+```
+
+**Custom Test Sets:**
+```bash
+# Use custom test set
+uv run rag-eval evaluate --test-set path/to/my_tests.json
+
+# Save reports to custom directory
+uv run rag-eval evaluate --output my_reports/
+```
+
+**Using the Script:**
+```bash
+# Alternative approach with more options
+uv run python scripts/run_evaluation.py --rag-type vector_semantic --verbose
+```
+
 ### Debugging Evaluation Issues
 
-1. Check test case format in evaluation data
-2. Verify RAG implementation returns correct response structure
-3. Review DeepEval metrics documentation for expected formats
-4. Use `--verbose` flag with pytest to see detailed output
-5. Check logs for API errors or timeout issues
+1. **Test Set Format**: Verify JSON structure matches expected format:
+   - Must have `test_cases` array
+   - Each case needs: `question`, `expected_answer`, `ground_truth_context`
+
+2. **RAG Response Structure**: Ensure `query()` returns:
+   ```python
+   {
+       "answer": str,
+       "context": list[str],  # List of context chunks
+       "metadata": {"retrieval_time": float}
+   }
+   ```
+
+3. **DeepEval Metrics**: Each metric requires:
+   - `input`: The question
+   - `actual_output`: RAG's answer
+   - `expected_output`: Ground truth answer
+   - `retrieval_context`: List of retrieved chunks
+
+4. **API Issues**:
+   - Check `OPENAI_API_KEY` is set in `.env`
+   - Verify API rate limits and quotas
+   - Use `--verbose` flag to see detailed API calls
+
+5. **Metric Failures**:
+   - Review threshold settings in `.env`
+   - Check individual test case results in detailed_results
+   - Lower thresholds if too strict for your use case
 
 ### Working with Dependencies
 
