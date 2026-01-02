@@ -17,17 +17,21 @@ from rag_evaluator.config import settings
 class ChromaSemanticRAG(BaseRAG):
     """RAG implementation using ChromaDB for semantic vector search."""
 
-    def __init__(self, collection_name: str = "rag_documents") -> None:
+    def __init__(
+        self, collection_name: str = "rag_documents", persist_directory: str | None = None
+    ) -> None:
         """Initialize ChromaDB semantic RAG.
 
         Args:
             collection_name: Name of the ChromaDB collection to use
+            persist_directory: Optional custom persistence directory (defaults to settings)
         """
         super().__init__("ChromaDB Semantic Search")
 
         # Initialize ChromaDB client
+        persist_path = persist_directory or settings.chroma_persist_directory
         self.client = chromadb.PersistentClient(
-            path=settings.chroma_persist_directory,
+            path=persist_path,
             settings=ChromaSettings(anonymized_telemetry=False),
         )
 
