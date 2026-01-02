@@ -84,11 +84,13 @@ def temp_test_set(tmp_path: Path) -> Path:
 
 def test_evaluator_initialization(temp_test_set: Path) -> None:
     """Test evaluator initialization."""
-    with patch("rag_evaluator.evaluation.evaluator.FaithfulnessMetric"), \
-         patch("rag_evaluator.evaluation.evaluator.AnswerRelevancyMetric"), \
-         patch("rag_evaluator.evaluation.evaluator.ContextualPrecisionMetric"), \
-         patch("rag_evaluator.evaluation.evaluator.ContextualRecallMetric"), \
-         patch("rag_evaluator.evaluation.evaluator.HallucinationMetric"):
+    with (
+        patch("rag_evaluator.evaluation.evaluator.FaithfulnessMetric"),
+        patch("rag_evaluator.evaluation.evaluator.AnswerRelevancyMetric"),
+        patch("rag_evaluator.evaluation.evaluator.ContextualPrecisionMetric"),
+        patch("rag_evaluator.evaluation.evaluator.ContextualRecallMetric"),
+        patch("rag_evaluator.evaluation.evaluator.HallucinationMetric"),
+    ):
         evaluator = RAGEvaluator(test_set_path=str(temp_test_set))
 
         assert evaluator.test_set_path == str(temp_test_set)
@@ -239,12 +241,14 @@ def test_calculate_metrics_summary() -> None:
 
 def test_compare_implementations(temp_test_set: Path) -> None:
     """Test comparing multiple implementations."""
-    with patch("rag_evaluator.evaluation.evaluator.evaluate") as mock_evaluate, \
-         patch("rag_evaluator.evaluation.evaluator.FaithfulnessMetric"), \
-         patch("rag_evaluator.evaluation.evaluator.AnswerRelevancyMetric"), \
-         patch("rag_evaluator.evaluation.evaluator.ContextualPrecisionMetric"), \
-         patch("rag_evaluator.evaluation.evaluator.ContextualRecallMetric"), \
-         patch("rag_evaluator.evaluation.evaluator.HallucinationMetric"):
+    with (
+        patch("rag_evaluator.evaluation.evaluator.evaluate") as mock_evaluate,
+        patch("rag_evaluator.evaluation.evaluator.FaithfulnessMetric"),
+        patch("rag_evaluator.evaluation.evaluator.AnswerRelevancyMetric"),
+        patch("rag_evaluator.evaluation.evaluator.ContextualPrecisionMetric"),
+        patch("rag_evaluator.evaluation.evaluator.ContextualRecallMetric"),
+        patch("rag_evaluator.evaluation.evaluator.HallucinationMetric"),
+    ):
         # Mock the DeepEval evaluate function to return success
         mock_evaluate.return_value = None
 
