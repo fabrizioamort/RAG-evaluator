@@ -206,18 +206,25 @@ def test_calculate_metrics_summary() -> None:
     """Test metrics summary calculation."""
     evaluator = RAGEvaluator.__new__(RAGEvaluator)
 
-    # Create mock test cases with scores
-    test_cases = []
+    # Create mock detailed results with metric scores
+    detailed_results = []
     for i in range(3):
-        test_case = MagicMock()
-        test_case.faithfulness_score = 0.8 + (i * 0.05)
-        test_case.answer_relevancy_score = 0.75 + (i * 0.05)
-        test_case.contextual_precision_score = 0.7 + (i * 0.05)
-        test_case.contextual_recall_score = 0.85 + (i * 0.05)
-        test_case.hallucination_score = 0.9 + (i * 0.05)
-        test_cases.append(test_case)
+        detailed_results.append(
+            {
+                "test_case_id": f"tc_{i}",
+                "question": f"Question {i}",
+                "answer": f"Answer {i}",
+                "metrics": {
+                    "faithfulness": 0.8 + (i * 0.05),
+                    "answer_relevancy": 0.75 + (i * 0.05),
+                    "contextual_precision": 0.7 + (i * 0.05),
+                    "contextual_recall": 0.85 + (i * 0.05),
+                    "hallucination": 0.9 + (i * 0.05),
+                },
+            }
+        )
 
-    summary = evaluator._calculate_metrics_summary(test_cases, None)
+    summary = evaluator._calculate_metrics_summary_from_detailed(detailed_results)
 
     # Check that averages are calculated
     assert "faithfulness_avg" in summary
