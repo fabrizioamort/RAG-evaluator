@@ -1,77 +1,310 @@
 """Evaluation framework using DeepEval."""
 
+import json
+import time
+from pathlib import Path
 from typing import Any
 
+from deepeval import evaluate
+from deepeval.metrics import (
+    AnswerRelevancyMetric,
+    ContextualPrecisionMetric,
+    ContextualRecallMetric,
+    FaithfulnessMetric,
+    HallucinationMetric,
+)
 from deepeval.test_case import LLMTestCase
 
 from rag_evaluator.common.base_rag import BaseRAG
+from rag_evaluator.config import settings
 
 
 class RAGEvaluator:
     """Evaluator for RAG implementations using DeepEval."""
 
-    def __init__(self, test_cases: list[dict[str, str]]) -> None:
+    def __init__(self, test_set_path: str | None = None) -> None:
         """Initialize the evaluator.
 
         Args:
-            test_cases: List of test cases, each containing:
-                - question: The question to ask
-                - expected_answer: The expected answer
-                - context: Optional reference context
+            test_set_path: Path to test dataset JSON file.
+                          Defaults to settings.eval_test_set_path.
         """
-        self.test_cases = test_cases
+        self.test_set_path = test_set_path or settings.eval_test_set_path
+        self.test_cases = self._load_test_set()
 
-    def evaluate(self, rag_impl: BaseRAG) -> dict[str, Any]:
+        # Initialize DeepEval metrics with thresholds from settings
+        self.metrics = [
+            FaithfulnessMetric(
+                threshold=settings.eval_faithfulness_threshold,
+                model=settings.openai_model,
+                include_reason=True,
+            ),
+            AnswerRelevancyMetric(
+                threshold=settings.eval_answer_relevancy_threshold,
+                model=settings.openai_model,
+                include_reason=True,
+            ),
+            ContextualPrecisionMetric(
+                threshold=settings.eval_contextual_precision_threshold,
+                model=settings.openai_model,
+                include_reason=True,
+            ),
+            ContextualRecallMetric(
+                threshold=settings.eval_contextual_recall_threshold,
+                model=settings.openai_model,
+                include_reason=True,
+            ),
+            HallucinationMetric(
+                threshold=settings.eval_hallucination_threshold,
+                model=settings.openai_model,
+                include_reason=True,
+            ),
+        ]
+
+    def _load_test_set(self) -> list[dict[str, Any]]:
+        """Load test cases from JSON file.
+
+        Returns:
+            List of test case dictionaries.
+
+        Raises:
+            FileNotFoundError: If test set file doesn't exist.
+            ValueError: If test set JSON is invalid.
+        """
+        test_set_file = Path(self.test_set_path)
+
+        if not test_set_file.exists():
+            raise FileNotFoundError(f"Test set file not found: {self.test_set_path}")
+
+        try:
+            with open(test_set_file, encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("test_cases", [])  # type: ignore[no-any-return]
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in test set file: {e}") from e
+
+    def evaluate(self, rag_impl: BaseRAG, verbose: bool = False) -> dict[str, Any]:
         """Evaluate a RAG implementation.
 
         Args:
             rag_impl: The RAG implementation to evaluate
+            verbose: Whether to print detailed progress
 
         Returns:
             Dictionary containing evaluation results:
-                - accuracy_metrics: Faithfulness, answer relevance, context precision
-                - performance_metrics: Speed, cost
+                - rag_implementation: Name of the RAG implementation
+                - test_cases_count: Number of test cases evaluated
+                - timestamp: Evaluation timestamp
+                - metrics_summary: Aggregated metric scores
                 - detailed_results: Per-question results
+                - performance_metrics: Speed and cost metrics from RAG
+                - pass_rate: Percentage of test cases passing all thresholds
         """
-        results: dict[str, Any] = {
-            "rag_implementation": rag_impl.name,
-            "test_cases_count": len(self.test_cases),
-            "detailed_results": [],
-            "aggregate_metrics": {},
-        }
+        if verbose:
+            print(f"\n{'=' * 60}")
+            print(f"Evaluating: {rag_impl.name}")
+            print(f"Test cases: {len(self.test_cases)}")
+            print(f"{'=' * 60}\n")
 
-        for test_case in self.test_cases:
+        start_time = time.time()
+        deepeval_test_cases: list[LLMTestCase] = []
+        detailed_results: list[dict[str, Any]] = []
+
+        # Execute queries and create DeepEval test cases
+        for i, test_case in enumerate(self.test_cases, 1):
+            if verbose:
+                print(f"[{i}/{len(self.test_cases)}] Querying: {test_case['question'][:60]}...")
+
             # Query the RAG implementation
             response = rag_impl.query(test_case["question"])
 
-            # Create DeepEval test case (TODO: use for actual metric evaluation)
-            _llm_test_case = LLMTestCase(
+            # Extract context strings from response
+            context_list = response.get("context", [])
+
+            # Create DeepEval test case
+            llm_test_case = LLMTestCase(
                 input=test_case["question"],
                 actual_output=response["answer"],
                 expected_output=test_case.get("expected_answer", ""),
-                context=response.get("context", []),
+                retrieval_context=context_list,
             )
+            deepeval_test_cases.append(llm_test_case)
 
-            # Store detailed results
-            results["detailed_results"].append(
+            # Store detailed result
+            detailed_results.append(
                 {
+                    "test_case_id": test_case.get("id", f"tc_{i:03d}"),
                     "question": test_case["question"],
                     "answer": response["answer"],
-                    "expected": test_case.get("expected_answer", ""),
-                    "retrieval_time": response.get("metadata", {}).get("retrieval_time", 0),
+                    "expected_answer": test_case.get("expected_answer", ""),
+                    "context_chunks_retrieved": len(context_list),
+                    "retrieval_time": response.get("metadata", {}).get("retrieval_time", 0.0),
+                    "difficulty": test_case.get("difficulty", "unknown"),
+                    "category": test_case.get("category", "general"),
                 }
             )
 
-        # Get RAG-specific metrics
-        results["aggregate_metrics"] = rag_impl.get_metrics()
+        if verbose:
+            print(f"\n{'=' * 60}")
+            print("Running DeepEval metrics evaluation...")
+            print(f"{'=' * 60}\n")
+
+        # Run DeepEval evaluation
+        evaluation_results = evaluate(deepeval_test_cases, self.metrics, print_results=verbose)
+
+        # Calculate aggregate metrics
+        metrics_summary = self._calculate_metrics_summary(deepeval_test_cases, evaluation_results)
+
+        # Add metric details to detailed results
+        for i, test_case_obj in enumerate(deepeval_test_cases):
+            if i < len(detailed_results):
+                detailed_results[i]["metrics"] = {
+                    "faithfulness": getattr(test_case_obj, "faithfulness_score", None),
+                    "answer_relevancy": getattr(test_case_obj, "answer_relevancy_score", None),
+                    "contextual_precision": getattr(
+                        test_case_obj, "contextual_precision_score", None
+                    ),
+                    "contextual_recall": getattr(test_case_obj, "contextual_recall_score", None),
+                    "hallucination": getattr(test_case_obj, "hallucination_score", None),
+                }
+
+        # Calculate pass rate
+        pass_rate = self._calculate_pass_rate(detailed_results)
+
+        total_time = time.time() - start_time
+
+        results = {
+            "rag_implementation": rag_impl.name,
+            "test_cases_count": len(self.test_cases),
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "total_evaluation_time": round(total_time, 2),
+            "metrics_summary": metrics_summary,
+            "detailed_results": detailed_results,
+            "performance_metrics": rag_impl.get_metrics(),
+            "pass_rate": pass_rate,
+            "thresholds": {
+                "faithfulness": settings.eval_faithfulness_threshold,
+                "answer_relevancy": settings.eval_answer_relevancy_threshold,
+                "contextual_precision": settings.eval_contextual_precision_threshold,
+                "contextual_recall": settings.eval_contextual_recall_threshold,
+                "hallucination": settings.eval_hallucination_threshold,
+            },
+        }
+
+        if verbose:
+            print(f"\n{'=' * 60}")
+            print(f"Evaluation complete in {total_time:.2f}s")
+            print(f"Pass rate: {pass_rate:.1f}%")
+            print(f"{'=' * 60}\n")
 
         return results
 
-    def compare_implementations(self, implementations: list[BaseRAG]) -> dict[str, dict[str, Any]]:
+    def _calculate_metrics_summary(
+        self, test_cases: list[LLMTestCase], evaluation_results: Any
+    ) -> dict[str, float]:
+        """Calculate aggregate metrics from evaluation results.
+
+        Args:
+            test_cases: List of evaluated test cases
+            evaluation_results: Results from DeepEval evaluation
+
+        Returns:
+            Dictionary with average scores for each metric
+        """
+        metric_scores: dict[str, list[float]] = {
+            "faithfulness": [],
+            "answer_relevancy": [],
+            "contextual_precision": [],
+            "contextual_recall": [],
+            "hallucination": [],
+        }
+
+        # Extract scores from test cases
+        for test_case in test_cases:
+            if (
+                hasattr(test_case, "faithfulness_score")
+                and test_case.faithfulness_score is not None
+            ):
+                metric_scores["faithfulness"].append(test_case.faithfulness_score)
+            if (
+                hasattr(test_case, "answer_relevancy_score")
+                and test_case.answer_relevancy_score is not None
+            ):
+                metric_scores["answer_relevancy"].append(test_case.answer_relevancy_score)
+            if (
+                hasattr(test_case, "contextual_precision_score")
+                and test_case.contextual_precision_score is not None
+            ):
+                metric_scores["contextual_precision"].append(test_case.contextual_precision_score)
+            if (
+                hasattr(test_case, "contextual_recall_score")
+                and test_case.contextual_recall_score is not None
+            ):
+                metric_scores["contextual_recall"].append(test_case.contextual_recall_score)
+            if (
+                hasattr(test_case, "hallucination_score")
+                and test_case.hallucination_score is not None
+            ):
+                metric_scores["hallucination"].append(test_case.hallucination_score)
+
+        # Calculate averages
+        summary = {}
+        for metric_name, scores in metric_scores.items():
+            if scores:
+                summary[f"{metric_name}_avg"] = round(sum(scores) / len(scores), 3)
+                summary[f"{metric_name}_min"] = round(min(scores), 3)
+                summary[f"{metric_name}_max"] = round(max(scores), 3)
+            else:
+                summary[f"{metric_name}_avg"] = 0.0
+                summary[f"{metric_name}_min"] = 0.0
+                summary[f"{metric_name}_max"] = 0.0
+
+        return summary
+
+    def _calculate_pass_rate(self, detailed_results: list[dict[str, Any]]) -> float:
+        """Calculate percentage of test cases passing all metric thresholds.
+
+        Args:
+            detailed_results: List of detailed test case results
+
+        Returns:
+            Pass rate as percentage (0-100)
+        """
+        if not detailed_results:
+            return 0.0
+
+        passed_count = 0
+        thresholds = {
+            "faithfulness": settings.eval_faithfulness_threshold,
+            "answer_relevancy": settings.eval_answer_relevancy_threshold,
+            "contextual_precision": settings.eval_contextual_precision_threshold,
+            "contextual_recall": settings.eval_contextual_recall_threshold,
+            "hallucination": settings.eval_hallucination_threshold,
+        }
+
+        for result in detailed_results:
+            metrics = result.get("metrics", {})
+            all_passed = True
+
+            for metric_name, threshold in thresholds.items():
+                score = metrics.get(metric_name)
+                if score is None or score < threshold:
+                    all_passed = False
+                    break
+
+            if all_passed:
+                passed_count += 1
+
+        return round((passed_count / len(detailed_results)) * 100, 1)
+
+    def compare_implementations(
+        self, implementations: list[BaseRAG], verbose: bool = False
+    ) -> dict[str, dict[str, Any]]:
         """Compare multiple RAG implementations.
 
         Args:
             implementations: List of RAG implementations to compare
+            verbose: Whether to print detailed progress
 
         Returns:
             Dictionary mapping implementation names to their evaluation results
@@ -79,6 +312,6 @@ class RAGEvaluator:
         comparison = {}
 
         for impl in implementations:
-            comparison[impl.name] = self.evaluate(impl)
+            comparison[impl.name] = self.evaluate(impl, verbose=verbose)
 
         return comparison

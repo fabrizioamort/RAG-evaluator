@@ -62,7 +62,7 @@ class ChromaSemanticRAG(BaseRAG):
             Embedding vector
         """
         response = self.openai_client.embeddings.create(model=settings.embedding_model, input=text)
-        return response.data[0].embedding
+        return response.data[0].embedding  # type: ignore[no-any-return]
 
     def prepare_documents(self, documents_path: str) -> None:
         """Prepare and index documents in ChromaDB.

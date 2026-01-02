@@ -74,6 +74,112 @@ uv run rag-eval ui
 uv run python scripts/run_streamlit.py
 ```
 
+## Evaluation Framework
+
+The project includes a comprehensive evaluation pipeline powered by [DeepEval](https://github.com/confident-ai/deepeval).
+
+### Running Evaluations
+
+```bash
+# Prepare documents (one-time setup)
+uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
+
+# Run evaluation with default test set
+uv run rag-eval evaluate --rag-type vector_semantic
+
+# Run evaluation with custom test set
+uv run rag-eval evaluate --rag-type vector_semantic --test-set my_tests.json
+
+# Run with verbose output
+uv run rag-eval evaluate --rag-type vector_semantic --verbose
+
+# Alternative: use the evaluation script directly
+uv run python scripts/run_evaluation.py --rag-type vector_semantic --verbose
+```
+
+### Test Dataset
+
+The evaluation uses a test dataset (`data/test_set.json`) with question-answer pairs. Each test case includes:
+
+- **question**: The query to test
+- **expected_answer**: The ground truth answer
+- **ground_truth_context**: Reference context chunks
+- **difficulty**: Test case difficulty (easy/medium/hard)
+- **category**: Question type (definition/explanation/comparison/etc.)
+
+Example test case:
+```json
+{
+  "id": "tc_001",
+  "question": "What is RAG?",
+  "expected_answer": "RAG (Retrieval Augmented Generation) combines...",
+  "ground_truth_context": ["RAG is a technique that..."],
+  "difficulty": "easy",
+  "category": "definition"
+}
+```
+
+### Evaluation Metrics
+
+The framework evaluates RAG implementations across five key metrics:
+
+1. **Faithfulness** (threshold: 0.7)
+   - Measures if the answer is derived only from the retrieved context
+   - Prevents hallucination
+
+2. **Answer Relevancy** (threshold: 0.7)
+   - Measures if the answer actually addresses the question
+   - Ensures responses are on-topic
+
+3. **Contextual Precision** (threshold: 0.7)
+   - Measures if the retrieved documents are relevant
+   - Evaluates retrieval quality
+
+4. **Contextual Recall** (threshold: 0.7)
+   - Measures if all relevant information was retrieved
+   - Ensures comprehensive context
+
+5. **Hallucination** (threshold: 0.7)
+   - Detects factually incorrect information
+   - Validates answer accuracy
+
+### Evaluation Reports
+
+Each evaluation generates two report formats:
+
+**JSON Report** (`reports/eval_<impl>_<timestamp>.json`)
+- Machine-readable results
+- Complete metric details
+- Detailed per-test-case results
+
+**Markdown Report** (`reports/eval_<impl>_<timestamp>.md`)
+- Human-readable summary
+- Metrics tables with pass/fail indicators
+- Performance statistics
+- Individual test case breakdowns
+
+### Customizing Thresholds
+
+Metric thresholds can be customized in `.env`:
+
+```bash
+EVAL_FAITHFULNESS_THRESHOLD=0.8
+EVAL_ANSWER_RELEVANCY_THRESHOLD=0.75
+EVAL_CONTEXTUAL_PRECISION_THRESHOLD=0.7
+EVAL_CONTEXTUAL_RECALL_THRESHOLD=0.7
+EVAL_HALLUCINATION_THRESHOLD=0.8
+```
+
+### Comparing Implementations
+
+Compare multiple RAG implementations (coming soon):
+
+```bash
+uv run rag-eval evaluate --rag-type all
+```
+
+This generates a comparison report highlighting strengths and weaknesses of each approach.
+
 ## Project Structure
 
 ```
@@ -131,11 +237,24 @@ uv run mypy src/rag_evaluator
 
 Key configuration options in `.env`:
 
-- `OPENAI_API_KEY` - Your OpenAI API key
+**LLM Configuration:**
+- `OPENAI_API_KEY` - Your OpenAI API key (required)
 - `OPENAI_MODEL` - Model for answer generation (default: gpt-4-turbo-preview)
 - `EMBEDDING_MODEL` - Model for embeddings (default: text-embedding-3-small)
-- `NEO4J_URI` - Neo4j connection URI
+
+**Database Configuration:**
+- `CHROMA_PERSIST_DIRECTORY` - ChromaDB storage location (default: ./data/chroma_db)
+- `NEO4J_URI` - Neo4j connection URI (for Graph RAG)
 - `NEO4J_PASSWORD` - Neo4j password
+
+**Evaluation Configuration:**
+- `EVAL_TEST_SET_PATH` - Path to test dataset (default: data/test_set.json)
+- `EVAL_REPORTS_DIR` - Reports output directory (default: reports)
+- `EVAL_FAITHFULNESS_THRESHOLD` - Faithfulness metric threshold (default: 0.7)
+- `EVAL_ANSWER_RELEVANCY_THRESHOLD` - Answer relevancy threshold (default: 0.7)
+- `EVAL_CONTEXTUAL_PRECISION_THRESHOLD` - Context precision threshold (default: 0.7)
+- `EVAL_CONTEXTUAL_RECALL_THRESHOLD` - Context recall threshold (default: 0.7)
+- `EVAL_HALLUCINATION_THRESHOLD` - Hallucination detection threshold (default: 0.7)
 
 ## Requirements
 
