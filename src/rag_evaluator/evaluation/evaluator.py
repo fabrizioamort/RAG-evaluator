@@ -150,7 +150,7 @@ class RAGEvaluator:
             print(f"{'=' * 60}\n")
 
         # Run DeepEval evaluation
-        evaluation_results = evaluate(deepeval_test_cases, self.metrics, print_results=verbose)
+        evaluation_results = evaluate(deepeval_test_cases, self.metrics, print_results=verbose)  # type: ignore[operator]
 
         # Calculate aggregate metrics
         metrics_summary = self._calculate_metrics_summary(deepeval_test_cases, evaluation_results)
