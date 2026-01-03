@@ -83,10 +83,23 @@ uv run rag-eval ui
 
 ### Using the Streamlit UI
 
+The web interface provides interactive visualization of evaluation results with three main tabs:
+
 ```bash
+# Launch the UI (loads latest evaluation reports)
+uv run rag-eval ui
+
 # Alternative way to launch the UI
 uv run python scripts/run_streamlit.py
 ```
+
+**UI Features:**
+
+- **Overview Tab**: Summary statistics, metrics comparison bar charts, accuracy vs latency scatter plots, and key findings
+- **Detailed Comparison Tab**: Score distribution histograms, performance by difficulty breakdown, and side-by-side comparison tables
+- **Query Explorer Tab**: Filter test cases by difficulty/category/score, view individual question details, and compare implementation responses
+
+The UI automatically loads the most recent evaluation report from the `reports/` directory.
 
 ## Evaluation Framework
 
@@ -156,7 +169,7 @@ The framework evaluates RAG implementations across four key metrics:
 
 ### Evaluation Reports
 
-Each evaluation generates two report formats:
+Each evaluation generates comprehensive reports with enhanced statistical analysis:
 
 **JSON Report** (`reports/eval_<impl>_<timestamp>.json`)
 
@@ -166,10 +179,13 @@ Each evaluation generates two report formats:
 
 **Markdown Report** (`reports/eval_<impl>_<timestamp>.md`)
 
-- Human-readable summary
-- Metrics tables with pass/fail indicators
-- Performance statistics
-- Individual test case breakdowns
+- Human-readable summary with multiple sections:
+  - **Metrics Summary**: Overall scores with pass/fail indicators
+  - **Statistical Analysis**: Mean, median, std dev, and 95% confidence intervals for each metric
+  - **Performance by Difficulty**: Breakdown by easy/medium/hard questions
+  - **Failure Analysis**: Detailed analysis of low-scoring test cases
+  - **Statistical Comparison**: Pairwise t-tests between implementations (in comparison reports)
+  - **Detailed Results**: Individual test case breakdowns with performance data
 
 ### Customizing Thresholds
 
@@ -203,8 +219,15 @@ RAG-evaluator/
 │   │   ├── graph_rag/           # Neo4j graph RAG
 │   │   └── filesystem_rag/      # Filesystem-based RAG
 │   ├── evaluation/              # Evaluation framework
+│   │   ├── evaluator.py         # Main evaluation logic
+│   │   ├── report_generator.py  # Enhanced report generation
+│   │   ├── statistics.py        # Statistical analysis module
+│   │   └── difficulty_analysis.py # Difficulty breakdown analysis
 │   ├── common/                  # Shared utilities and base classes
+│   │   ├── base_rag.py          # Abstract base class for RAG
+│   │   └── document_loaders.py  # Multi-format document loading
 │   ├── ui/                      # Streamlit web interface
+│   │   └── streamlit_app.py     # 3-tab interactive dashboard
 │   ├── config.py               # Configuration management
 │   └── cli.py                  # CLI entry point
 ├── data/

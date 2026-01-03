@@ -1,29 +1,35 @@
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 try:
     import pypdf
+
     PYPDF_AVAILABLE = True
 except ImportError:
     PYPDF_AVAILABLE = False
 
 try:
     from docx import Document as DocxDocument
+
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class Document:
     """Represents a loaded document"""
+
     content: str
     metadata: dict[str, Any]
     source: str
+
 
 class DocumentLoader(ABC):
     """Abstract base class for document loaders"""
@@ -38,23 +44,23 @@ class DocumentLoader(ABC):
         """Return list of supported file extensions"""
         pass
 
+
 class TXTLoader(DocumentLoader):
     """Load plain text files"""
 
     def load(self, file_path: str) -> Document:
         try:
-            with open(file_path, encoding='utf-8') as f:
+            with open(file_path, encoding="utf-8") as f:
                 content = f.read()
             return Document(
-                content=content,
-                metadata={"format": "txt", "size": len(content)},
-                source=file_path
+                content=content, metadata={"format": "txt", "size": len(content)}, source=file_path
             )
         except Exception as e:
             raise ValueError(f"Failed to load TXT {file_path}: {e}")
 
     def supported_extensions(self) -> list[str]:
         return [".txt"]
+
 
 class PDFLoader(DocumentLoader):
     """Load PDF files using pypdf"""
@@ -64,7 +70,7 @@ class PDFLoader(DocumentLoader):
             raise ImportError("pypdf is not installed. Please install it to load PDF files.")
 
         try:
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 reader = pypdf.PdfReader(f)
 
                 # Check if encrypted
@@ -75,7 +81,7 @@ class PDFLoader(DocumentLoader):
                     except Exception:
                         pass
                     if reader.is_encrypted:
-                         raise ValueError(f"PDF is encrypted: {file_path}")
+                        raise ValueError(f"PDF is encrypted: {file_path}")
 
                 # Extract text from all pages
                 content_parts = []
@@ -103,16 +109,13 @@ class PDFLoader(DocumentLoader):
                     if reader.metadata.author:
                         metadata["author"] = str(reader.metadata.author)
 
-                return Document(
-                    content=content,
-                    metadata=metadata,
-                    source=file_path
-                )
+                return Document(content=content, metadata=metadata, source=file_path)
         except Exception as e:
             raise ValueError(f"Failed to load PDF {file_path}: {e}")
 
     def supported_extensions(self) -> list[str]:
         return [".pdf"]
+
 
 class DOCXLoader(DocumentLoader):
     """Load DOCX files using python-docx"""
@@ -149,22 +152,19 @@ class DOCXLoader(DocumentLoader):
             }
 
             # Core properties if available
-            if hasattr(doc, 'core_properties'):
+            if hasattr(doc, "core_properties"):
                 if doc.core_properties.title:
                     metadata["title"] = str(doc.core_properties.title)
                 if doc.core_properties.author:
                     metadata["author"] = str(doc.core_properties.author)
 
-            return Document(
-                content=content,
-                metadata=metadata,
-                source=file_path
-            )
+            return Document(content=content, metadata=metadata, source=file_path)
         except Exception as e:
             raise ValueError(f"Failed to load DOCX {file_path}: {e}")
 
     def supported_extensions(self) -> list[str]:
         return [".docx"]
+
 
 def create_loader(file_path: str) -> DocumentLoader:
     """Factory function to create appropriate loader based on file extension"""

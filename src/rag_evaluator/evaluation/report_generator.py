@@ -4,6 +4,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+from rag_evaluator.evaluation.difficulty_analysis import (
+    analyze_by_difficulty,
+    compare_difficulty_performance,
+)
+from rag_evaluator.evaluation.statistics import (
+    calculate_statistics,
+    compare_implementations_statistically,
+)
+
 
 class ReportGenerator:
     """Generate evaluation reports in various formats."""
@@ -87,6 +96,209 @@ class ReportGenerator:
             generated_files["markdown"] = str(md_path)
 
         return generated_files
+
+    def generate_statistical_analysis_section(
+        self, evaluation_results: dict[str, Any]
+    ) -> list[str]:
+        """Generate statistical analysis section with confidence intervals.
+
+        Args:
+            evaluation_results: Evaluation results dictionary
+
+        Returns:
+            List of markdown lines for the statistical analysis section
+        """
+        lines = ["## Statistical Analysis", ""]
+
+        # For each metric, show statistical summary
+        for metric in [
+            "faithfulness",
+            "answer_relevancy",
+            "contextual_precision",
+            "contextual_recall",
+        ]:
+            # Extract individual scores from detailed_results
+            scores = [
+                r["metrics"].get(metric)
+                for r in evaluation_results["detailed_results"]
+                if r["metrics"].get(metric) is not None
+            ]
+
+            if scores:
+                stats = calculate_statistics(scores)
+                metric_name = metric.replace("_", " ").title()
+
+                lines.extend(
+                    [
+                        f"### {metric_name}",
+                        "",
+                        f"- **Mean:** {stats.mean} (95% CI: [{stats.confidence_interval_95[0]}, {stats.confidence_interval_95[1]}])",
+                        f"- **Median:** {stats.median}",
+                        f"- **Std Dev:** {stats.std_dev}",
+                        f"- **Range:** [{stats.min}, {stats.max}]",
+                        "",
+                    ]
+                )
+
+        return lines
+
+    def generate_difficulty_breakdown_section(
+        self, evaluation_results: dict[str, Any]
+    ) -> list[str]:
+        """Generate difficulty breakdown section.
+
+        Args:
+            evaluation_results: Evaluation results dictionary
+
+        Returns:
+            List of markdown lines for the difficulty breakdown section
+        """
+        lines = ["## Performance by Difficulty", ""]
+
+        # Analyze for each metric
+        for metric in [
+            "faithfulness",
+            "answer_relevancy",
+            "contextual_precision",
+            "contextual_recall",
+        ]:
+            difficulty_analysis = analyze_by_difficulty(
+                evaluation_results["detailed_results"], metric_name=metric
+            )
+
+            if difficulty_analysis:
+                metric_name = metric.replace("_", " ").title()
+                lines.extend([f"### {metric_name}", ""])
+
+                # Create table
+                lines.append("| Difficulty | Mean | Count | Std Dev | Range |")
+                lines.append("|------------|------|-------|---------|-------|")
+
+                for difficulty in ["easy", "medium", "hard"]:
+                    if difficulty in difficulty_analysis:
+                        stats = difficulty_analysis[difficulty]
+                        lines.append(
+                            f"| {difficulty.capitalize()} | "
+                            f"{stats['mean']:.3f} | "
+                            f"{stats['count']} | "
+                            f"{stats['std']:.3f} | "
+                            f"[{stats['min']:.3f}, {stats['max']:.3f}] |"
+                        )
+
+                lines.append("")
+
+        return lines
+
+    def generate_failure_analysis_section(self, evaluation_results: dict[str, Any]) -> list[str]:
+        """Analyze questions where performance was poor.
+
+        Args:
+            evaluation_results: Evaluation results dictionary
+
+        Returns:
+            List of markdown lines for the failure analysis section
+        """
+        lines = ["## Failure Analysis", ""]
+
+        # Find questions with low scores
+        low_score_threshold = 0.5
+        failures = [
+            r
+            for r in evaluation_results["detailed_results"]
+            if any(
+                r["metrics"].get(metric, 1.0) < low_score_threshold
+                for metric in [
+                    "faithfulness",
+                    "answer_relevancy",
+                    "contextual_precision",
+                    "contextual_recall",
+                ]
+            )
+        ]
+
+        if not failures:
+            lines.append("_No significant failures detected (all scores >0.5)_")
+            return lines
+
+        lines.append(f"Found {len(failures)} test cases with scores below {low_score_threshold}:")
+        lines.append("")
+
+        for failure in failures[:5]:  # Show top 5 failures
+            lines.extend(
+                [
+                    f"### {failure['test_case_id']}: {failure['question']}",
+                    "",
+                    f"**Difficulty:** {failure.get('difficulty', 'unknown')}  ",
+                    f"**Category:** {failure.get('category', 'unknown')}  ",
+                    "",
+                ]
+            )
+
+            # Show which metrics failed
+            failed_metrics = [
+                (metric, failure["metrics"].get(metric, 0.0))
+                for metric in [
+                    "faithfulness",
+                    "answer_relevancy",
+                    "contextual_precision",
+                    "contextual_recall",
+                ]
+                if failure["metrics"].get(metric, 1.0) < low_score_threshold
+            ]
+
+            lines.append("**Failed Metrics:**")
+            for metric, score in failed_metrics:
+                lines.append(f"- {metric.replace('_', ' ').title()}: {score:.3f}")
+
+            lines.append("")
+
+        return lines
+
+    def generate_comparison_statistical_section(
+        self, comparison_results: dict[str, dict[str, Any]]
+    ) -> list[str]:
+        """Generate statistical comparison between implementations.
+
+        Args:
+            comparison_results: Comparison results dictionary
+
+        Returns:
+            List of markdown lines for the statistical comparison section
+        """
+        lines = ["## Statistical Comparison", ""]
+
+        # Compare implementations pairwise for each metric
+        impl_names = list(comparison_results.keys())
+
+        if len(impl_names) < 2:
+            lines.append("_Need at least 2 implementations for statistical comparison_")
+            return lines
+
+        # For faithfulness metric (can extend to others)
+        metric = "faithfulness"
+        lines.extend([f"### {metric.replace('_', ' ').title()} Comparisons", ""])
+
+        # Extract scores for each implementation
+        impl_scores: dict[str, list[float]] = {}
+        for impl_name, results in comparison_results.items():
+            scores = [
+                r["metrics"].get(metric)
+                for r in results["detailed_results"]
+                if r["metrics"].get(metric) is not None
+            ]
+            impl_scores[impl_name] = scores
+
+        # Pairwise comparisons
+        for i, impl_a in enumerate(impl_names):
+            for impl_b in impl_names[i + 1 :]:
+                comparison = compare_implementations_statistically(
+                    impl_scores[impl_a], impl_scores[impl_b], impl_a, impl_b
+                )
+
+                lines.append(f"**{impl_a} vs {impl_b}:** {comparison['interpretation']}")
+
+        lines.append("")
+        return lines
 
     def _generate_json_report(self, evaluation_results: dict[str, Any], base_filename: str) -> Path:
         """Generate JSON report.
@@ -184,6 +396,14 @@ class ReportGenerator:
                     lines.append(f"| {formatted_key} | {value:.3f} |")
                 else:
                     lines.append(f"| {formatted_key} | {value} |")
+
+        # Add new sections
+        lines.extend(["", "---", ""])
+        lines.extend(self.generate_statistical_analysis_section(evaluation_results))
+        lines.extend(["", "---", ""])
+        lines.extend(self.generate_difficulty_breakdown_section(evaluation_results))
+        lines.extend(["", "---", ""])
+        lines.extend(self.generate_failure_analysis_section(evaluation_results))
 
         # Add detailed results
         lines.extend(["", "---", "", "## Detailed Test Case Results", ""])
@@ -328,6 +548,27 @@ class ReportGenerator:
                         values.append(str(value))
                 row = f"| {impl_name} | " + " | ".join(values) + " |"
                 lines.append(row)
+
+        # Add difficulty breakdown comparison
+        lines.extend(["", "---", "", "## Performance by Difficulty", ""])
+
+        difficulty_comparison = compare_difficulty_performance(comparison_results)
+
+        for difficulty in ["easy", "medium", "hard"]:
+            if difficulty in difficulty_comparison:
+                lines.extend([f"### {difficulty.capitalize()} Questions", ""])
+
+                impl_scores = difficulty_comparison[difficulty]
+                sorted_impls = sorted(impl_scores.items(), key=lambda x: x[1], reverse=True)
+
+                for impl_name, score in sorted_impls:
+                    lines.append(f"- **{impl_name}:** {score:.3f}")
+
+                lines.append("")
+
+        # Add statistical comparison section
+        lines.extend(["", "---", ""])
+        lines.extend(self.generate_comparison_statistical_section(comparison_results))
 
         # Add individual implementation details
         lines.extend(["", "---", "", "## Individual Implementation Details", ""])

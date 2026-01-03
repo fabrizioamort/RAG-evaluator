@@ -96,11 +96,7 @@ class ChromaSemanticRAG(BaseRAG):
 
                     # Convert to LangChain document
                     lc_doc = LangChainDocument(
-                        page_content=doc.content,
-                        metadata={
-                            "source": doc.source,
-                            **doc.metadata
-                        }
+                        page_content=doc.content, metadata={"source": doc.source, **doc.metadata}
                     )
                     langchain_documents.append(lc_doc)
                     print(f"Loaded: {file_path.name}")

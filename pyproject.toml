@@ -38,6 +38,11 @@ dependencies = [
 
     # Web UI
     "streamlit>=1.31.0",
+    "plotly>=5.17.0",
+    "pandas>=2.0.0",
+
+    # Statistics
+    "scipy>=1.11.0",
 
     # Utilities
     "python-dotenv>=1.0.0",
@@ -54,6 +59,8 @@ dev = [
     "mypy>=1.8.0",
     "ipython>=8.20.0",
     "ipdb>=0.13.13",
+    # Type stubs
+    "pandas-stubs>=2.0.0",
 ]
 
 [project.scripts]
@@ -83,9 +90,18 @@ mypy_path = "src"
 explicit_package_bases = true
 namespace_packages = true
 
+[[tool.mypy.overrides]]
+module = ["plotly.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --cov=src/rag_evaluator --cov-report=term-missing"
+
+[dependency-groups]
+dev = [
+    "scipy-stubs>=1.17.0.0",
+]

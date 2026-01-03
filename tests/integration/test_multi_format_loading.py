@@ -46,12 +46,12 @@ def test_chroma_rag_with_mixed_formats(tmp_path: Path) -> None:
 
     from rag_evaluator.common.document_loaders import Document
 
-    with patch("rag_evaluator.rag_implementations.vector_semantic.chroma_rag.create_loader") as mock_create:
+    with patch(
+        "rag_evaluator.rag_implementations.vector_semantic.chroma_rag.create_loader"
+    ) as mock_create:
         mock_loader = MagicMock()
         mock_loader.load.return_value = Document(
-            content="Mocked content",
-            metadata={"format": "mock"},
-            source="mock_source"
+            content="Mocked content", metadata={"format": "mock"}, source="mock_source"
         )
         mock_create.return_value = mock_loader
 

@@ -24,6 +24,7 @@ def test_txt_loader(tmp_path: Path) -> None:
     assert doc.source == str(txt_file)
     assert doc.metadata["size"] == 12
 
+
 def test_loader_factory(tmp_path: Path) -> None:
     """Test loader factory"""
     assert isinstance(create_loader("test.txt"), TXTLoader)
@@ -32,6 +33,7 @@ def test_loader_factory(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError):
         create_loader("test.xyz")
+
 
 def test_pdf_loader_mock() -> None:
     """Test PDF loader with mock pypdf"""
@@ -65,6 +67,7 @@ def test_pdf_loader_mock() -> None:
         assert doc.metadata["author"] == "Test Author"
         assert doc.metadata["pages"] == 2
 
+
 def test_docx_loader_mock() -> None:
     """Test DOCX loader with mock python-docx"""
     with patch("rag_evaluator.common.document_loaders.DocxDocument") as mock_docx_cls:
@@ -95,6 +98,7 @@ def test_docx_loader_mock() -> None:
         assert doc.metadata["title"] == "Test DOCX"
         assert doc.metadata["author"] == "Test Author"
 
+
 def test_pdf_encrypted_mock() -> None:
     """Test encrypted PDF handling"""
     with patch("pypdf.PdfReader") as mock_reader_cls:
@@ -102,7 +106,7 @@ def test_pdf_encrypted_mock() -> None:
         mock_reader.is_encrypted = True
 
         # Mock decrypt failing
-        mock_reader.decrypt.return_value = 0 # 0 means fail
+        mock_reader.decrypt.return_value = 0  # 0 means fail
 
         mock_reader_cls.return_value = mock_reader
 
