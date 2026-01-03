@@ -6,14 +6,13 @@ from typing import Any
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
-from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain_core.documents import Document as LangChainDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
 
 from rag_evaluator.common.base_rag import BaseRAG
-from rag_evaluator.config import settings
 from rag_evaluator.common.document_loaders import create_loader
-from langchain_core.documents import Document as LangChainDocument
+from rag_evaluator.config import settings
 
 
 class ChromaSemanticRAG(BaseRAG):
@@ -85,16 +84,16 @@ class ChromaSemanticRAG(BaseRAG):
 
         # Validate extensions
         valid_extensions = {".txt", ".pdf", ".docx"}
-        
+
         langchain_documents = []
-        
+
         # Walk through directory
         for file_path in docs_path.rglob("*"):
             if file_path.suffix.lower() in valid_extensions and file_path.is_file():
                 try:
                     loader = create_loader(str(file_path))
                     doc = loader.load(str(file_path))
-                    
+
                     # Convert to LangChain document
                     lc_doc = LangChainDocument(
                         page_content=doc.content,
@@ -105,7 +104,7 @@ class ChromaSemanticRAG(BaseRAG):
                     )
                     langchain_documents.append(lc_doc)
                     print(f"Loaded: {file_path.name}")
-                    
+
                 except Exception as e:
                     print(f"Warning: Failed to load {file_path.name}: {e}")
 

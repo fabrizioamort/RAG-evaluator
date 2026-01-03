@@ -1,8 +1,8 @@
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional
-import logging
+from typing import Any
 
 try:
     import pypdf
@@ -34,7 +34,7 @@ class DocumentLoader(ABC):
         pass
 
     @abstractmethod
-    def supported_extensions(self) -> List[str]:
+    def supported_extensions(self) -> list[str]:
         """Return list of supported file extensions"""
         pass
 
@@ -43,7 +43,7 @@ class TXTLoader(DocumentLoader):
 
     def load(self, file_path: str) -> Document:
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding='utf-8') as f:
                 content = f.read()
             return Document(
                 content=content,
@@ -53,7 +53,7 @@ class TXTLoader(DocumentLoader):
         except Exception as e:
             raise ValueError(f"Failed to load TXT {file_path}: {e}")
 
-    def supported_extensions(self) -> List[str]:
+    def supported_extensions(self) -> list[str]:
         return [".txt"]
 
 class PDFLoader(DocumentLoader):
@@ -62,7 +62,7 @@ class PDFLoader(DocumentLoader):
     def load(self, file_path: str) -> Document:
         if not PYPDF_AVAILABLE:
             raise ImportError("pypdf is not installed. Please install it to load PDF files.")
-            
+
         try:
             with open(file_path, 'rb') as f:
                 reader = pypdf.PdfReader(f)
@@ -74,7 +74,7 @@ class PDFLoader(DocumentLoader):
                         reader.decrypt("")
                     except Exception:
                         pass
-                    if reader.is_encrypted: 
+                    if reader.is_encrypted:
                          raise ValueError(f"PDF is encrypted: {file_path}")
 
                 # Extract text from all pages
@@ -111,7 +111,7 @@ class PDFLoader(DocumentLoader):
         except Exception as e:
             raise ValueError(f"Failed to load PDF {file_path}: {e}")
 
-    def supported_extensions(self) -> List[str]:
+    def supported_extensions(self) -> list[str]:
         return [".pdf"]
 
 class DOCXLoader(DocumentLoader):
@@ -163,7 +163,7 @@ class DOCXLoader(DocumentLoader):
         except Exception as e:
             raise ValueError(f"Failed to load DOCX {file_path}: {e}")
 
-    def supported_extensions(self) -> List[str]:
+    def supported_extensions(self) -> list[str]:
         return [".docx"]
 
 def create_loader(file_path: str) -> DocumentLoader:
