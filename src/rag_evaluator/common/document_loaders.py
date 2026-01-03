@@ -2,7 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 try:
     import pypdf
@@ -169,12 +169,12 @@ class DOCXLoader(DocumentLoader):
 def create_loader(file_path: str) -> DocumentLoader:
     """Factory function to create appropriate loader based on file extension"""
     ext = Path(file_path).suffix.lower()
-    loaders = {
+    loaders: dict[str, Callable[[], DocumentLoader]] = {
         ".txt": TXTLoader,
         ".pdf": PDFLoader,
         ".docx": DOCXLoader,
     }
-    loader_class = loaders.get(ext)
-    if not loader_class:
+    loader_factory = loaders.get(ext)
+    if not loader_factory:
         raise ValueError(f"Unsupported file extension: {ext}")
-    return loader_class()
+    return loader_factory()
