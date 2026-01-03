@@ -444,6 +444,13 @@ EVAL_CONTEXTUAL_RECALL_THRESHOLD=0.7
 - Max retries: 3
 - Configurable timeout per query: 30 seconds
 
+**Token Optimization (CRITICAL):**
+- **`include_reason=False`** in all DeepEval metrics to avoid verbose reasoning chains
+- With `include_reason=True`: ~94,000 tokens per test case (10 questions = 940K tokens!)
+- With `include_reason=False`: ~500-1,000 tokens per test case (10 questions = 5-10K tokens)
+- **95%+ token reduction** while still getting accurate metric scores
+- Enable `include_reason=True` only for debugging specific test failures
+
 **Cost Tracking:** Phase-separated
 ```python
 {

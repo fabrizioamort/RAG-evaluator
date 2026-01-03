@@ -135,6 +135,19 @@ The project uses an **abstract base class pattern** for RAG implementations:
 2. **Query Execution**: Question → RAG retrieval → LLM generation → Answer + context
 3. **Evaluation**: Test cases → Multiple queries → DeepEval metrics → Reports
 
+4. **Document Preparation**: Raw documents → Processing → Indexed/prepared format
+5. **Query Execution**: Question → RAG retrieval → LLM generation → Answer + context
+6. **Evaluation**: Test cases → Multiple queries → DeepEval metrics → Reports
+
+## Document Loading
+
+Documents are loaded through an extensible loader system:
+
+- Abstract `DocumentLoader` base class
+- Format-specific loaders (PDF, DOCX, TXT)
+- Factory pattern for automatic loader selection
+- Graceful error handling for unsupported/corrupted files
+
 ## Adding New RAG Implementations
 
 To add a new RAG implementation:

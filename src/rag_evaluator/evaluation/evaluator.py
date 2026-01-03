@@ -36,25 +36,25 @@ class RAGEvaluator:
             FaithfulnessMetric(
                 threshold=settings.eval_faithfulness_threshold,
                 model=settings.openai_model,
-                include_reason=True,
+                include_reason=False,  # Disable verbose reasoning to save tokens
                 async_mode=settings.deepeval_async_mode,
             ),
             AnswerRelevancyMetric(
                 threshold=settings.eval_answer_relevancy_threshold,
                 model=settings.openai_model,
-                include_reason=True,
+                include_reason=False,  # Disable verbose reasoning to save tokens
                 async_mode=settings.deepeval_async_mode,
             ),
             ContextualPrecisionMetric(
                 threshold=settings.eval_contextual_precision_threshold,
                 model=settings.openai_model,
-                include_reason=True,
+                include_reason=False,  # Disable verbose reasoning to save tokens
                 async_mode=settings.deepeval_async_mode,
             ),
             ContextualRecallMetric(
                 threshold=settings.eval_contextual_recall_threshold,
                 model=settings.openai_model,
-                include_reason=True,
+                include_reason=False,  # Disable verbose reasoning to save tokens
                 async_mode=settings.deepeval_async_mode,
             ),
         ]

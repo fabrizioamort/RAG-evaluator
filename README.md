@@ -32,6 +32,20 @@ Each RAG implementation is evaluated on:
 
 Evaluation is powered by [DeepEval](https://github.com/confident-ai/deepeval).
 
+## Supported Document Formats
+
+The RAG Evaluator supports the following document formats:
+
+- **TXT** - Plain text files
+- **PDF** - PDF documents (pypdf)
+- **DOCX** - Microsoft Word documents (python-docx)
+
+Simply place your documents in `data/raw/` and run:
+
+```bash
+uv run rag-eval prepare --input-dir data/raw
+```
+
 ## Installation
 
 This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
@@ -108,6 +122,7 @@ The evaluation uses a test dataset (`data/test_set.json`) with question-answer p
 - **category**: Question type (definition/explanation/comparison/etc.)
 
 Example test case:
+
 ```json
 {
   "id": "tc_001",
@@ -144,11 +159,13 @@ The framework evaluates RAG implementations across four key metrics:
 Each evaluation generates two report formats:
 
 **JSON Report** (`reports/eval_<impl>_<timestamp>.json`)
+
 - Machine-readable results
 - Complete metric details
 - Detailed per-test-case results
 
 **Markdown Report** (`reports/eval_<impl>_<timestamp>.md`)
+
 - Human-readable summary
 - Metrics tables with pass/fail indicators
 - Performance statistics
@@ -233,17 +250,20 @@ uv run mypy src/rag_evaluator
 Key configuration options in `.env`:
 
 **LLM Configuration:**
+
 - `OPENAI_API_KEY` - Your OpenAI API key (required)
 - `OPENAI_MODEL` - Model for answer generation (default: gpt-4-turbo-preview, supports gpt-5-nano)
 - `EMBEDDING_MODEL` - Model for embeddings (default: text-embedding-3-small)
 - `OPENAI_TIMEOUT` - API timeout in seconds (default: 600)
 
 **Database Configuration:**
+
 - `CHROMA_PERSIST_DIRECTORY` - ChromaDB storage location (default: ./data/chroma_db)
 - `NEO4J_URI` - Neo4j connection URI (for Graph RAG)
 - `NEO4J_PASSWORD` - Neo4j password
 
 **Evaluation Configuration:**
+
 - `EVAL_TEST_SET_PATH` - Path to test dataset (default: data/test_set.json)
 - `EVAL_REPORTS_DIR` - Reports output directory (default: reports)
 - `EVAL_FAITHFULNESS_THRESHOLD` - Faithfulness metric threshold (default: 0.7)
@@ -252,6 +272,7 @@ Key configuration options in `.env`:
 - `EVAL_CONTEXTUAL_RECALL_THRESHOLD` - Context recall threshold (default: 0.7)
 
 **DeepEval Configuration:**
+
 - `DEEPEVAL_ASYNC_MODE` - Enable parallel evaluation (default: False, set to False to avoid rate limits)
 - `DEEPEVAL_PER_TASK_TIMEOUT` - Per-task timeout in seconds (default: 900)
 - `DEEPEVAL_PER_ATTEMPT_TIMEOUT` - Per-attempt timeout in seconds (default: 300)
@@ -260,15 +281,18 @@ Key configuration options in `.env`:
 ## Platform Support
 
 **Windows Compatibility:**
+
 - CLI output optimized for Windows console (no emoji characters that cause encoding errors)
 - Proper handling of file paths and line endings
 - All features tested on Windows 10/11
 
 **Model Compatibility:**
+
 - Supports both standard OpenAI models (gpt-4-turbo, gpt-4o) and newer models (gpt-5-nano)
 - Automatic temperature parameter adjustment for models that don't support it (e.g., gpt-5-nano)
 
 **Rate Limiting:**
+
 - Configurable async mode to prevent API rate limit errors
 - Automatic retry logic with exponential backoff
 - Timeout configuration for long-running evaluations
