@@ -121,7 +121,7 @@ Example test case:
 
 ### Evaluation Metrics
 
-The framework evaluates RAG implementations across five key metrics:
+The framework evaluates RAG implementations across four key metrics:
 
 1. **Faithfulness** (threshold: 0.7)
    - Measures if the answer is derived only from the retrieved context
@@ -138,10 +138,6 @@ The framework evaluates RAG implementations across five key metrics:
 4. **Contextual Recall** (threshold: 0.7)
    - Measures if all relevant information was retrieved
    - Ensures comprehensive context
-
-5. **Hallucination** (threshold: 0.7)
-   - Detects factually incorrect information
-   - Validates answer accuracy
 
 ### Evaluation Reports
 
@@ -167,7 +163,6 @@ EVAL_FAITHFULNESS_THRESHOLD=0.8
 EVAL_ANSWER_RELEVANCY_THRESHOLD=0.75
 EVAL_CONTEXTUAL_PRECISION_THRESHOLD=0.7
 EVAL_CONTEXTUAL_RECALL_THRESHOLD=0.7
-EVAL_HALLUCINATION_THRESHOLD=0.8
 ```
 
 ### Comparing Implementations
@@ -255,7 +250,6 @@ Key configuration options in `.env`:
 - `EVAL_ANSWER_RELEVANCY_THRESHOLD` - Answer relevancy threshold (default: 0.7)
 - `EVAL_CONTEXTUAL_PRECISION_THRESHOLD` - Context precision threshold (default: 0.7)
 - `EVAL_CONTEXTUAL_RECALL_THRESHOLD` - Context recall threshold (default: 0.7)
-- `EVAL_HALLUCINATION_THRESHOLD` - Hallucination detection threshold (default: 0.7)
 
 **DeepEval Configuration:**
 - `DEEPEVAL_ASYNC_MODE` - Enable parallel evaluation (default: False, set to False to avoid rate limits)

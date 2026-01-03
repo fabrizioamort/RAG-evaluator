@@ -89,13 +89,12 @@ def test_evaluator_initialization(temp_test_set: Path) -> None:
         patch("rag_evaluator.evaluation.evaluator.AnswerRelevancyMetric"),
         patch("rag_evaluator.evaluation.evaluator.ContextualPrecisionMetric"),
         patch("rag_evaluator.evaluation.evaluator.ContextualRecallMetric"),
-        patch("rag_evaluator.evaluation.evaluator.HallucinationMetric"),
     ):
         evaluator = RAGEvaluator(test_set_path=str(temp_test_set))
 
         assert evaluator.test_set_path == str(temp_test_set)
         assert len(evaluator.test_cases) == 2
-        assert len(evaluator.metrics) == 5  # 5 DeepEval metrics
+        assert len(evaluator.metrics) == 4  # 4 DeepEval metrics
 
 
 def test_evaluator_initialization_default_path() -> None:
@@ -134,7 +133,6 @@ def test_calculate_pass_rate_all_pass() -> None:
         mock_settings.eval_answer_relevancy_threshold = 0.7
         mock_settings.eval_contextual_precision_threshold = 0.7
         mock_settings.eval_contextual_recall_threshold = 0.7
-        mock_settings.eval_hallucination_threshold = 0.7
 
         detailed_results = [
             {
@@ -143,7 +141,6 @@ def test_calculate_pass_rate_all_pass() -> None:
                     "answer_relevancy": 0.9,
                     "contextual_precision": 0.85,
                     "contextual_recall": 0.75,
-                    "hallucination": 0.8,
                 }
             },
             {
@@ -152,7 +149,6 @@ def test_calculate_pass_rate_all_pass() -> None:
                     "answer_relevancy": 0.95,
                     "contextual_precision": 0.9,
                     "contextual_recall": 0.85,
-                    "hallucination": 0.9,
                 }
             },
         ]
@@ -170,7 +166,6 @@ def test_calculate_pass_rate_partial_pass() -> None:
         mock_settings.eval_answer_relevancy_threshold = 0.7
         mock_settings.eval_contextual_precision_threshold = 0.7
         mock_settings.eval_contextual_recall_threshold = 0.7
-        mock_settings.eval_hallucination_threshold = 0.7
 
         detailed_results = [
             {
@@ -179,7 +174,6 @@ def test_calculate_pass_rate_partial_pass() -> None:
                     "answer_relevancy": 0.9,
                     "contextual_precision": 0.85,
                     "contextual_recall": 0.75,
-                    "hallucination": 0.8,
                 }
             },
             {
@@ -188,7 +182,6 @@ def test_calculate_pass_rate_partial_pass() -> None:
                     "answer_relevancy": 0.95,
                     "contextual_precision": 0.9,
                     "contextual_recall": 0.85,
-                    "hallucination": 0.9,
                 }
             },
         ]
@@ -221,7 +214,6 @@ def test_calculate_metrics_summary() -> None:
                     "answer_relevancy": 0.75 + (i * 0.05),
                     "contextual_precision": 0.7 + (i * 0.05),
                     "contextual_recall": 0.85 + (i * 0.05),
-                    "hallucination": 0.9 + (i * 0.05),
                 },
             }
         )
@@ -247,7 +239,6 @@ def test_compare_implementations(temp_test_set: Path) -> None:
         patch("rag_evaluator.evaluation.evaluator.AnswerRelevancyMetric"),
         patch("rag_evaluator.evaluation.evaluator.ContextualPrecisionMetric"),
         patch("rag_evaluator.evaluation.evaluator.ContextualRecallMetric"),
-        patch("rag_evaluator.evaluation.evaluator.HallucinationMetric"),
     ):
         # Mock the DeepEval evaluate function to return success
         mock_evaluate.return_value = None

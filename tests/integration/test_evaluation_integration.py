@@ -157,7 +157,6 @@ def test_end_to_end_evaluation(sample_documents, mini_test_set, temp_data_dirs):
     assert "answer_relevancy_avg" in metrics_summary
     assert "contextual_precision_avg" in metrics_summary
     assert "contextual_recall_avg" in metrics_summary
-    assert "hallucination_avg" in metrics_summary
 
     # Verify detailed results
     assert len(results["detailed_results"]) == 2

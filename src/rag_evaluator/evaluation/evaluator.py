@@ -11,7 +11,6 @@ from deepeval.metrics import (
     ContextualPrecisionMetric,
     ContextualRecallMetric,
     FaithfulnessMetric,
-    HallucinationMetric,
 )
 from deepeval.test_case import LLMTestCase
 
@@ -54,12 +53,6 @@ class RAGEvaluator:
             ),
             ContextualRecallMetric(
                 threshold=settings.eval_contextual_recall_threshold,
-                model=settings.openai_model,
-                include_reason=True,
-                async_mode=settings.deepeval_async_mode,
-            ),
-            HallucinationMetric(
-                threshold=settings.eval_hallucination_threshold,
                 model=settings.openai_model,
                 include_reason=True,
                 async_mode=settings.deepeval_async_mode,
@@ -141,7 +134,7 @@ class RAGEvaluator:
                 input=test_case["question"],
                 actual_output=response["answer"],
                 expected_output=test_case.get("expected_answer", ""),
-                context=ground_truth_context,  # Ground truth context for metrics like Hallucination
+                context=ground_truth_context,  # Ground truth context
                 retrieval_context=context_list,  # Actually retrieved context
             )
             deepeval_test_cases.append(llm_test_case)
@@ -179,7 +172,6 @@ class RAGEvaluator:
                         "answer_relevancy": None,
                         "contextual_precision": None,
                         "contextual_recall": None,
-                        "hallucination": None,
                     }
 
                     # Iterate through metrics_data to extract scores
@@ -195,8 +187,6 @@ class RAGEvaluator:
                                 metrics_dict["contextual_precision"] = metric_data.score
                             elif "contextual" in metric_name and "recall" in metric_name:
                                 metrics_dict["contextual_recall"] = metric_data.score
-                            elif "hallucination" in metric_name:
-                                metrics_dict["hallucination"] = metric_data.score
 
                     detailed_results[i]["metrics"] = metrics_dict
 
@@ -222,7 +212,6 @@ class RAGEvaluator:
                 "answer_relevancy": settings.eval_answer_relevancy_threshold,
                 "contextual_precision": settings.eval_contextual_precision_threshold,
                 "contextual_recall": settings.eval_contextual_recall_threshold,
-                "hallucination": settings.eval_hallucination_threshold,
             },
         }
 
@@ -250,7 +239,6 @@ class RAGEvaluator:
             "answer_relevancy": [],
             "contextual_precision": [],
             "contextual_recall": [],
-            "hallucination": [],
         }
 
         # Extract scores from detailed results
@@ -293,7 +281,6 @@ class RAGEvaluator:
             "answer_relevancy": settings.eval_answer_relevancy_threshold,
             "contextual_precision": settings.eval_contextual_precision_threshold,
             "contextual_recall": settings.eval_contextual_recall_threshold,
-            "hallucination": settings.eval_hallucination_threshold,
         }
 
         for result in detailed_results:

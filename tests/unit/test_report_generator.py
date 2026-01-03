@@ -26,7 +26,6 @@ def sample_evaluation_results() -> dict:
             "answer_relevancy": 0.7,
             "contextual_precision": 0.7,
             "contextual_recall": 0.7,
-            "hallucination": 0.7,
         },
         "metrics_summary": {
             "faithfulness_avg": 0.85,
@@ -41,9 +40,6 @@ def sample_evaluation_results() -> dict:
             "contextual_recall_avg": 0.80,
             "contextual_recall_min": 0.72,
             "contextual_recall_max": 0.85,
-            "hallucination_avg": 0.88,
-            "hallucination_min": 0.80,
-            "hallucination_max": 0.95,
         },
         "performance_metrics": {
             "total_queries": 3,
@@ -65,7 +61,6 @@ def sample_evaluation_results() -> dict:
                     "answer_relevancy": 0.90,
                     "contextual_precision": 0.88,
                     "contextual_recall": 0.85,
-                    "hallucination": 0.95,
                 },
             },
             {
@@ -82,7 +77,6 @@ def sample_evaluation_results() -> dict:
                     "answer_relevancy": 0.85,
                     "contextual_precision": 0.78,
                     "contextual_recall": 0.80,
-                    "hallucination": 0.90,
                 },
             },
             {
@@ -99,7 +93,6 @@ def sample_evaluation_results() -> dict:
                     "answer_relevancy": 0.70,
                     "contextual_precision": 0.65,
                     "contextual_recall": 0.72,
-                    "hallucination": 0.80,
                 },
             },
         ],
@@ -258,7 +251,6 @@ def test_markdown_report_contains_metrics(tmp_path: Path, sample_evaluation_resu
         assert "Answer Relevancy" in content
         assert "Contextual Precision" in content
         assert "Contextual Recall" in content
-        assert "Hallucination" in content
 
         # Check for test case details
         assert "tc_001" in content

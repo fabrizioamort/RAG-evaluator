@@ -103,8 +103,8 @@ The project uses an **abstract base class pattern** for RAG implementations:
 
 **Evaluation Framework** (`src/rag_evaluator/evaluation/`):
 
-- `evaluator.py` - Main evaluation logic using DeepEval with 5 metrics:
-  - Faithfulness, Answer Relevancy, Contextual Precision, Contextual Recall, Hallucination
+- `evaluator.py` - Main evaluation logic using DeepEval with 4 metrics:
+  - Faithfulness, Answer Relevancy, Contextual Precision, Contextual Recall
 - `report_generator.py` - Generates JSON and Markdown evaluation reports
 - Loads test cases from JSON dataset (default: `data/test_set.json`)
 - Supports single implementation evaluation or multi-implementation comparison

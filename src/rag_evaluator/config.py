@@ -49,9 +49,6 @@ class Settings(BaseSettings):
     eval_contextual_recall_threshold: float = Field(
         default=0.7, description="Minimum threshold for contextual recall metric"
     )
-    eval_hallucination_threshold: float = Field(
-        default=0.7, description="Minimum threshold for hallucination metric"
-    )
 
     # Data directories
     raw_data_dir: str = Field(default="data/raw", description="Raw documents directory")

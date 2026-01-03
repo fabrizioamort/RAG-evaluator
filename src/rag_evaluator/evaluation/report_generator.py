@@ -160,7 +160,6 @@ class ReportGenerator:
             "answer_relevancy",
             "contextual_precision",
             "contextual_recall",
-            "hallucination",
         ]:
             avg = metrics_summary.get(f"{metric}_avg", 0.0)
             min_val = metrics_summary.get(f"{metric}_min", 0.0)
@@ -209,7 +208,6 @@ class ReportGenerator:
                 "answer_relevancy",
                 "contextual_precision",
                 "contextual_recall",
-                "hallucination",
             ]:
                 score = metrics.get(metric_name)
                 if score is not None:
@@ -286,8 +284,8 @@ class ReportGenerator:
             "",
             "## Summary Comparison",
             "",
-            "| Implementation | Pass Rate | Faithfulness | Answer Relevancy | Ctx Precision | Ctx Recall | Hallucination |",
-            "|----------------|-----------|--------------|------------------|---------------|------------|---------------|",
+            "| Implementation | Pass Rate | Faithfulness | Answer Relevancy | Ctx Precision | Ctx Recall |",
+            "|----------------|-----------|--------------|------------------|---------------|------------|",
         ]
 
         # Add summary row for each implementation
@@ -299,8 +297,7 @@ class ReportGenerator:
                 f"{metrics.get('faithfulness_avg', 0.0):.3f} | "
                 f"{metrics.get('answer_relevancy_avg', 0.0):.3f} | "
                 f"{metrics.get('contextual_precision_avg', 0.0):.3f} | "
-                f"{metrics.get('contextual_recall_avg', 0.0):.3f} | "
-                f"{metrics.get('hallucination_avg', 0.0):.3f} |"
+                f"{metrics.get('contextual_recall_avg', 0.0):.3f} |"
             )
 
         # Add performance comparison
@@ -355,7 +352,6 @@ class ReportGenerator:
                 "answer_relevancy",
                 "contextual_precision",
                 "contextual_recall",
-                "hallucination",
             ]:
                 avg = metrics.get(f"{metric}_avg", 0.0)
                 metric_name = metric.replace("_", " ").title()
