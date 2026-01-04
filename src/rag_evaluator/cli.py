@@ -182,11 +182,28 @@ def cmd_ui(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success, 1 for error)
     """
+    import subprocess
+
     print("Launching Streamlit UI...")
-    print("(Full UI implementation coming soon)")
-    print("\nFor now, you can run the evaluation script:")
-    print("  uv run python scripts/run_evaluation.py --help")
-    return 0
+
+    # Get path to streamlit app
+    ui_path = Path(__file__).parent / "ui" / "streamlit_app.py"
+
+    if not ui_path.exists():
+        print(f"Error: Streamlit app not found at {ui_path}")
+        return 1
+
+    try:
+        # Launch streamlit
+        subprocess.run(["streamlit", "run", str(ui_path)], check=True)
+        return 0
+    except subprocess.CalledProcessError as e:
+        print(f"Error launching Streamlit: {e}")
+        return 1
+    except FileNotFoundError:
+        print("Error: Streamlit not found. Make sure it's installed:")
+        print("  uv sync --all-extras")
+        return 1
 
 
 def main() -> None:
@@ -207,6 +224,9 @@ Examples:
 
   # Verbose evaluation output
   rag-eval evaluate --rag-type vector_semantic --verbose
+
+  # Launch web UI to view results
+  rag-eval ui
         """,
     )
     parser.add_argument(
@@ -267,7 +287,7 @@ Examples:
     subparsers.add_parser(
         "ui",
         help="Launch Streamlit web interface",
-        description="Launch interactive web UI for RAG evaluation (coming soon)",
+        description="Launch interactive 3-tab dashboard for viewing evaluation results",
     )
 
     args = parser.parse_args()
