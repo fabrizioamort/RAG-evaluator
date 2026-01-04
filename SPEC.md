@@ -13,12 +13,14 @@ RAG Evaluator is a production-ready Python framework for comparing and evaluatin
 ## Project Goals
 
 ### Primary Goals
+
 1. **Working Implementations** - Deliver 4 fully functional RAG implementations with comprehensive tests
 2. **Portfolio Impact** - Demonstrate technical depth, production readiness, and full-stack capability
 3. **Learning Outcomes** - Deep understanding of RAG architectures, tradeoffs, and evaluation methodologies
 4. **Community Contribution** - Provide useful benchmarks and insights to the broader RAG development community
 
 ### Success Criteria
+
 - ✅ All 4 RAG types implemented and functional
 - ✅ Each RAG meets minimum performance thresholds:
   - Accuracy: DeepEval scores >0.7 (faithfulness)
@@ -50,7 +52,7 @@ RAG Evaluator is a production-ready Python framework for comparing and evaluatin
 │  ├──────────────────────────────────────────────────────┤  │
 │  │  1. Vector Semantic (ChromaDB)           [COMPLETE]  │  │
 │  │  2. Hybrid Search (Qdrant/Weaviate)      [TODO]      │  │
-│  │  3. Graph RAG (Microsoft GraphRAG/Graphiti) [TODO]   │  │
+│  │  3. Graph RAG (neo4j-graphrag)           [TODO]      │  │
 │  │  4. Filesystem RAG (Agentic Explorer)    [TODO]      │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                            ↓                                  │
@@ -93,6 +95,7 @@ RAG Evaluator is a production-ready Python framework for comparing and evaluatin
 **Embeddings:** OpenAI text-embedding-3-small
 
 **Features:**
+
 - Document loading from multiple formats (TXT, PDF, DOCX)
 - RecursiveCharacterTextSplitter chunking (configurable size/overlap)
 - Cosine similarity search
@@ -104,11 +107,13 @@ RAG Evaluator is a production-ready Python framework for comparing and evaluatin
 ### 2. Hybrid Search RAG 🔲 TODO
 
 **Technology Stack:**
+
 - **Primary Option:** Qdrant (free, open-source, native hybrid search)
 - **Alternative:** Weaviate (if Qdrant integration proves difficult)
 - **Fallback:** LangChain EnsembleRetriever (most flexible)
 
 **Technical Approach:**
+
 - Dense vector embeddings (OpenAI text-embedding-3-small)
 - Sparse vectors for keyword matching (BM25)
 - Score fusion: Use Reciprocal Rank Fusion (RRF) as default
@@ -117,11 +122,13 @@ RAG Evaluator is a production-ready Python framework for comparing and evaluatin
   - Simpler than weighted combination
 
 **Chunking Strategy:**
+
 - Smaller chunks than vector-only (500-800 chars) for better keyword matching
 - Lower overlap (100 chars) to reduce redundancy
 - Preserve sentence boundaries
 
 **Configuration:**
+
 ```python
 {
     "chunk_size": 700,
@@ -134,6 +141,7 @@ RAG Evaluator is a production-ready Python framework for comparing and evaluatin
 ```
 
 **Acceptance Criteria:**
+
 - Successfully combines semantic and keyword search
 - Outperforms pure vector search on keyword-heavy queries
 - Query latency <3 seconds
@@ -141,67 +149,63 @@ RAG Evaluator is a production-ready Python framework for comparing and evaluatin
 
 ### 3. Graph RAG 🔲 TODO
 
+### 3. Graph RAG 🔲 TODO
+
 **Technology Stack:**
-- **Framework:** Microsoft GraphRAG OR Graphiti (choose based on ease of implementation)
-- **Database:** Neo4j (Community Edition, free)
-- **LLM:** OpenAI GPT-4o-mini for entity extraction
-- **Embeddings:** OpenAI text-embedding-3-small for node embeddings
 
-**Implementation Level:**
-- Use existing framework (not building from scratch)
-- Focus on integration and evaluation, not novel graph algorithms
-- Minimal viable implementation that demonstrates graph-based retrieval
+- **Framework:** neo4j-graphrag (Official Python package)
+- **Database:** Neo4j (Existing Instance)
+- **LLM:** Integration via langchain-openai (model defined in .env)
+- **Embeddings:** OpenAI text-embedding-3-small
 
-**Microsoft GraphRAG Approach (if selected):**
-- Community detection for hierarchical summarization
-- Global search: Use community summaries for broad questions
-- Local search: Traverse graph for specific entity queries
-- Configurable indexing pipeline
+**Technical Approach:**
 
-**Graphiti Approach (if selected):**
-- Temporal knowledge graphs
-- Dynamic entity resolution
-- Episodic memory patterns
+- **Dynamic Schema:** No rigid ontology; allow LLM to infer node labels (e.g., Person, Concept) and relationships from text.
+- **Hybrid Retrieval:** Combine vector search (finding relevant chunks) with graph traversal (expanding to related entities).
+- **Ingestion Pipeline:** Use `neo4j-graphrag` components for extraction and indexing.
 
 **Chunking Strategy:**
-- Larger chunks (1500-2000 chars) to capture entity context
-- Entity-aware chunking: Don't split mid-entity
-- May use semantic chunking if framework supports
+
+- Semantic chunking or large fixed-size chunks (e.g., 2000 chars) to preserve context for relationship extraction.
+- Graph build preserves links between chunks and extracted entities.
 
 **Configuration:**
+
 ```python
 {
-    "chunk_size": 1800,
-    "entity_types": ["PERSON", "ORG", "LOCATION", "CONCEPT"],
-    "relationship_extraction": "llm",  # vs "rule-based"
-    "graph_depth": 2,  # max hops for traversal
-    "community_detection": True
+    "retrieval_mode": "hybrid",
+    "vector_similarity_weight": 0.7,
+    "graph_traversal_depth": 2,
+    "entity_extraction_model": "${OPENAI_MODEL_NAME}"  # From .env
 }
 ```
 
 **Acceptance Criteria:**
-- Successfully builds knowledge graph from documents
-- Retrieval leverages graph structure (not just node embeddings)
+
+- Connects to existing Neo4j instance
+- Successfully extracts entities and builds graph without pre-defined schema
+- Hybrid retrieval returns context enriched by graph relationships
 - Demonstrates advantage on multi-hop reasoning questions
-- Neo4j setup documented with Docker Compose
 
 **Evaluation Focus:**
+
 - Multi-hop reasoning performance
-- Entity-centric queries
-- Relationship discovery
-- Compare global vs local search modes
+- Graph-enhanced context precision
+- Comparison of Pure Vector vs. Vector + Graph
 
 ### 4. Filesystem RAG (Agentic Explorer) 🔲 TODO
 
 **Concept:** LLM-guided file system navigation and retrieval, inspired by Claude Code's approach
 
 **Technology Stack:**
+
 - **Agent Framework:** LangGraph or AutoGen
 - **Tools:** File operations (read, grep, find, list)
 - **LLM:** OpenAI GPT-4o or GPT-4o-mini
 - **Filesystem:** Local file system (no vector DB)
 
 **Agentic Architecture:**
+
 ```python
 Agent Tools:
 1. list_directory(path) -> List[str]
@@ -212,6 +216,7 @@ Agent Tools:
 ```
 
 **Workflow:**
+
 1. Agent receives question
 2. Plans search strategy (which directories/files to explore)
 3. Uses tools to navigate filesystem
@@ -220,11 +225,13 @@ Agent Tools:
 6. Returns answer + file paths as context
 
 **Chunking Strategy:**
+
 - No traditional chunking (works with whole files)
 - May summarize large files before reading in detail
 - Agent decides what to read based on file metadata
 
 **Configuration:**
+
 ```python
 {
     "max_tool_calls": 20,
@@ -236,18 +243,21 @@ Agent Tools:
 ```
 
 **Acceptance Criteria:**
+
 - Agent successfully navigates filesystem to find relevant information
 - Demonstrates reasoning about file structure and content
 - Outperforms vector search when file organization provides strong signals
 - Transparent reasoning trail (shows which files were explored)
 
 **Unique Value:**
+
 - No indexing overhead (instant startup)
 - Leverages filesystem organization as signal
 - Interpretable retrieval process
 - Useful when documents have meaningful file structure
 
 **Evaluation Focus:**
+
 - Efficiency: Does agent find relevant files quickly?
 - Reasoning: Does agent make smart search decisions?
 - Coverage: Does agent explore broadly enough?
@@ -258,12 +268,14 @@ Agent Tools:
 ### Multi-Format Support 🔲 CRITICAL
 
 **Supported Formats:**
+
 1. **TXT** - Direct text extraction ✅ (already supported)
 2. **PDF** - PyPDF2 or pdfplumber for text extraction 🔲 TODO
 3. **DOCX** - python-docx for Word documents 🔲 TODO
 4. **Markdown** - Direct text with optional structure preservation 🔲 TODO (nice-to-have)
 
 **Document Loader Architecture:**
+
 ```python
 class DocumentLoader:
     """Abstract document loader interface"""
@@ -280,12 +292,14 @@ def create_loader(file_path: str) -> DocumentLoader:
 ```
 
 **Handling Complex Documents:**
+
 - **Best-effort per RAG:** Each RAG implementation handles formats as it can
 - **Text extraction baseline:** All loaders extract to plain text as minimum
 - **Structured data:** Graph RAG may extract tables to entities; others skip
 - **Images/Charts:** Not in scope for initial implementation
 
 **Implementation Priority:**
+
 1. TXT (done)
 2. PDF (most common, high priority)
 3. DOCX (common in enterprise, high priority)
@@ -303,6 +317,7 @@ Each RAG type optimizes chunking for its retrieval mechanism:
 | Filesystem RAG | N/A (whole files) | N/A | Agent decides what to read |
 
 **Chunking Parameters (per RAG):**
+
 ```python
 # src/rag_evaluator/rag_implementations/chunking_configs.py
 CHUNKING_STRATEGIES = {
@@ -317,9 +332,9 @@ CHUNKING_STRATEGIES = {
         "splitter": "recursive_character"
     },
     "graph_rag": {
-        "chunk_size": 1800,
-        "chunk_overlap": 250,
-        "splitter": "semantic"  # or entity-aware
+        "chunk_size": 2000,
+        "chunk_overlap": 200,
+        "splitter": "semantic"
     },
     "filesystem_rag": {
         "chunk_size": None,  # No chunking
@@ -329,6 +344,7 @@ CHUNKING_STRATEGIES = {
 ```
 
 **Future Enhancement (nice-to-have):**
+
 - Support configuration testing: Compare same RAG with different chunk sizes
 - Would require extending evaluation framework to handle config variations
 - Not in scope for initial implementation
@@ -338,12 +354,14 @@ CHUNKING_STRATEGIES = {
 ### Data Sources (Hybrid Approach)
 
 **Public Datasets (70%):**
+
 - Wikipedia articles on diverse topics
 - Technical documentation (Python, RAG concepts)
 - Public domain books/articles
 - Rationale: Fast, reproducible, broad coverage
 
 **Custom Documents (30%):**
+
 - Curated articles on specific domains
 - Documents designed to test edge cases
 - Multi-document reasoning scenarios
@@ -353,6 +371,7 @@ CHUNKING_STRATEGIES = {
 
 **Size:** 30-50 documents
 **Domains:** Mixed
+
 - Technical (20%) - Software docs, API references
 - Science (20%) - Research summaries, explanations
 - Business (20%) - Reports, case studies
@@ -360,6 +379,7 @@ CHUNKING_STRATEGIES = {
 - Edge cases (20%) - Ambiguous, contradictory, sparse info
 
 **Document Characteristics:**
+
 - Mix of lengths: 500-5000 words
 - Mix of structure: Narrative, lists, tables, code snippets
 - Mix of complexity: Simple facts to complex reasoning
@@ -367,6 +387,7 @@ CHUNKING_STRATEGIES = {
 ### Test Case Creation (LLM-Generated with Review)
 
 **Process:**
+
 1. **LLM Generation:** Use GPT-4 to generate questions from documents
 2. **Human Review:** Manually review and edit questions for quality
 3. **Ground Truth:** Humans provide ground truth answers and context
@@ -375,6 +396,7 @@ CHUNKING_STRATEGIES = {
 **Test Set Size:** 50-100 questions
 
 **Question Type Distribution:**
+
 - Factual lookups (30%) - "What is X?", "Who did Y?"
 - Multi-hop reasoning (25%) - Requires connecting info from multiple chunks
 - Summarization (20%) - "What are the main points of X?"
@@ -382,11 +404,13 @@ CHUNKING_STRATEGIES = {
 - Adversarial (10%) - Negation, ambiguity, trick questions
 
 **Difficulty Stratification:**
+
 - Easy (30%): Single-chunk retrieval, direct answers
 - Medium (50%): Multi-chunk, some reasoning required
 - Hard (20%): Multi-hop, inference, handling ambiguity
 
 **Test Case Format (JSON):**
+
 ```json
 {
   "test_cases": [
@@ -418,6 +442,7 @@ All 4 DeepEval metrics weighted equally in final score:
 **Overall Score:** Simple average of all 4 metrics
 
 **Thresholds (configurable via .env):**
+
 ```bash
 EVAL_FAITHFULNESS_THRESHOLD=0.7
 EVAL_ANSWER_RELEVANCY_THRESHOLD=0.7
@@ -430,21 +455,25 @@ EVAL_CONTEXTUAL_RECALL_THRESHOLD=0.7
 ### Evaluation Execution
 
 **Mode:** Sequential (not parallel)
+
 - Avoid API rate limits
 - More predictable costs
 - Easier debugging
 
 **Error Handling:** Skip and continue
+
 - Log errors for each failed query
 - Continue evaluation with remaining questions
 - Report shows: total/successful/failed counts
 
 **Retry Logic:**
+
 - Exponential backoff for API errors
 - Max retries: 3
 - Configurable timeout per query: 30 seconds
 
 **Token Optimization (CRITICAL):**
+
 - **`include_reason=False`** in all DeepEval metrics to avoid verbose reasoning chains
 - With `include_reason=True`: ~94,000 tokens per test case (10 questions = 940K tokens!)
 - With `include_reason=False`: ~500-1,000 tokens per test case (10 questions = 5-10K tokens)
@@ -452,6 +481,7 @@ EVAL_CONTEXTUAL_RECALL_THRESHOLD=0.7
 - Enable `include_reason=True` only for debugging specific test failures
 
 **Cost Tracking:** Phase-separated
+
 ```python
 {
     "indexing_cost": {
@@ -479,6 +509,7 @@ EVAL_CONTEXTUAL_RECALL_THRESHOLD=0.7
    - Recommendation for use cases
 
 2. **Metric Comparison Table**
+
    ```
    | RAG Type | Faithfulness | Relevancy | Precision | Recall | Overall |
    |----------|--------------|-----------|-----------|--------|---------|
@@ -487,6 +518,7 @@ EVAL_CONTEXTUAL_RECALL_THRESHOLD=0.7
    ```
 
 3. **Performance Metrics**
+
    ```
    | RAG Type | Avg Latency | Indexing Cost | Per-Query Cost | Total Cost |
    |----------|-------------|---------------|----------------|------------|
@@ -512,6 +544,7 @@ EVAL_CONTEXTUAL_RECALL_THRESHOLD=0.7
    - Correlation analysis (e.g., latency vs accuracy)
 
 7. **Difficulty Breakdown**
+
    ```
    Performance by Question Difficulty:
 
@@ -526,11 +559,13 @@ EVAL_CONTEXTUAL_RECALL_THRESHOLD=0.7
    ```
 
 **Output Formats:**
+
 - JSON: `reports/evaluation_TIMESTAMP.json` (complete data)
 - Markdown: `reports/evaluation_TIMESTAMP.md` (human-readable)
 - Future: HTML with interactive charts (nice-to-have)
 
 **Report Generator Enhancement:**
+
 ```python
 # src/rag_evaluator/evaluation/report_generator.py
 class ReportGenerator:
@@ -548,12 +583,14 @@ class ReportGenerator:
 ### Streamlit UI (Pre-computed Results Only)
 
 **No Real-Time Querying:** UI displays pre-computed evaluation results only
+
 - Rationale: Simpler, faster, no API costs during demos
 - Users run evaluations via CLI, then view results in UI
 
 **Three Tabs:**
 
 #### Tab 1: Overview
+
 - Summary statistics
 - Winner announcement
 - Key findings highlights
@@ -561,6 +598,7 @@ class ReportGenerator:
 - Latency comparison chart
 
 #### Tab 2: Detailed Comparison
+
 - Side-by-side comparison table (sortable)
 - Metric visualizations:
   - Bar charts for each metric
@@ -569,6 +607,7 @@ class ReportGenerator:
 - Difficulty breakdown charts
 
 #### Tab 3: Query Explorer
+
 - Dropdown to select test question
 - Shows for selected question:
   - Question text
@@ -578,6 +617,7 @@ class ReportGenerator:
 - Filter by difficulty, question type, RAG performance
 
 **UI Implementation:**
+
 ```python
 # src/rag_evaluator/ui/streamlit_app.py
 
@@ -595,6 +635,7 @@ def render_query_explorer_tab(report: dict) -> None:
 ```
 
 **Styling:**
+
 - Clean, professional theme
 - Color-coded scores (green >0.8, yellow 0.6-0.8, red <0.6)
 - Responsive layout
@@ -629,12 +670,9 @@ hybrid-search = [
 ]
 
 graph-rag = [
+    "neo4j-graphrag>=0.1.0",
     "neo4j>=5.14.0",
     "langchain-neo4j>=0.0.1",
-    # If using Microsoft GraphRAG:
-    "graphrag>=0.1.0",
-    # If using Graphiti:
-    # "graphiti-ai>=0.1.0",
 ]
 
 filesystem-rag = [
@@ -666,6 +704,7 @@ all-rags = [
 ```
 
 **Installation Examples:**
+
 ```bash
 # Install base + specific RAG
 uv sync --extra vector-semantic
@@ -681,6 +720,7 @@ uv sync --all-extras --dev
 ```
 
 **Rationale:**
+
 - Users install only what they need
 - Lighter initial install
 - Clearer dependency separation
@@ -693,11 +733,13 @@ uv sync --all-extras --dev
 **Status:** ChromaDB RAG + Evaluation framework complete
 
 **Remaining Work:**
+
 - [ ] Multi-format document loading (PDF, DOCX)
 - [ ] Enhanced report generation (statistical analysis, difficulty breakdown)
 - [ ] Update UI to display pre-computed results
 
 **Deliverables:**
+
 - Document loaders for PDF/DOCX
 - Enhanced ReportGenerator with all sections
 - Updated Streamlit UI with 3 tabs
@@ -707,6 +749,7 @@ uv sync --all-extras --dev
 **Goal:** Implement hybrid search RAG using easiest open-source option
 
 **Tasks:**
+
 1. Research Qdrant vs Weaviate setup complexity
 2. Choose technology based on:
    - Ease of local installation (Docker Compose)
@@ -721,12 +764,14 @@ uv sync --all-extras --dev
 8. Document setup in README
 
 **Acceptance Test:**
+
 - Qdrant/Weaviate runs locally via Docker Compose
 - HybridRAG successfully combines semantic + keyword search
 - Evaluation shows improvement on keyword-heavy queries
 - Setup documented, reproducible
 
 **Deliverables:**
+
 - `src/rag_evaluator/rag_implementations/vector_hybrid/`
 - `docker-compose.yml` for Qdrant/Weaviate
 - Tests in `tests/unit/` and `tests/integration/`
@@ -735,41 +780,38 @@ uv sync --all-extras --dev
 
 ### Phase 3: Graph RAG (Weeks 5-8)
 
-**Goal:** Implement graph-based RAG using Microsoft GraphRAG or Graphiti
+**Goal:** Implement graph-based RAG using `neo4j-graphrag` package
 
 **Tasks:**
-1. Evaluate Microsoft GraphRAG vs Graphiti:
-   - Installation complexity
-   - Documentation completeness
-   - Community/support
-   - Integration with existing stack
-2. Set up Neo4j (Docker Compose)
-3. Implement framework integration
-4. Configure entity extraction and graph building
-5. Implement global + local search modes (if using GraphRAG)
-6. Write tests
-7. Run evaluation focusing on multi-hop reasoning questions
-8. Document graph construction process
+
+1. Configure connection to existing Neo4j instance
+2. Implement schema inference and ingestion pipeline using `neo4j-graphrag`
+3. Configure `HybridRetriever` (Vector + Graph)
+4. Verify dynamic entity extraction (no pre-defined schema)
+5. Write tests for graph ingestion and retrieval
+6. Run evaluation focusing on multi-hop reasoning questions
+7. Document configuration and usage
 
 **Acceptance Test:**
-- Neo4j runs locally with sample graph visible
-- GraphRAG builds knowledge graph from documents
-- Retrieval leverages graph structure (not just embeddings)
+
+- Application connects to Neo4j using .env credentials
+- Ingestion creates nodes/relationships dynamically from text
+- Retrieval successfully combines vector and graph signals
 - Shows advantage on multi-hop reasoning questions
-- All components tested
 
 **Deliverables:**
+
 - `src/rag_evaluator/rag_implementations/graph_rag/`
-- Updated `docker-compose.yml` with Neo4j
 - Tests
 - 3-RAG comparison report
-- Graph visualization examples (screenshots/notebook)
+- Graph visualization instructions
 
 ### Phase 4: Filesystem RAG (Weeks 9-11)
 
 **Goal:** Implement agentic filesystem explorer RAG
 
 **Tasks:**
+
 1. Choose agent framework (LangGraph vs AutoGen)
 2. Implement agent tools (list, read, grep, find)
 3. Implement ReAct or Plan-and-Execute agent loop
@@ -781,6 +823,7 @@ uv sync --all-extras --dev
 9. Document agent reasoning process
 
 **Acceptance Test:**
+
 - Agent successfully navigates filesystem to answer questions
 - Reasoning trace is transparent and logical
 - Outperforms vector search on structured document sets
@@ -788,6 +831,7 @@ uv sync --all-extras --dev
 - Tests cover agent decision-making
 
 **Deliverables:**
+
 - `src/rag_evaluator/rag_implementations/filesystem_rag/`
 - Tests with mocked filesystem
 - 4-RAG comparison report (FINAL)
@@ -798,6 +842,7 @@ uv sync --all-extras --dev
 **Goal:** Professional presentation of results
 
 **Tasks:**
+
 1. Write comprehensive GitHub README showcase
    - Badges (tests, coverage, license)
    - Architecture diagram
@@ -817,6 +862,7 @@ uv sync --all-extras --dev
 7. GitHub release with DOI (for citations)
 
 **Deliverables:**
+
 - Enhanced README with results
 - `RESULTS.md` or blog post markdown
 - Architecture diagrams (draw.io or similar)
@@ -828,6 +874,7 @@ uv sync --all-extras --dev
 ### Performance Requirements
 
 **Minimum Acceptable Performance (per RAG):**
+
 - Faithfulness: >0.70
 - Answer Relevancy: >0.70
 - Contextual Precision: >0.60
@@ -836,6 +883,7 @@ uv sync --all-extras --dev
 - Cost per query: <$0.10
 
 **If RAG doesn't meet minimums:**
+
 - Document why (too experimental, wrong use case, etc.)
 - Consider excluding from final comparison
 - Or include with caveats about limitations
@@ -843,6 +891,7 @@ uv sync --all-extras --dev
 ### Infrastructure Requirements
 
 **Local Development:**
+
 - Python 3.12+
 - uv package manager
 - Docker + Docker Compose (for Neo4j, Qdrant/Weaviate)
@@ -850,6 +899,7 @@ uv sync --all-extras --dev
 - 16GB RAM recommended (for local DBs)
 
 **Cloud-Ready Architecture:**
+
 - Environment-based configuration (12-factor app)
 - Stateless application design
 - External storage for vector DBs (Cloud SQL, managed services)
@@ -857,6 +907,7 @@ uv sync --all-extras --dev
 - No hardcoded paths or credentials
 
 **Not Implementing (but designed for):**
+
 - Actual cloud deployment
 - Managed database provisioning
 - Scaling/load balancing
@@ -865,6 +916,7 @@ uv sync --all-extras --dev
 ### Code Quality Requirements
 
 **All code must:**
+
 - Pass ruff linting (100% compliance)
 - Pass mypy type checking (strict mode)
 - Have type hints on all functions
@@ -874,6 +926,7 @@ uv sync --all-extras --dev
 - Follow existing patterns (BaseRAG interface)
 
 **CI/CD:**
+
 - GitHub Actions runs on all PRs
 - Tests, linting, type checking must pass
 - No merge without passing CI
@@ -887,6 +940,7 @@ uv sync --all-extras --dev
 **Probability:** Medium
 
 **Mitigation:**
+
 - Use existing frameworks (don't build from scratch)
 - Accept "minimal viable implementation" approach
 - Focus on integration and evaluation, not novel algorithms
@@ -900,6 +954,7 @@ uv sync --all-extras --dev
 **Probability:** Low
 
 **Mitigation:**
+
 - Diverse test question types
 - Manual review of sample answers
 - Statistical analysis shows significance
@@ -913,6 +968,7 @@ uv sync --all-extras --dev
 **Probability:** Medium
 
 **Mitigation:**
+
 - Phase-separated cost tracking
 - Use GPT-4o-mini where possible
 - Cache embeddings to avoid recomputation
@@ -926,6 +982,7 @@ uv sync --all-extras --dev
 **Probability:** Low
 
 **Mitigation:**
+
 - uv extras isolate dependencies
 - Pin major versions in pyproject.toml
 - Test `uv sync --all-extras` regularly
@@ -939,6 +996,7 @@ uv sync --all-extras --dev
 **Probability:** Medium
 
 **Mitigation:**
+
 - Incremental releases (one RAG at a time)
 - No hard deadlines
 - Can release 2-RAG or 3-RAG comparison as intermediate milestone
@@ -948,6 +1006,7 @@ uv sync --all-extras --dev
 ## Success Metrics
 
 ### Technical Metrics
+
 - [ ] 4 RAG implementations complete and tested
 - [ ] Test coverage >80% overall
 - [ ] All CI/CD checks passing
@@ -955,6 +1014,7 @@ uv sync --all-extras --dev
 - [ ] Reports generated successfully
 
 ### Portfolio Metrics
+
 - [ ] GitHub README is professional and compelling
 - [ ] Results document provides actionable insights
 - [ ] Code demonstrates best practices
@@ -962,6 +1022,7 @@ uv sync --all-extras --dev
 - [ ] Project generates community interest (GitHub stars, discussions)
 
 ### Learning Metrics
+
 - [ ] Deep understanding of RAG tradeoffs
 - [ ] Experience with multiple vector DBs
 - [ ] Knowledge graph implementation experience

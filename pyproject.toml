@@ -26,7 +26,8 @@ dependencies = [
 
     # Graph RAG
     "neo4j>=5.16.0",
-    "langchain-neo4j>=0.0.1",
+    "neo4j-graphrag>=0.1.0",
+    "langchain-openai>=0.0.5",
 
     # Evaluation
     "deepeval>=0.21.0",

@@ -5,13 +5,15 @@ import os
 import sys
 from pathlib import Path
 
+from rag_evaluator.common.base_rag import BaseRAG
 from rag_evaluator.config import settings
 from rag_evaluator.evaluation.evaluator import RAGEvaluator
 from rag_evaluator.evaluation.report_generator import ReportGenerator
+from rag_evaluator.rag_implementations.graph_rag import Neo4jGraphRAG
 from rag_evaluator.rag_implementations.vector_semantic.chroma_rag import ChromaSemanticRAG
 
 
-def get_rag_implementation(rag_type: str) -> ChromaSemanticRAG:
+def get_rag_implementation(rag_type: str) -> BaseRAG:
     """Get RAG implementation instance by type.
 
     Args:
@@ -25,9 +27,12 @@ def get_rag_implementation(rag_type: str) -> ChromaSemanticRAG:
     """
     if rag_type == "vector_semantic":
         return ChromaSemanticRAG()
+    elif rag_type == "graph_rag":
+        return Neo4jGraphRAG()
     else:
         raise ValueError(
-            f"RAG type '{rag_type}' not yet implemented. Currently supported: vector_semantic"
+            f"RAG type '{rag_type}' not yet implemented. "
+            f"Currently supported: vector_semantic, graph_rag"
         )
 
 
@@ -107,9 +112,8 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
         # Handle 'all' option
         if args.rag_type == "all":
-            print("\nWarning: 'all' option not yet fully implemented")
-            print("Currently evaluating: vector_semantic")
-            rag_types = ["vector_semantic"]
+            rag_types = ["vector_semantic", "graph_rag"]
+            print(f"\nEvaluating all RAG types: {', '.join(rag_types)}")
         else:
             rag_types = [args.rag_type]
 
@@ -216,8 +220,17 @@ Examples:
   # Prepare documents for ChromaDB RAG
   rag-eval prepare --rag-type vector_semantic --input-dir data/raw
 
+  # Prepare documents for Graph RAG
+  rag-eval prepare --rag-type graph_rag --input-dir data/raw
+
   # Evaluate ChromaDB RAG
   rag-eval evaluate --rag-type vector_semantic
+
+  # Evaluate Graph RAG
+  rag-eval evaluate --rag-type graph_rag
+
+  # Evaluate all RAG types
+  rag-eval evaluate --rag-type all
 
   # Evaluate with custom test set
   rag-eval evaluate --rag-type vector_semantic --test-set my_tests.json
@@ -245,7 +258,7 @@ Examples:
     )
     prepare_parser.add_argument(
         "--rag-type",
-        choices=["vector_semantic"],
+        choices=["vector_semantic", "graph_rag"],
         default="vector_semantic",
         help="RAG implementation type",
     )
@@ -263,7 +276,7 @@ Examples:
     )
     eval_parser.add_argument(
         "--rag-type",
-        choices=["vector_semantic", "all"],
+        choices=["vector_semantic", "graph_rag", "all"],
         default="vector_semantic",
         help="RAG implementation to evaluate",
     )

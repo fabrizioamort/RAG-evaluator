@@ -14,10 +14,10 @@ A comprehensive evaluation framework for comparing different RAG (Retrieval Augm
 
 This project implements and evaluates four different RAG approaches:
 
-1. **Vector Semantic Search** - Using ChromaDB for pure semantic similarity
-2. **Hybrid Search** - Combining semantic and keyword-based retrieval
-3. **Graph RAG** - Using Neo4j graph database with LangChain
-4. **Filesystem RAG** - Direct filesystem search with LLM-guided retrieval
+1. **Vector Semantic Search** ✅ - Using ChromaDB for pure semantic similarity
+2. **Hybrid Search** 🔲 - Combining semantic and keyword-based retrieval (planned)
+3. **Graph RAG** ✅ - Using Neo4j graph database with neo4j-graphrag for hybrid vector + graph retrieval
+4. **Filesystem RAG** 🔲 - Direct filesystem search with LLM-guided retrieval (planned)
 
 ## Evaluation Metrics
 
@@ -69,10 +69,16 @@ cp .env.example .env
 
 ```bash
 # Prepare documents for RAG implementations
-uv run rag-eval prepare --input-dir data/raw
+uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
+
+# Or prepare for Graph RAG (requires Neo4j setup - see below)
+uv run rag-eval prepare --rag-type graph_rag --input-dir data/raw
 
 # Run evaluation on a specific RAG implementation
 uv run rag-eval evaluate --rag-type vector_semantic
+
+# Run evaluation on Graph RAG
+uv run rag-eval evaluate --rag-type graph_rag
 
 # Run evaluation on all implementations
 uv run rag-eval evaluate --rag-type all --output reports
@@ -100,6 +106,88 @@ uv run python scripts/run_streamlit.py
 - **Query Explorer Tab**: Filter test cases by difficulty/category/score, view individual question details, and compare implementation responses
 
 The UI automatically loads the most recent evaluation report from the `reports/` directory.
+
+## Graph RAG Setup (Neo4j)
+
+The Graph RAG implementation uses **neo4j-graphrag**, the official Neo4j GraphRAG package for Python, to build knowledge graphs from documents and perform hybrid retrieval combining vector search with graph traversal.
+
+### Prerequisites
+
+1. **Neo4j Database**: You need a running Neo4j instance (version 5.x or later)
+   - **Local Installation**: Download from [neo4j.com/download](https://neo4j.com/download/)
+   - **Neo4j Desktop**: Easiest option for local development
+   - **Neo4j Aura**: Free cloud-hosted option
+   - **Docker**: `docker run -p 7687:7687 -p 7474:7474 -e NEO4J_AUTH=neo4j/password neo4j:latest`
+
+2. **Configuration**: Set Neo4j credentials in `.env`:
+
+```bash
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your_neo4j_password
+```
+
+### How Graph RAG Works
+
+The Graph RAG implementation:
+
+1. **Document Ingestion**:
+   - Loads documents from multiple formats (TXT, PDF, DOCX)
+   - Uses LLM to dynamically extract entities and relationships (no pre-defined schema required)
+   - Builds a knowledge graph in Neo4j with interconnected entities
+
+2. **Hybrid Retrieval**:
+   - **Vector Search**: Finds semantically similar chunks using embeddings
+   - **Graph Traversal**: Expands from found nodes to related entities via graph relationships
+   - Enriches context with graph structure (entities, relationships)
+
+3. **Answer Generation**:
+   - Combines retrieved text chunks with graph metadata
+   - Generates answers using LLM with enhanced context
+
+### Using Graph RAG
+
+```bash
+# 1. Prepare documents (builds knowledge graph)
+uv run rag-eval prepare --rag-type graph_rag --input-dir data/raw
+
+# 2. Run evaluation
+uv run rag-eval evaluate --rag-type graph_rag
+
+# 3. View results in UI
+uv run rag-eval ui
+```
+
+### Graph RAG Features
+
+- **Dynamic Schema Inference**: No need to predefine entity types or relationships
+- **Multi-hop Reasoning**: Excels at questions requiring connections across multiple entities
+- **Graph-Enhanced Context**: Retrieves not just matching text but related concepts
+- **Vector + Graph Hybrid**: Combines semantic similarity with structural relationships
+
+### Viewing the Knowledge Graph
+
+You can explore the generated knowledge graph using Neo4j Browser:
+
+1. Open Neo4j Browser (typically at `http://localhost:7474`)
+2. Run queries to explore the graph:
+
+```cypher
+// View all node types and counts
+MATCH (n)
+RETURN labels(n)[0] AS type, count(*) AS count
+ORDER BY count DESC
+
+// View entities and their relationships
+MATCH (n)-[r]->(m)
+RETURN n, r, m
+LIMIT 25
+
+// Search for specific entities
+MATCH (n)
+WHERE n.name CONTAINS 'RAG'
+RETURN n
+```
 
 ## Evaluation Framework
 
