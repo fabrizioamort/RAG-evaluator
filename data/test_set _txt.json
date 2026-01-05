@@ -1,0 +1,115 @@
+{
+  "metadata": {
+    "created_date": "2026-01-02",
+    "version": "1.0",
+    "description": "Test dataset for RAG evaluation - based on sample documents about RAG, vector databases, and evaluation metrics",
+    "document_sources": [
+      "data/raw/sample_doc1.txt",
+      "data/raw/sample_doc2.txt",
+      "data/raw/sample_doc3.txt"
+    ]
+  },
+  "test_cases": [
+    {
+      "id": "tc_001",
+      "question": "What is RAG?",
+      "expected_answer": "RAG (Retrieval Augmented Generation) is a technique that combines the power of large language models with external knowledge retrieval. It works by retrieving relevant document chunks and providing them as context to the language model to generate accurate answers.",
+      "ground_truth_context": [
+        "RAG is a technique that combines the power of large language models with external knowledge retrieval."
+      ],
+      "difficulty": "easy",
+      "category": "definition"
+    },
+    {
+      "id": "tc_002",
+      "question": "What are the three main steps in the RAG process?",
+      "expected_answer": "The three main steps in RAG are: 1) Document Indexing - documents are split into chunks and converted into vector embeddings, 2) Query Processing - the user's question is converted into a vector embedding, and 3) Answer Generation - relevant chunks are retrieved and provided as context to the language model.",
+      "ground_truth_context": [
+        "The process works in three main steps: 1. Document Indexing, 2. Query Processing, 3. Answer Generation"
+      ],
+      "difficulty": "medium",
+      "category": "process"
+    },
+    {
+      "id": "tc_003",
+      "question": "What vector databases are mentioned in the documents?",
+      "expected_answer": "The documents mention four vector databases: ChromaDB (an open-source embedding database focused on simplicity), Pinecone (a managed vector database with high scalability), Weaviate (an open-source vector search engine with GraphQL API), and Qdrant (a vector similarity search engine with extended filtering support).",
+      "ground_truth_context": [
+        "Popular vector databases include: ChromaDB, Pinecone, Weaviate, Qdrant"
+      ],
+      "difficulty": "easy",
+      "category": "factual_recall"
+    },
+    {
+      "id": "tc_004",
+      "question": "What is faithfulness in RAG evaluation?",
+      "expected_answer": "Faithfulness is a generation metric that measures whether the answer is derived only from the retrieved context. It ensures that the generated response is grounded in the provided documents and doesn't include hallucinated information.",
+      "ground_truth_context": [
+        "Faithfulness: Is the answer derived only from the retrieved context?"
+      ],
+      "difficulty": "easy",
+      "category": "definition"
+    },
+    {
+      "id": "tc_005",
+      "question": "How do embeddings enable semantic search?",
+      "expected_answer": "Embeddings are dense vector representations of text that capture semantic meaning. Embedding models convert text into numerical vectors, and similar texts will have similar vector representations. This enables semantic search capabilities because texts with similar meanings will be close together in the vector space.",
+      "ground_truth_context": [
+        "Embeddings are dense vector representations of text that capture semantic meaning. Similar texts will have similar vector representations, enabling semantic search capabilities."
+      ],
+      "difficulty": "medium",
+      "category": "explanation"
+    },
+    {
+      "id": "tc_006",
+      "question": "What are the main categories of metrics for evaluating RAG systems?",
+      "expected_answer": "RAG systems require two main categories of metrics: Retrieval Metrics (such as Precision, Recall, MRR, and NDCG) which measure the quality of document retrieval, and Generation Metrics (such as Faithfulness, Answer Relevance, Context Precision, and Context Recall) which measure the quality of the generated answers.",
+      "ground_truth_context": [
+        "Evaluating RAG systems requires measuring both retrieval quality and generation quality: Retrieval Metrics and Generation Metrics"
+      ],
+      "difficulty": "medium",
+      "category": "categorization"
+    },
+    {
+      "id": "tc_007",
+      "question": "Why is RAG particularly useful for certain applications?",
+      "expected_answer": "RAG is particularly useful for applications that need to answer questions based on specific, up-to-date, or private information that the language model wasn't trained on. It helps reduce hallucinations and provides more accurate, grounded responses.",
+      "ground_truth_context": [
+        "RAG is particularly useful for applications that need to answer questions based on specific, up-to-date, or private information that the language model wasn't trained on. It helps reduce hallucinations and provides more accurate, grounded responses."
+      ],
+      "difficulty": "medium",
+      "category": "explanation"
+    },
+    {
+      "id": "tc_008",
+      "question": "What is the difference between ChromaDB and Pinecone?",
+      "expected_answer": "ChromaDB is an open-source embedding database focused on simplicity, while Pinecone is a managed vector database with high scalability. The main difference is that ChromaDB is self-hosted and emphasizes ease of use, whereas Pinecone is a cloud-managed service designed for scalability.",
+      "ground_truth_context": [
+        "ChromaDB: An open-source embedding database focused on simplicity",
+        "Pinecone: A managed vector database with high scalability"
+      ],
+      "difficulty": "hard",
+      "category": "comparison"
+    },
+    {
+      "id": "tc_009",
+      "question": "What tools are available for automated RAG evaluation?",
+      "expected_answer": "DeepEval and Ragas are tools that provide automated frameworks for computing RAG evaluation metrics. These tools make it easier to compare different RAG approaches and track improvements over time.",
+      "ground_truth_context": [
+        "Tools like DeepEval and Ragas provide automated frameworks for computing these metrics, making it easier to compare different RAG approaches and track improvements over time."
+      ],
+      "difficulty": "easy",
+      "category": "factual_recall"
+    },
+    {
+      "id": "tc_010",
+      "question": "What is Context Precision and why is it important?",
+      "expected_answer": "Context Precision is a generation metric that measures how relevant the retrieved documents are to the question. It's important because it evaluates the quality of the retrieval step - even if the language model generates a good answer, if the retrieved context isn't relevant, the system may not be working optimally.",
+      "ground_truth_context": [
+        "Context Precision: How relevant are the retrieved documents?"
+      ],
+      "difficulty": "medium",
+      "category": "explanation"
+    }
+  ]
+}

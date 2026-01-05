@@ -1,0 +1,43 @@
+{
+  "metadata": {
+    "created_date": "2026-01-04",
+    "version": "1.0",
+    "description": "Small test dataset for custom PDF evaluation",
+    "document_sources": [
+      "data/raw/your_document.pdf"
+    ]
+  },
+  "test_cases": [
+    {
+      "id": "tc_001",
+      "question": "What is the main topic of this document?",
+      "expected_answer": "Replace this with the expected answer based on your PDF content.",
+      "ground_truth_context": [
+        "Replace this with a key sentence or phrase from your PDF that should be retrieved."
+      ],
+      "difficulty": "easy",
+      "category": "definition"
+    },
+    {
+      "id": "tc_002",
+      "question": "What are the key points discussed in the document?",
+      "expected_answer": "Replace this with the expected answer - list the main points from your PDF.",
+      "ground_truth_context": [
+        "Replace with a relevant sentence from your PDF",
+        "You can add multiple context chunks if the answer requires information from different sections"
+      ],
+      "difficulty": "medium",
+      "category": "explanation"
+    },
+    {
+      "id": "tc_003",
+      "question": "What specific details or examples are provided?",
+      "expected_answer": "Replace this with expected answer - mention specific details, examples, or data from your PDF.",
+      "ground_truth_context": [
+        "Replace with the relevant section from your PDF that contains these details"
+      ],
+      "difficulty": "medium",
+      "category": "factual_recall"
+    }
+  ]
+}

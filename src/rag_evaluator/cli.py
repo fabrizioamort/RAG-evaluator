@@ -82,7 +82,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success, 1 for error)
     """
-    # Set DeepEval timeout environment variables
+    # Set DeepEval timeout and async mode environment variables
     os.environ["DEEPEVAL_PER_TASK_TIMEOUT_SECONDS_OVERRIDE"] = str(
         settings.deepeval_per_task_timeout
     )
@@ -90,6 +90,10 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         settings.deepeval_per_attempt_timeout
     )
     os.environ["DEEPEVAL_RETRY_MAX_ATTEMPTS"] = str(settings.deepeval_max_retries)
+
+    # Force sequential evaluation if async mode is disabled
+    if not settings.deepeval_async_mode:
+        os.environ["DEEPEVAL_ASYNC_MODE"] = "False"
 
     print(f"Evaluating: {args.rag_type}")
     print(f"Test set: {args.test_set}")

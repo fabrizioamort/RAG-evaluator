@@ -4,7 +4,11 @@
       "Bash(uv init:*)",
       "Bash(find:*)",
       "Bash(tree:*)",
-      "Bash(uv sync:*)"
+      "Bash(uv sync:*)",
+      "Bash(uv add:*)",
+      "Bash(uv pip:*)",
+      "Bash(cat:*)",
+      "Bash(uv run ruff:*)"
     ]
   }
 }

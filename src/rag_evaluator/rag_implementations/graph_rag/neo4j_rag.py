@@ -74,16 +74,9 @@ class Neo4jGraphRAG(BaseRAG):
             collect(DISTINCT type(rel)) AS relationship_types
         """
 
-        # Initialize retriever (VectorCypherRetriever combines vector search + graph traversal)
-        self.retriever = VectorCypherRetriever(
-            driver=self.driver,
-            index_name=self.vector_index_name,
-            retrieval_query=self.retrieval_query,
-            embedder=self.embedder,
-        )
-
-        # Initialize GraphRAG pipeline
-        self.rag_pipeline = GraphRAG(retriever=self.retriever, llm=self.llm)
+        # Retriever and RAG pipeline will be initialized lazily when needed
+        self._retriever = None
+        self._rag_pipeline = None
 
         # Metrics tracking
         self._retrieval_times: list[float] = []
@@ -93,6 +86,25 @@ class Neo4jGraphRAG(BaseRAG):
         """Close Neo4j driver on cleanup."""
         if hasattr(self, "driver"):
             self.driver.close()
+
+    @property
+    def retriever(self) -> VectorCypherRetriever:
+        """Lazily initialize retriever when first accessed."""
+        if self._retriever is None:
+            self._retriever = VectorCypherRetriever(
+                driver=self.driver,
+                index_name=self.vector_index_name,
+                retrieval_query=self.retrieval_query,
+                embedder=self.embedder,
+            )
+        return self._retriever
+
+    @property
+    def rag_pipeline(self) -> GraphRAG:
+        """Lazily initialize RAG pipeline when first accessed."""
+        if self._rag_pipeline is None:
+            self._rag_pipeline = GraphRAG(retriever=self.retriever, llm=self.llm)
+        return self._rag_pipeline
 
     def prepare_documents(self, documents_path: str) -> None:
         """Prepare and index documents as knowledge graph in Neo4j.

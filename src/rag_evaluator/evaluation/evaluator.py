@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from deepeval import evaluate
+from deepeval.evaluate import AsyncConfig
 from deepeval.metrics import (
     AnswerRelevancyMetric,
     ContextualPrecisionMetric,
@@ -156,10 +157,17 @@ class RAGEvaluator:
         if verbose:
             print(f"\n{'=' * 60}")
             print("Running DeepEval metrics evaluation...")
+            print(f"Async mode: {settings.deepeval_async_mode}")
             print(f"{'=' * 60}\n")
 
         # Run DeepEval evaluation
-        evaluation_results = evaluate(deepeval_test_cases, self.metrics)  # type: ignore[operator]
+        # Use AsyncConfig to control parallel/sequential execution
+        async_config = AsyncConfig(run_async=settings.deepeval_async_mode)
+        evaluation_results = evaluate(
+            deepeval_test_cases,
+            self.metrics,
+            async_config=async_config,
+        )
 
         # Extract metric scores from evaluation results
         # evaluation_results.test_results contains individual test results with metrics_data

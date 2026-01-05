@@ -1,115 +1,62 @@
 {
   "metadata": {
-    "created_date": "2026-01-02",
+    "created_date": "2026-01-04",
     "version": "1.0",
     "description": "Test dataset for RAG evaluation - based on sample documents about RAG, vector databases, and evaluation metrics",
     "document_sources": [
-      "data/raw/sample_doc1.txt",
-      "data/raw/sample_doc2.txt",
-      "data/raw/sample_doc3.txt"
+      "data/raw/Managing Memory for AI Agents (for Duc Ka) (Benjamin Labaschin, Jim Allen Wallace etc.) (Z-Library).pdf"
     ]
   },
   "test_cases": [
     {
       "id": "tc_001",
-      "question": "What is RAG?",
-      "expected_answer": "RAG (Retrieval Augmented Generation) is a technique that combines the power of large language models with external knowledge retrieval. It works by retrieving relevant document chunks and providing them as context to the language model to generate accurate answers.",
+      "question": "What are the three primary types of long-term memory for AI agents defined in the text?",
+      "expected_answer": "The three primary types are episodic memory (specific past experiences), semantic memory (structured factual knowledge), and procedural memory (skills, rules, and learned behaviors).",
       "ground_truth_context": [
-        "RAG is a technique that combines the power of large language models with external knowledge retrieval."
+        "The industry has converged on three primary types of long-term memory... Episodic memory... Semantic memory... Procedural memory"
       ],
       "difficulty": "easy",
-      "category": "definition"
+      "category": "memory_types"
     },
     {
       "id": "tc_002",
-      "question": "What are the three main steps in the RAG process?",
-      "expected_answer": "The three main steps in RAG are: 1) Document Indexing - documents are split into chunks and converted into vector embeddings, 2) Query Processing - the user's question is converted into a vector embedding, and 3) Answer Generation - relevant chunks are retrieved and provided as context to the language model.",
+      "question": "How does the text define 'episodic memory' in the context of AI agents?",
+      "expected_answer": "Episodic memory stores specific past experiences and events, functioning like human autobiographical memory. It is typically implemented through RAG systems on conversation histories.",
       "ground_truth_context": [
-        "The process works in three main steps: 1. Document Indexing, 2. Query Processing, 3. Answer Generation"
+        "Episodic memory Stores specific past experiences and events, functioning like human autobiographical memory. Companies typically implement this through RAG systems on conversation histories"
       ],
       "difficulty": "medium",
-      "category": "process"
-    },
-    {
-      "id": "tc_003",
-      "question": "What vector databases are mentioned in the documents?",
-      "expected_answer": "The documents mention four vector databases: ChromaDB (an open-source embedding database focused on simplicity), Pinecone (a managed vector database with high scalability), Weaviate (an open-source vector search engine with GraphQL API), and Qdrant (a vector similarity search engine with extended filtering support).",
-      "ground_truth_context": [
-        "Popular vector databases include: ChromaDB, Pinecone, Weaviate, Qdrant"
-      ],
-      "difficulty": "easy",
-      "category": "factual_recall"
-    },
-    {
-      "id": "tc_004",
-      "question": "What is faithfulness in RAG evaluation?",
-      "expected_answer": "Faithfulness is a generation metric that measures whether the answer is derived only from the retrieved context. It ensures that the generated response is grounded in the provided documents and doesn't include hallucinated information.",
-      "ground_truth_context": [
-        "Faithfulness: Is the answer derived only from the retrieved context?"
-      ],
-      "difficulty": "easy",
       "category": "definition"
     },
     {
-      "id": "tc_005",
-      "question": "How do embeddings enable semantic search?",
-      "expected_answer": "Embeddings are dense vector representations of text that capture semantic meaning. Embedding models convert text into numerical vectors, and similar texts will have similar vector representations. This enables semantic search capabilities because texts with similar meanings will be close together in the vector space.",
+      "id": "tc_003",
+      "question": "What is 'semantic caching' and why is it beneficial for RAG systems?",
+      "expected_answer": "Semantic caching retains the relative context of information retrieval by processing the semantics of content. It benefits RAG systems by prioritizing frequently retrieved information, making it more computationally and cost-effective.",
       "ground_truth_context": [
-        "Embeddings are dense vector representations of text that capture semantic meaning. Similar texts will have similar vector representations, enabling semantic search capabilities."
+        "Semantic caching... retains the relative context of an information retrieval system over time by processing the semantics of the content being passed. Frequently retrieved information gets prioritized... it may be both more computationally effective and cost-effective"
       ],
       "difficulty": "medium",
-      "category": "explanation"
+      "category": "optimization"
     },
     {
-      "id": "tc_006",
-      "question": "What are the main categories of metrics for evaluating RAG systems?",
-      "expected_answer": "RAG systems require two main categories of metrics: Retrieval Metrics (such as Precision, Recall, MRR, and NDCG) which measure the quality of document retrieval, and Generation Metrics (such as Faithfulness, Answer Relevance, Context Precision, and Context Recall) which measure the quality of the generated answers.",
+      "id": "tc_004",
+      "question": "What is a Transactive Memory System (TMS) as described in the chapter on collective memory?",
+      "expected_answer": "A TMS is a group-level knowledge sharing system for encoding, storing, and retrieving information from different knowledge areas. It essentially involves 'knowing what other team members know' to create a collective group mind.",
       "ground_truth_context": [
-        "Evaluating RAG systems requires measuring both retrieval quality and generation quality: Retrieval Metrics and Generation Metrics"
-      ],
-      "difficulty": "medium",
-      "category": "categorization"
-    },
-    {
-      "id": "tc_007",
-      "question": "Why is RAG particularly useful for certain applications?",
-      "expected_answer": "RAG is particularly useful for applications that need to answer questions based on specific, up-to-date, or private information that the language model wasn't trained on. It helps reduce hallucinations and provides more accurate, grounded responses.",
-      "ground_truth_context": [
-        "RAG is particularly useful for applications that need to answer questions based on specific, up-to-date, or private information that the language model wasn't trained on. It helps reduce hallucinations and provides more accurate, grounded responses."
-      ],
-      "difficulty": "medium",
-      "category": "explanation"
-    },
-    {
-      "id": "tc_008",
-      "question": "What is the difference between ChromaDB and Pinecone?",
-      "expected_answer": "ChromaDB is an open-source embedding database focused on simplicity, while Pinecone is a managed vector database with high scalability. The main difference is that ChromaDB is self-hosted and emphasizes ease of use, whereas Pinecone is a cloud-managed service designed for scalability.",
-      "ground_truth_context": [
-        "ChromaDB: An open-source embedding database focused on simplicity",
-        "Pinecone: A managed vector database with high scalability"
+        "A TMS is defined as the “group-level knowledge sharing and memory system for encoding, storing, and retrieving information from different knowledge areas in a group.” In essence, it’s about “knowing what other team members know”"
       ],
       "difficulty": "hard",
-      "category": "comparison"
+      "category": "collective_memory"
     },
     {
-      "id": "tc_009",
-      "question": "What tools are available for automated RAG evaluation?",
-      "expected_answer": "DeepEval and Ragas are tools that provide automated frameworks for computing RAG evaluation metrics. These tools make it easier to compare different RAG approaches and track improvements over time.",
+      "id": "tc_005",
+      "question": "Describe the 'LLM-as-a-judge' methodology for evaluating agent performance.",
+      "expected_answer": "The 'LLM-as-a-judge' methodology uses a powerful, state-of-the-art LLM as an impartial evaluator. The judge LLM assesses the agent's output against ground-truth data and a rubric, often using chain-of-thought prompting to explain its reasoning.",
       "ground_truth_context": [
-        "Tools like DeepEval and Ragas provide automated frameworks for computing these metrics, making it easier to compare different RAG approaches and track improvements over time."
+        "The “LLM-as-a-judge” methodology... involves using a powerful, state-of-the-art LLM to act as an impartial evaluator. The judge LLM is given the agent’s output, the original prompt, a set of ground-truth data, and a detailed evaluation rubric"
       ],
-      "difficulty": "easy",
-      "category": "factual_recall"
-    },
-    {
-      "id": "tc_010",
-      "question": "What is Context Precision and why is it important?",
-      "expected_answer": "Context Precision is a generation metric that measures how relevant the retrieved documents are to the question. It's important because it evaluates the quality of the retrieval step - even if the language model generates a good answer, if the retrieved context isn't relevant, the system may not be working optimally.",
-      "ground_truth_context": [
-        "Context Precision: How relevant are the retrieved documents?"
-      ],
-      "difficulty": "medium",
-      "category": "explanation"
+      "difficulty": "hard",
+      "category": "evaluation"
     }
   ]
 }

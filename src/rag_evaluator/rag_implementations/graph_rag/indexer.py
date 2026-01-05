@@ -105,9 +105,16 @@ class GraphIndexer:
         print(f"\nLoaded {len(all_text_content)} documents")
 
         # Initialize LLM and embedder
+        # Configure LLM parameters based on model capabilities
+        llm_params: dict[str, Any] = {"response_format": {"type": "json_object"}}
+
+        # Only add temperature for models that support it (not gpt-5-nano, o1, etc.)
+        if "nano" not in self.llm_model.lower() and "o1" not in self.llm_model.lower():
+            llm_params["temperature"] = 0
+
         llm = OpenAILLM(
             model_name=self.llm_model,
-            model_params={"temperature": 0, "response_format": {"type": "json_object"}},
+            model_params=llm_params,
         )
 
         embedder = OpenAIEmbeddings(model=self.embedding_model)

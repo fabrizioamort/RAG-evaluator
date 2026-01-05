@@ -109,17 +109,15 @@ RAG Evaluator is a production-ready Python framework for comparing and evaluatin
 **Technology Stack:**
 
 - **Primary Option:** Qdrant (free, open-source, native hybrid search)
-- **Alternative:** Weaviate (if Qdrant integration proves difficult)
-- **Fallback:** LangChain EnsembleRetriever (most flexible)
+- **Vectors:**
+  - Dense: OpenAI `text-embedding-3-small` (1536 dim)
+  - Sparse: SPLADE or BGE-M3 (via `fastembed` or compatible model)
 
 **Technical Approach:**
 
-- Dense vector embeddings (OpenAI text-embedding-3-small)
-- Sparse vectors for keyword matching (BM25)
-- Score fusion: Use Reciprocal Rank Fusion (RRF) as default
-  - No normalization required
-  - Production-proven approach
-  - Simpler than weighted combination
+- **Native Hybrid Search:** Leverage Qdrant's ability to store and query both dense and sparse vectors in a single collection.
+- **Fusion:** Qdrant internal fusion (score merging) or RRF if needed, but native scoring is preferred.
+- **Client-Side Encoding:** Use `fastembed` library to generate sparse vectors before upserting to Qdrant.
 
 **Chunking Strategy:**
 
@@ -133,19 +131,17 @@ RAG Evaluator is a production-ready Python framework for comparing and evaluatin
 {
     "chunk_size": 700,
     "chunk_overlap": 100,
-    "top_k_semantic": 10,
-    "top_k_keyword": 10,
-    "fusion_method": "rrf",
-    "rrf_k": 60  # Standard RRF constant
+    "sparse_model": "prithvida/Splade_pp_en_v1", # or similar supported by FastEmbed
+    "fusion_alpha": 0.5, # Weighting between dense and sparse scores
 }
 ```
 
 **Acceptance Criteria:**
 
-- Successfully combines semantic and keyword search
+- Successfully indexes both dense and sparse vectors
+- Retrieval performs hybrid search using Qdrant's query API
 - Outperforms pure vector search on keyword-heavy queries
-- Query latency <3 seconds
-- Setup requires minimal configuration (no paid services)
+- Setup requires minimal configuration (no paid services beyond OpenAI)
 
 ### 3. Graph RAG 🔲 TODO
 
@@ -665,8 +661,7 @@ vector-semantic = [
 
 hybrid-search = [
     "qdrant-client>=1.7.0",
-    # Alternative: "weaviate-client>=3.25.0",
-    "rank-bm25>=0.2.2",
+    "fastembed>=0.2.0", # For client-side sparse embedding generation
 ]
 
 graph-rag = [
