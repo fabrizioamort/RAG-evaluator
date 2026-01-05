@@ -10,6 +10,7 @@ from rag_evaluator.config import settings
 from rag_evaluator.evaluation.evaluator import RAGEvaluator
 from rag_evaluator.evaluation.report_generator import ReportGenerator
 from rag_evaluator.rag_implementations.graph_rag import Neo4jGraphRAG
+from rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag import HybridSearchRAG
 from rag_evaluator.rag_implementations.vector_semantic.chroma_rag import ChromaSemanticRAG
 
 
@@ -27,12 +28,14 @@ def get_rag_implementation(rag_type: str) -> BaseRAG:
     """
     if rag_type == "vector_semantic":
         return ChromaSemanticRAG()
+    elif rag_type == "vector_hybrid":
+        return HybridSearchRAG()
     elif rag_type == "graph_rag":
         return Neo4jGraphRAG()
     else:
         raise ValueError(
             f"RAG type '{rag_type}' not yet implemented. "
-            f"Currently supported: vector_semantic, graph_rag"
+            f"Currently supported: vector_semantic, vector_hybrid, graph_rag"
         )
 
 
@@ -116,7 +119,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
         # Handle 'all' option
         if args.rag_type == "all":
-            rag_types = ["vector_semantic", "graph_rag"]
+            rag_types = ["vector_semantic", "vector_hybrid", "graph_rag"]
             print(f"\nEvaluating all RAG types: {', '.join(rag_types)}")
         else:
             rag_types = [args.rag_type]
@@ -221,14 +224,20 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Prepare documents for ChromaDB RAG
+  # Prepare documents for ChromaDB RAG (vector semantic)
   rag-eval prepare --rag-type vector_semantic --input-dir data/raw
+
+  # Prepare documents for Hybrid Search RAG (requires Qdrant running)
+  rag-eval prepare --rag-type vector_hybrid --input-dir data/raw
 
   # Prepare documents for Graph RAG
   rag-eval prepare --rag-type graph_rag --input-dir data/raw
 
   # Evaluate ChromaDB RAG
   rag-eval evaluate --rag-type vector_semantic
+
+  # Evaluate Hybrid Search RAG
+  rag-eval evaluate --rag-type vector_hybrid
 
   # Evaluate Graph RAG
   rag-eval evaluate --rag-type graph_rag
@@ -262,7 +271,7 @@ Examples:
     )
     prepare_parser.add_argument(
         "--rag-type",
-        choices=["vector_semantic", "graph_rag"],
+        choices=["vector_semantic", "vector_hybrid", "graph_rag"],
         default="vector_semantic",
         help="RAG implementation type",
     )
@@ -280,7 +289,7 @@ Examples:
     )
     eval_parser.add_argument(
         "--rag-type",
-        choices=["vector_semantic", "graph_rag", "all"],
+        choices=["vector_semantic", "vector_hybrid", "graph_rag", "all"],
         default="vector_semantic",
         help="RAG implementation to evaluate",
     )

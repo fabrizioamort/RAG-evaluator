@@ -8,7 +8,9 @@
       "Bash(uv add:*)",
       "Bash(uv pip:*)",
       "Bash(cat:*)",
-      "Bash(uv run ruff:*)"
+      "Bash(uv run ruff:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs"
     ]
   }
 }

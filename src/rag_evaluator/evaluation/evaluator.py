@@ -163,7 +163,7 @@ class RAGEvaluator:
         # Run DeepEval evaluation
         # Use AsyncConfig to control parallel/sequential execution
         async_config = AsyncConfig(run_async=settings.deepeval_async_mode)
-        evaluation_results = evaluate(
+        evaluation_results = evaluate(  # type: ignore[operator]
             deepeval_test_cases,
             self.metrics,
             async_config=async_config,

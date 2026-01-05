@@ -30,6 +30,8 @@ reports/*
 *.sqlite
 *.sqlite3
 data/chroma_db/
+data/qdrant_storage/
+data/neo4j_data/
 
 # IDE
 .vscode/

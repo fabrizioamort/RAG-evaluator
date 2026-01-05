@@ -15,7 +15,7 @@ A comprehensive evaluation framework for comparing different RAG (Retrieval Augm
 This project implements and evaluates four different RAG approaches:
 
 1. **Vector Semantic Search** ✅ - Using ChromaDB for pure semantic similarity
-2. **Hybrid Search** 🔲 - Combining semantic and keyword-based retrieval (planned)
+2. **Hybrid Search** ✅ - Combining dense (semantic) and sparse (keyword) vectors using Qdrant with RRF fusion
 3. **Graph RAG** ✅ - Using Neo4j graph database with neo4j-graphrag for hybrid vector + graph retrieval
 4. **Filesystem RAG** 🔲 - Direct filesystem search with LLM-guided retrieval (planned)
 
@@ -71,11 +71,17 @@ cp .env.example .env
 # Prepare documents for RAG implementations
 uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
 
-# Or prepare for Graph RAG (requires Neo4j setup - see below)
+# Or prepare for Hybrid Search RAG (requires Qdrant - see below)
+uv run rag-eval prepare --rag-type vector_hybrid --input-dir data/raw
+
+# Or prepare for Graph RAG (requires Neo4j - see below)
 uv run rag-eval prepare --rag-type graph_rag --input-dir data/raw
 
 # Run evaluation on a specific RAG implementation
 uv run rag-eval evaluate --rag-type vector_semantic
+
+# Run evaluation on Hybrid Search RAG
+uv run rag-eval evaluate --rag-type vector_hybrid
 
 # Run evaluation on Graph RAG
 uv run rag-eval evaluate --rag-type graph_rag
@@ -106,6 +112,76 @@ uv run python scripts/run_streamlit.py
 - **Query Explorer Tab**: Filter test cases by difficulty/category/score, view individual question details, and compare implementation responses
 
 The UI automatically loads the most recent evaluation report from the `reports/` directory.
+
+## Hybrid Search RAG Setup (Qdrant)
+
+The Hybrid Search RAG implementation combines **dense vectors** (semantic similarity via OpenAI embeddings) with **sparse vectors** (keyword matching via SPLADE) using Qdrant's native hybrid search with RRF (Reciprocal Rank Fusion).
+
+### Prerequisites
+
+1. **Qdrant Database**: Start Qdrant using Docker Compose:
+
+```bash
+# Start Qdrant (from project root)
+docker compose up -d qdrant
+```
+
+This starts Qdrant on:
+- HTTP API: `http://localhost:6333`
+- GRPC: `localhost:6334`
+
+2. **Configuration** (optional): Customize in `.env`:
+
+```bash
+QDRANT_URL=http://localhost:6333
+QDRANT_COLLECTION_NAME=hybrid_rag
+HYBRID_CHUNK_SIZE=700
+HYBRID_CHUNK_OVERLAP=100
+SPARSE_MODEL_NAME=prithvida/Splade_pp_en_v1
+```
+
+### How Hybrid Search Works
+
+The Hybrid Search implementation:
+
+1. **Document Indexing**:
+   - Loads documents from multiple formats (TXT, PDF, DOCX)
+   - Splits into smaller chunks (700 chars) optimized for keyword matching
+   - Generates **dense embeddings** using OpenAI `text-embedding-3-small`
+   - Generates **sparse embeddings** using SPLADE via FastEmbed
+   - Stores both vector types in Qdrant with named vectors
+
+2. **Hybrid Retrieval**:
+   - **Dense Search**: Finds semantically similar chunks
+   - **Sparse Search**: Finds chunks with matching keywords/terms
+   - **RRF Fusion**: Combines both result sets using Reciprocal Rank Fusion
+
+3. **Answer Generation**:
+   - Uses retrieved context from hybrid search
+   - Generates answers using LLM
+
+### Using Hybrid Search RAG
+
+```bash
+# 1. Start Qdrant
+docker compose up -d qdrant
+
+# 2. Prepare documents (indexes with both dense and sparse vectors)
+uv run rag-eval prepare --rag-type vector_hybrid --input-dir data/raw
+
+# 3. Run evaluation
+uv run rag-eval evaluate --rag-type vector_hybrid
+
+# 4. View results in UI
+uv run rag-eval ui
+```
+
+### Hybrid Search Features
+
+- **Keyword + Semantic**: Best of both worlds - precise term matching and semantic understanding
+- **RRF Fusion**: Robust fusion algorithm that doesn't require score normalization
+- **Smaller Chunks**: 700-char chunks optimized for keyword matching
+- **SPLADE Embeddings**: State-of-the-art sparse embeddings for term importance
 
 ## Graph RAG Setup (Neo4j)
 
@@ -370,8 +446,16 @@ Key configuration options in `.env`:
 **Database Configuration:**
 
 - `CHROMA_PERSIST_DIRECTORY` - ChromaDB storage location (default: ./data/chroma_db)
+- `QDRANT_URL` - Qdrant HTTP endpoint (default: http://localhost:6333)
+- `QDRANT_COLLECTION_NAME` - Qdrant collection name (default: hybrid_rag)
 - `NEO4J_URI` - Neo4j connection URI (for Graph RAG)
 - `NEO4J_PASSWORD` - Neo4j password
+
+**Hybrid Search Configuration:**
+
+- `HYBRID_CHUNK_SIZE` - Chunk size for hybrid search (default: 700)
+- `HYBRID_CHUNK_OVERLAP` - Chunk overlap (default: 100)
+- `SPARSE_MODEL_NAME` - FastEmbed sparse model (default: prithvida/Splade_pp_en_v1)
 
 **Evaluation Configuration:**
 
@@ -412,7 +496,9 @@ Key configuration options in `.env`:
 
 - Python 3.11+
 - OpenAI API key
-- Neo4j database (for Graph RAG implementation)
+- Docker (for Qdrant and Neo4j)
+- Qdrant (for Hybrid Search RAG) - via Docker Compose
+- Neo4j database (for Graph RAG) - via Docker Compose or external instance
 
 ## Contributing
 

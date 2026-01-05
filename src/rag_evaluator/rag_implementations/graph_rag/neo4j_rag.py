@@ -75,8 +75,8 @@ class Neo4jGraphRAG(BaseRAG):
         """
 
         # Retriever and RAG pipeline will be initialized lazily when needed
-        self._retriever = None
-        self._rag_pipeline = None
+        self._retriever: VectorCypherRetriever | None = None
+        self._rag_pipeline: GraphRAG | None = None
 
         # Metrics tracking
         self._retrieval_times: list[float] = []

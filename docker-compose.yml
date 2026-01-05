@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: rag-evaluator-qdrant
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # GRPC
+    volumes:
+      - ./data/qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__LOG_LEVEL=INFO
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: rag-evaluator-neo4j
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - ./data/neo4j_data:/data
+    environment:
+      - NEO4J_AUTH=neo4j/password123
+      - NEO4J_PLUGINS=["apoc"]
+    restart: unless-stopped

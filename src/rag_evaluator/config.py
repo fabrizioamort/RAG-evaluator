@@ -25,6 +25,24 @@ class Settings(BaseSettings):
         default="./data/chroma_db", description="ChromaDB persistence directory"
     )
 
+    # Qdrant Configuration
+    qdrant_url: str = Field(default="http://localhost:6333", description="Qdrant HTTP endpoint")
+    qdrant_collection_name: str = Field(
+        default="hybrid_rag", description="Qdrant collection name for hybrid search"
+    )
+
+    # Hybrid Search Configuration
+    hybrid_chunk_size: int = Field(
+        default=700, description="Chunk size for hybrid search (smaller for keyword matching)"
+    )
+    hybrid_chunk_overlap: int = Field(default=100, description="Chunk overlap for hybrid search")
+    hybrid_fusion_alpha: float = Field(
+        default=0.5, description="Weight for dense vs sparse (0=sparse only, 1=dense only)"
+    )
+    sparse_model_name: str = Field(
+        default="prithvida/Splade_pp_en_v1", description="FastEmbed sparse model for keyword search"
+    )
+
     # Graph RAG Configuration
     neo4j_uri: str = Field(default="bolt://localhost:7687", description="Neo4j connection URI")
     neo4j_username: str = Field(default="neo4j", description="Neo4j username")
