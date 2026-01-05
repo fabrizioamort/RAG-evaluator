@@ -67,10 +67,10 @@ class TestHybridRAGIntegration:
 
     def test_full_workflow(self, temp_docs_dir: Path) -> None:
         """Test the full workflow: prepare, query, metrics."""
-        from rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag import HybridSearchRAG
-
         # Use a unique collection name to avoid conflicts
         import uuid
+
+        from rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag import HybridSearchRAG
 
         collection_name = f"test_hybrid_{uuid.uuid4().hex[:8]}"
 
@@ -117,9 +117,9 @@ class TestHybridRAGIntegration:
 
     def test_empty_results_handling(self) -> None:
         """Test handling of queries when collection is empty."""
-        from rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag import HybridSearchRAG
-
         import uuid
+
+        from rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag import HybridSearchRAG
 
         collection_name = f"test_empty_{uuid.uuid4().hex[:8]}"
 
@@ -145,9 +145,9 @@ class TestHybridRAGIntegration:
 
     def test_metrics_consistency(self, temp_docs_dir: Path) -> None:
         """Test that metrics are consistent and updated correctly."""
-        from rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag import HybridSearchRAG
-
         import uuid
+
+        from rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag import HybridSearchRAG
 
         collection_name = f"test_metrics_{uuid.uuid4().hex[:8]}"
 

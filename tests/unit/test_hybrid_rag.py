@@ -26,9 +26,7 @@ def mock_settings() -> MagicMock:
 @pytest.fixture
 def mock_qdrant() -> MagicMock:
     """Mock Qdrant client."""
-    with patch(
-        "rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag.QdrantClient"
-    ) as mock:
+    with patch("rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag.QdrantClient") as mock:
         mock_client = MagicMock()
         # Mock get_collections to return empty list (collection doesn't exist)
         mock_collections = MagicMock()
