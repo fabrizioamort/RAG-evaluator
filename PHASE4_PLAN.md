@@ -1882,54 +1882,54 @@ src/rag_evaluator/rag_implementations/filesystem_rag/
 
 #### Day 1-2: Core Components
 
-- [ ] **Task 2.1**: Create `tools.py`
-  - [ ] Implement `FilesystemRAGTools` class
-  - [ ] Implement `list_directory()`
-  - [ ] Implement `read_file()` with progressive disclosure
-  - [ ] Implement `grep_search()`
-  - [ ] Implement `find_files()`
-  - [ ] Implement `get_file_info()`
-  - [ ] Write unit tests for each tool
+- [x] **Task 2.1**: Create `tools.py`
+  - [x] Implement `FilesystemRAGTools` class
+  - [x] Implement `list_directory()`
+  - [x] Implement `read_file()` with progressive disclosure
+  - [x] Implement `grep_search()`
+  - [x] Implement `find_files()`
+  - [x] Implement `get_file_info()`
+  - [x] Write unit tests for each tool
 
-- [ ] **Task 2.2**: Create `cache.py`
-  - [ ] Implement `SessionCache` class
-  - [ ] Implement `warm()` method
-  - [ ] Implement `get()` method
-  - [ ] Implement `get_initial_context()` method
-  - [ ] Write unit tests
+- [x] **Task 2.2**: Create `cache.py`
+  - [x] Implement `SessionCache` class
+  - [x] Implement `warm()` method
+  - [x] Implement `get()` method
+  - [x] Implement `get_initial_context()` method
+  - [x] Write unit tests
 
 #### Day 3-4: Agent Logic
 
-- [ ] **Task 2.3**: Create `router.py`
-  - [ ] Implement `QueryRouter` class
-  - [ ] Define known-item patterns
-  - [ ] Define exploratory patterns
-  - [ ] Implement `route()` method
-  - [ ] Implement `get_strategy_hint()` method
-  - [ ] Write unit tests
+- [x] **Task 2.3**: Create `router.py`
+  - [x] Implement `QueryRouter` class
+  - [x] Define known-item patterns
+  - [x] Define exploratory patterns
+  - [x] Implement `route()` method
+  - [x] Implement `get_strategy_hint()` method
+  - [x] Write unit tests
 
-- [ ] **Task 2.4**: Create `prompts.py`
-  - [ ] Define `SYSTEM_PROMPT` template
-  - [ ] Define tool descriptions for LLM
-  - [ ] Add formatting functions
-  - [ ] Write tests for prompt generation
+- [x] **Task 2.4**: Create `prompts.py`
+  - [x] Define `SYSTEM_PROMPT` template
+  - [x] Define tool descriptions for LLM
+  - [x] Add formatting functions
+  - [x] Write tests for prompt generation
 
-- [ ] **Task 2.5**: Create `agent.py`
-  - [ ] Implement `FilesystemRAGAgent` class
-  - [ ] Implement ReAct loop
-  - [ ] Add tool execution logic
-  - [ ] Add limit enforcement (tool calls, file reads)
-  - [ ] Implement partial answer synthesis
-  - [ ] Write unit tests
+- [x] **Task 2.5**: Create `agent.py`
+  - [x] Implement `FilesystemRAGAgent` class
+  - [x] Implement ReAct loop
+  - [x] Add tool execution logic
+  - [x] Add limit enforcement (tool calls, file reads)
+  - [x] Implement partial answer synthesis
+  - [x] Write unit tests
 
 #### Day 5: BaseRAG Integration
 
-- [ ] **Task 2.6**: Create `filesystem_rag.py`
-  - [ ] Implement `FilesystemRAG(BaseRAG)` class
-  - [ ] Implement `prepare_documents()`
-  - [ ] Implement `query()`
-  - [ ] Implement `get_metrics()`
-  - [ ] Write integration tests
+- [X] **Task 2.6**: Create `filesystem_rag.py`
+  - [X] Implement `FilesystemRAG(BaseRAG)` class
+  - [X] Implement `prepare_documents()`
+  - [X] Implement `query()`
+  - [X] Implement `get_metrics()`
+  - [X] Write integration tests
 
 ### Week 11: Testing & Evaluation
 
