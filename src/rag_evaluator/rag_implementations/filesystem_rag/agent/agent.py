@@ -314,18 +314,21 @@ class FilesystemRAGAgent:
         Returns:
             Tool execution result
         """
-        if tool_name == "list_directory":
-            return self.tools.list_directory(**args)
-        elif tool_name == "read_file":
-            return self.tools.read_file(**args)
-        elif tool_name == "grep_search":
-            return self.tools.grep_search(**args)
-        elif tool_name == "find_files":
-            return self.tools.find_files(**args)
-        elif tool_name == "get_file_info":
-            return self.tools.get_file_info(**args)
-        else:
-            return f"Error: Unknown tool '{tool_name}'"
+        try:
+            if tool_name == "list_directory":
+                return self.tools.list_directory(**args)
+            elif tool_name == "read_file":
+                return self.tools.read_file(**args)
+            elif tool_name == "grep_search":
+                return self.tools.grep_search(**args)
+            elif tool_name == "find_files":
+                return self.tools.find_files(**args)
+            elif tool_name == "get_file_info":
+                return self.tools.get_file_info(**args)
+            else:
+                return f"Error: Unknown tool '{tool_name}'"
+        except Exception as e:
+            return f"Error executing tool '{tool_name}': {str(e)}"
 
     def _synthesize_partial_answer(
         self,

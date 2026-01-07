@@ -1,62 +1,137 @@
 {
   "metadata": {
-    "created_date": "2026-01-04",
+    "created_date": "2026-01-07",
     "version": "1.0",
-    "description": "Test dataset for RAG evaluation - based on sample documents about RAG, vector databases, and evaluation metrics",
+    "description": "Test dataset for RAG evaluation - based on AI/ML history documents covering pioneers, concepts, and developments",
     "document_sources": [
-      "data/raw/Managing Memory for AI Agents (for Duc Ka) (Benjamin Labaschin, Jim Allen Wallace etc.) (Z-Library).pdf"
+      "data/raw/Deep_learning.pdf",
+      "data/raw/John_von_Neumann.pdf",
+      "data/raw/Marvin_Minsky.pdf",
+      "data/raw/Machine_learning.pdf",
+      "data/raw/Turing_machine.pdf",
+      "data/raw/Alan_Turing.pdf",
+      "data/raw/Neural_network_-machine_learning.pdf",
+      "data/raw/Geoffrey_Hinton.pdf",
+      "data/raw/Yoshua_Bengio.pdf",
+      "data/raw/Claude_Shannon.pdf"
     ]
   },
   "test_cases": [
     {
       "id": "tc_001",
-      "question": "What are the three primary types of long-term memory for AI agents defined in the text?",
-      "expected_answer": "The three primary types are episodic memory (specific past experiences), semantic memory (structured factual knowledge), and procedural memory (skills, rules, and learned behaviors).",
+      "question": "When and where was Alan Turing born?",
+      "expected_answer": "Alan Turing was born on June 23, 1912, in Maida Vale, London, England.",
       "ground_truth_context": [
-        "The industry has converged on three primary types of long-term memory... Episodic memory... Semantic memory... Procedural memory"
+        "Alan Mathison Turing was born on 23 June 1912 in Maida Vale, London, England."
       ],
       "difficulty": "easy",
-      "category": "memory_types"
+      "category": "biographical_information"
     },
     {
       "id": "tc_002",
-      "question": "How does the text define 'episodic memory' in the context of AI agents?",
-      "expected_answer": "Episodic memory stores specific past experiences and events, functioning like human autobiographical memory. It is typically implemented through RAG systems on conversation histories.",
+      "question": "What is Claude Shannon known as in the field of information theory?",
+      "expected_answer": "Claude Shannon is known as the 'father of information theory' and 'the man who laid the foundations of the Information Age'. He is also considered the founding father of modern cryptography.",
       "ground_truth_context": [
-        "Episodic memory Stores specific past experiences and events, functioning like human autobiographical memory. Companies typically implement this through RAG systems on conversation histories"
+        "Claude Elwood Shannon was an American mathematician, electrical engineer, computer scientist, cryptographer and inventor known as the father of information theory and the man who laid the foundations of the Information Age.",
+        "Shannon has been called the founding father of modern cryptography."
       ],
-      "difficulty": "medium",
-      "category": "definition"
+      "difficulty": "easy",
+      "category": "biographical_information"
     },
     {
       "id": "tc_003",
-      "question": "What is 'semantic caching' and why is it beneficial for RAG systems?",
-      "expected_answer": "Semantic caching retains the relative context of information retrieval by processing the semantics of content. It benefits RAG systems by prioritizing frequently retrieved information, making it more computationally and cost-effective.",
+      "question": "What does the acronym ReLU stand for in deep learning?",
+      "expected_answer": "ReLU stands for Rectified Linear Unit, which is an activation function introduced by Kunihiko Fukushima in 1969 and has become the most popular activation function for deep learning.",
       "ground_truth_context": [
-        "Semantic caching... retains the relative context of an information retrieval system over time by processing the semantics of the content being passed. Frequently retrieved information gets prioritized... it may be both more computationally effective and cost-effective"
+        "In 1969, Kunihiko Fukushima introduced the ReLU (rectified linear unit) activation function. The rectifier has become the most popular activation function for deep learning."
       ],
-      "difficulty": "medium",
-      "category": "optimization"
+      "difficulty": "easy",
+      "category": "technical_concepts"
     },
     {
       "id": "tc_004",
-      "question": "What is a Transactive Memory System (TMS) as described in the chapter on collective memory?",
-      "expected_answer": "A TMS is a group-level knowledge sharing system for encoding, storing, and retrieving information from different knowledge areas. It essentially involves 'knowing what other team members know' to create a collective group mind.",
+      "question": "Describe Geoffrey Hinton's contribution to backpropagation and when it was published.",
+      "expected_answer": "Geoffrey Hinton, along with David Rumelhart and Ronald J. Williams, co-authored a highly cited paper published in 1986 that popularized the backpropagation algorithm for training multi-layer neural networks. However, they were not the first to propose the approach - backpropagation was originally proposed by Seppo Linnainmaa in 1970, and Paul Werbos proposed using it to train neural networks in 1974.",
       "ground_truth_context": [
-        "A TMS is defined as the “group-level knowledge sharing and memory system for encoding, storing, and retrieving information from different knowledge areas in a group.” In essence, it’s about “knowing what other team members know”"
+        "With David Rumelhart and Ronald J. Williams, Hinton was co-author of a highly cited paper published in 1986 that popularised the backpropagation algorithm for training multi-layer neural networks, although they were not the first to propose the approach.",
+        "Reverse-mode automatic differentiation, of which backpropagation is a special case, was proposed by Seppo Linnainmaa in 1970, and Paul Werbos proposed to use it to train neural networks in 1974."
       ],
-      "difficulty": "hard",
-      "category": "collective_memory"
+      "difficulty": "medium",
+      "category": "technical_history"
     },
     {
       "id": "tc_005",
-      "question": "Describe the 'LLM-as-a-judge' methodology for evaluating agent performance.",
-      "expected_answer": "The 'LLM-as-a-judge' methodology uses a powerful, state-of-the-art LLM as an impartial evaluator. The judge LLM assesses the agent's output against ground-truth data and a rubric, often using chain-of-thought prompting to explain its reasoning.",
+      "question": "What is a Turing machine and what was its significance?",
+      "expected_answer": "A Turing machine is a mathematical model of computation describing an abstract machine that manipulates symbols on a strip of tape according to a table of rules. Despite its simplicity, it is capable of implementing any computer algorithm. The Turing machine was invented in 1936 by Alan Turing and proved the existence of fundamental limitations on the power of mechanical computation.",
       "ground_truth_context": [
-        "The “LLM-as-a-judge” methodology... involves using a powerful, state-of-the-art LLM to act as an impartial evaluator. The judge LLM is given the agent’s output, the original prompt, a set of ground-truth data, and a detailed evaluation rubric"
+        "A Turing machine is a mathematical model of computation describing an abstract machine that manipulates symbols on a strip of tape according to a table of rules. Despite the model's simplicity, it is capable of implementing any computer algorithm.",
+        "Turing machines proved the existence of fundamental limitations on the power of mechanical computation."
+      ],
+      "difficulty": "medium",
+      "category": "technical_concepts"
+    },
+    {
+      "id": "tc_006",
+      "question": "What were von Neumann's contributions to computer architecture?",
+      "expected_answer": "Von Neumann designed the architecture where both program instructions and data are stored in the same memory space, known as the von Neumann architecture or stored-program architecture. This became the basis of most modern digital computer designs. His work on the IAS machine at the Institute for Advanced Study and influence on the IBM 701 were also significant contributions.",
+      "ground_truth_context": [
+        "While consulting for the EDVAC project at the University of Pennsylvania, von Neumann wrote an incomplete First Draft of a Report on the EDVAC. The paper described a computer that stored both its data and its program in the same address space. This architecture became the basis of most modern digital computer designs.",
+        "Von Neumann designed the IAS machine at the Institute for Advanced Study in Princeton, New Jersey."
+      ],
+      "difficulty": "medium",
+      "category": "technical_history"
+    },
+    {
+      "id": "tc_007",
+      "question": "Explain the relationship between deep learning and the universal approximation theorem.",
+      "expected_answer": "Deep neural networks are generally interpreted in terms of the universal approximation theorem. The classic theorem concerns the capacity of feedforward neural networks with a single hidden layer to approximate continuous functions. In 1989, George Cybenko published the first proof for sigmoid activation functions, which was generalized by Kurt Hornik in 1991. For deep neural networks, the theorem concerns networks with bounded width but unlimited depth. Recent work showed that if the width is strictly larger than the input dimension with ReLU activation, the network can approximate any Lebesgue integrable function.",
+      "ground_truth_context": [
+        "Deep neural networks are generally interpreted in terms of the universal approximation theorem or probabilistic inference.",
+        "The classic universal approximation theorem concerns the capacity of feedforward neural networks with a single hidden layer of finite size to approximate continuous functions. In 1989, the first proof was published by George Cybenko for sigmoid activation functions and was generalised to feed-forward multi-layer architectures in 1991 by Kurt Hornik.",
+        "The universal approximation theorem for deep neural networks concerns the capacity of networks with bounded width but the depth is allowed to grow. Lu et al. proved that if the width of a deep neural network with ReLU activation is strictly larger than the input dimension, then the network can approximate any Lebesgue integrable function."
       ],
       "difficulty": "hard",
-      "category": "evaluation"
+      "category": "theoretical_foundations"
+    },
+    {
+      "id": "tc_008",
+      "question": "What are the key differences between the work of Alan Turing and John von Neumann in computing?",
+      "expected_answer": "Both made fundamental contributions to computing. Turing invented the Turing machine in 1936 as a theoretical model of computation and proved fundamental limitations of computation through the halting problem and Entscheidungsproblem. Von Neumann focused on practical computer architecture, developing the stored-program concept where data and instructions share the same memory space (von Neumann architecture), which became the basis for modern computers. Turing also met with von Neumann and showed him his 1936 paper on the universal Turing machine, which impressed von Neumann.",
+      "ground_truth_context": [
+        "The Turing machine was invented in 1936 by Alan Turing, who called it an 'a-machine' (automatic machine). Turing machines proved the existence of fundamental limitations on the power of mechanical computation.",
+        "While consulting for the EDVAC project, von Neumann wrote an incomplete First Draft of a Report on the EDVAC describing a computer that stored both its data and its program in the same address space. This architecture became the basis of most modern digital computer designs.",
+        "For two months early in 1943, Shannon came into contact with Alan Turing. Turing showed Shannon his 1936 paper that defined what is now known as the universal Turing machine."
+      ],
+      "difficulty": "hard",
+      "category": "comparative_analysis",
+      "requires_multihop": true
+    },
+    {
+      "id": "tc_009",
+      "question": "Which scientists received the 2018 Turing Award and what were they recognized for?",
+      "expected_answer": "Geoffrey Hinton, Yoshua Bengio, and Yann LeCun received the 2018 Turing Award for their conceptual and engineering breakthroughs in deep learning that made deep neural networks a critical component of computing. They are sometimes referred to as the 'Godfathers of AI' or 'Godfathers of Deep Learning'.",
+      "ground_truth_context": [
+        "Hinton received the 2018 Turing Award, together with Yoshua Bengio and Yann LeCun for their work on deep learning. They are sometimes referred to as the Godfathers of Deep Learning.",
+        "Together with Geoffrey Hinton and Yann LeCun, Bengio won the 2018 Turing Award for conceptual and engineering breakthroughs that have made deep neural networks a critical component of computing."
+      ],
+      "difficulty": "hard",
+      "category": "awards_recognition",
+      "requires_multihop": true
+    },
+    {
+      "id": "tc_010",
+      "question": "Trace the development of backpropagation from its origins to its popularization. Who were the key contributors and when did they make their contributions?",
+      "expected_answer": "Backpropagation has a complex history spanning several decades. The chain rule, fundamental to backpropagation, was derived by Gottfried Wilhelm Leibniz in 1673. Henry J. Kelley developed a continuous precursor in 1960. Seppo Linnainmaa published the modern form in his 1970 master's thesis (republished by G.M. Ostrovski et al. in 1971). Paul Werbos applied it to neural networks in 1982 (though his 1974 PhD thesis didn't describe the algorithm). Finally, in 1986, David Rumelhart, Geoffrey Hinton, and Ronald J. Williams popularized backpropagation, though they did not cite the original work.",
+      "ground_truth_context": [
+        "Backpropagation is an efficient application of the chain rule derived by Gottfried Wilhelm Leibniz in 1673 to networks of differentiable nodes.",
+        "Henry J. Kelley had a continuous precursor of backpropagation in 1960 in the context of control theory.",
+        "The modern form of backpropagation was first published in Seppo Linnainmaa's master thesis (1970). G.M. Ostrovski et al. republished it in 1971.",
+        "Paul Werbos applied backpropagation to neural networks in 1982; his 1974 PhD thesis, reprinted in a 1994 book, did not yet describe the algorithm.",
+        "In 1986, David E. Rumelhart et al. popularised backpropagation but did not cite the original work."
+      ],
+      "difficulty": "hard",
+      "category": "historical_development",
+      "requires_multihop": true
     }
   ]
 }

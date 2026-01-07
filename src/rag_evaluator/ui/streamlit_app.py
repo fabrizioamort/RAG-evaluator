@@ -30,7 +30,7 @@ def load_latest_report() -> dict[str, Any] | None:
     )
 
     if comparison_reports:
-        with open(comparison_reports[0]) as f:
+        with open(comparison_reports[0], encoding="utf-8") as f:
             return cast(dict[str, Any], json.load(f))
 
     # Fallback to single implementation report
@@ -39,7 +39,7 @@ def load_latest_report() -> dict[str, Any] | None:
     )
 
     if single_reports:
-        with open(single_reports[0]) as f:
+        with open(single_reports[0], encoding="utf-8") as f:
             report = cast(dict[str, Any], json.load(f))
             # Wrap single report in comparison format
             return {report["rag_implementation"]: report}

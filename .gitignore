@@ -18,8 +18,12 @@ env/
 # Data directories
 data/raw/*
 data/processed/*
+data/prepared/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/prepared/.gitkeep
+data/*.json
+!data/test_set.json
 
 # Reports
 reports/*

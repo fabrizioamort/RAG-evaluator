@@ -1,9 +1,10 @@
-"""CLI entry point for RAG Evaluator."""
-
 import argparse
+import glob
+import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from rag_evaluator.common.base_rag import BaseRAG
 from rag_evaluator.config import settings
@@ -40,6 +41,55 @@ def get_rag_implementation(rag_type: str) -> BaseRAG:
             f"RAG type '{rag_type}' not yet implemented. "
             f"Currently supported: vector_semantic, vector_hybrid, graph_rag, filesystem_rag"
         )
+
+
+def load_latest_results(reports_dir: Path, exclude_types: list[str]) -> dict[str, Any]:
+    """Load latest evaluation result for each RAG type, excluding specified types.
+
+    Args:
+        reports_dir: Directory containing evaluation reports
+        exclude_types: List of RAG types to exclude (e.g., currently running ones)
+
+    Returns:
+        Dictionary mapping RAG type name to its results dictionary
+    """
+    # Map CLI arg to expected filename part (based on BaseRAG.name transformed by ReportGenerator)
+    # ReportGenerator uses: impl_name.replace(" ", "_").lower()
+    type_mapping = {
+        "vector_semantic": "chromadb_semantic_search",
+        "vector_hybrid": "hybrid_search_(semantic_+_keyword)",
+        "graph_rag": "neo4j_graph_rag",
+        "filesystem_rag": "filesystem_rag",
+    }
+
+    loaded_results = {}
+
+    for rag_type, filename_part in type_mapping.items():
+        if rag_type in exclude_types:
+            continue
+
+        # Find latest report for this type
+        # Pattern: eval_{filename_part}_YYYYMMDD_HHMMSS.json
+        pattern = str(reports_dir / f"eval_{filename_part}_*.json")
+        files = glob.glob(pattern)
+
+        if not files:
+            # Try looser pattern in case of name changes
+            # print(f"Debug: No files found for {pattern}")
+            continue
+
+        # Sort by modification time (newest first)
+        latest_file = max(files, key=os.path.getmtime)
+
+        try:
+            with open(latest_file, "r", encoding="utf-8") as f:
+                result = json.load(f)
+                impl_name = result.get("rag_implementation")
+                loaded_results[impl_name] = result
+        except Exception as e:
+            print(f"Warning: Failed to load previous result for {rag_type}: {e}")
+
+    return loaded_results
 
 
 def cmd_prepare(args: argparse.Namespace) -> int:
@@ -132,7 +182,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         for rag_type in rag_types:
             print(f"\n{'=' * 70}")
             print(f"Evaluating: {rag_type}")
-            print(f"{'=' * 70}")
+            print(f"{ '=' * 70}")
 
             # Get RAG implementation
             rag_impl = get_rag_implementation(rag_type)
@@ -142,11 +192,28 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
             results = evaluator.evaluate(rag_impl, verbose=args.verbose)
             all_results[rag_impl.name] = results
 
+            # Always save individual report immediately
+            # This ensures we have a record for future --combine runs
+            report_gen = ReportGenerator(output_dir=args.output)
+            individual_files = report_gen.generate_report(results, output_format="json")
+            print(f"  Saved individual report: {individual_files['json']}")
+
             # Print summary
             print("\nResults:")
             print(f"  Pass Rate: {results['pass_rate']:.1f}%")
             print(f"  Test Cases: {results['test_cases_count']}")
             print(f"  Time: {results['total_evaluation_time']:.2f}s")
+
+        # Combine with historical results if requested
+        if args.combine and args.rag_type != "all":
+            print("\nCombining with latest historical results...")
+            reports_dir = Path(args.output)
+            historical_results = load_latest_results(reports_dir, exclude_types=rag_types)
+            if historical_results:
+                print(f"Loaded previous results for: {', '.join(historical_results.keys())}")
+                all_results.update(historical_results)
+            else:
+                print("No previous compatible reports found to combine.")
 
         # Generate reports
         print(f"\nGenerating reports in: {args.output}")
@@ -248,6 +315,9 @@ Examples:
   # Evaluate Graph RAG
   rag-eval evaluate --rag-type graph_rag
 
+  # Evaluate Graph RAG and combine with previous results for comparison
+  rag-eval evaluate --rag-type graph_rag --combine
+
   # Evaluate Filesystem RAG
   rag-eval evaluate --rag-type filesystem_rag
 
@@ -316,6 +386,11 @@ Examples:
         "--verbose",
         action="store_true",
         help="Show detailed evaluation progress",
+    )
+    eval_parser.add_argument(
+        "--combine",
+        action="store_true",
+        help="Combine current result with latest historical results of other RAG types",
     )
 
     # Web UI command

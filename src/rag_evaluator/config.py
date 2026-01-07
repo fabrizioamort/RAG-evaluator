@@ -40,7 +40,7 @@ class Settings(BaseSettings):
         default=0.5, description="Weight for dense vs sparse (0=sparse only, 1=dense only)"
     )
     sparse_model_name: str = Field(
-        default="prithvida/Splade_pp_en_v1", description="FastEmbed sparse model for keyword search"
+        default="prithivida/Splade_PP_en_v1", description="FastEmbed sparse model for keyword search"
     )
 
     # Graph RAG Configuration

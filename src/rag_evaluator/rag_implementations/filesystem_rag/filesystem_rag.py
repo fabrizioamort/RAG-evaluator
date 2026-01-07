@@ -228,7 +228,7 @@ class FilesystemRAG(BaseRAG):
 
         return {
             "total_queries": total,
-            "avg_query_time": round(avg_query_time, 3),
+            "avg_retrieval_time": round(avg_query_time, 3),
             "avg_tool_calls": round(avg_tool_calls, 2),
             "avg_files_read": round(avg_files_read, 2),
             "avg_iterations": round(avg_iterations, 2),
