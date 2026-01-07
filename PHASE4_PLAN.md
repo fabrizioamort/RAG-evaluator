@@ -1935,23 +1935,23 @@ src/rag_evaluator/rag_implementations/filesystem_rag/
 
 #### Day 1-2: Comprehensive Testing
 
-- [ ] **Task 3.1**: Complete unit test coverage
-  - [ ] Achieve >80% coverage on all modules
-  - [ ] Test edge cases (empty files, missing indexes, etc.)
-  - [ ] Test error handling
+- [X] **Task 3.1**: Complete unit test coverage
+  - [X] Achieve >80% coverage on all modules
+  - [X] Test edge cases (empty files, missing indexes, etc.)
+  - [X] Test error handling
 
-- [ ] **Task 3.2**: Complete integration tests
-  - [ ] Test full prepare → query workflow
-  - [ ] Test with various document types
-  - [ ] Test both search modes
+- [X] **Task 3.2**: Complete integration tests
+  - [X] Test full prepare → query workflow
+  - [X] Test with various document types
+  - [X] Test both search modes
 
-- [ ] **Task 3.3**: Add to CLI
-  - [ ] Add `filesystem` to `--rag-type` choices in `cli.py`
-  - [ ] Test CLI integration
+- [X] **Task 3.3**: Add to CLI
+  - [X] Add `filesystem` to `--rag-type` choices in `cli.py`
+  - [X] Test CLI integration
 
-- [ ] **Task 3.4**: Add to UI
-  - [ ] Add Filesystem RAG to Streamlit options
-  - [ ] Add reasoning trace visualization
+- [X] **Task 3.4**: Add to UI
+  - [X] Add Filesystem RAG to Streamlit options
+  - [X] Add reasoning trace visualization
 
 #### Day 3-4: Evaluation
 
@@ -1969,11 +1969,11 @@ src/rag_evaluator/rag_implementations/filesystem_rag/
 
 #### Day 5: Documentation & Polish
 
-- [ ] **Task 3.7**: Update documentation
-  - [ ] Update README with Filesystem RAG section
-  - [ ] Document configuration options
-  - [ ] Add usage examples
-  - [ ] Document filesystem structure
+- [x] **Task 3.7**: Update documentation
+  - [x] Update README with Filesystem RAG section
+  - [x] Document configuration options
+  - [x] Add usage examples
+  - [x] Document filesystem structure
 
 - [ ] **Task 3.8**: Final polish
   - [ ] Run all quality checks (ruff, mypy)

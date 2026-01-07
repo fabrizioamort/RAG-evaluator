@@ -70,6 +70,8 @@ def _classify_document_topics(
     if not primary and topic_scores:
         best_topic = max(topic_scores.items(), key=lambda x: x[1])[0]
         primary.append(best_topic)
+        if best_topic in secondary:
+            secondary.remove(best_topic)
 
     return primary, secondary
 

@@ -17,52 +17,10 @@ This project implements and evaluates four different RAG approaches:
 1. **Vector Semantic Search** ✅ - Using ChromaDB for pure semantic similarity
 2. **Hybrid Search** ✅ - Combining dense (semantic) and sparse (keyword) vectors using Qdrant with RRF fusion
 3. **Graph RAG** ✅ - Using Neo4j graph database with neo4j-graphrag for hybrid vector + graph retrieval
-4. **Filesystem RAG** 🔲 - Direct filesystem search with LLM-guided retrieval (planned)
+4. **Filesystem RAG** ✅ - Direct filesystem search with LLM-guided retrieval (Agentic)
 
 ## Evaluation Metrics
-
-Each RAG implementation is evaluated on:
-
-- **Accuracy**
-  - Faithfulness: Is the answer derived only from the context?
-  - Answer Relevance: Does it actually answer the user's question?
-  - Context Precision: Did the retriever find the right documents?
-- **Speed** - Query and retrieval performance
-- **Cost** - API calls and resource usage
-
-Evaluation is powered by [DeepEval](https://github.com/confident-ai/deepeval).
-
-## Supported Document Formats
-
-The RAG Evaluator supports the following document formats:
-
-- **TXT** - Plain text files
-- **PDF** - PDF documents (pypdf)
-- **DOCX** - Microsoft Word documents (python-docx)
-
-Simply place your documents in `data/raw/` and run:
-
-```bash
-uv run rag-eval prepare --input-dir data/raw
-```
-
-## Installation
-
-This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd RAG-evaluator
-
-# Install dependencies
-uv sync --all-extras
-
-# Copy environment template
-cp .env.example .env
-# Edit .env with your API keys and configuration
-```
-
+...
 ## Quick Start
 
 ### Using the CLI
@@ -77,6 +35,9 @@ uv run rag-eval prepare --rag-type vector_hybrid --input-dir data/raw
 # Or prepare for Graph RAG (requires Neo4j - see below)
 uv run rag-eval prepare --rag-type graph_rag --input-dir data/raw
 
+# Or prepare for Filesystem RAG
+uv run rag-eval prepare --rag-type filesystem_rag --input-dir data/raw
+
 # Run evaluation on a specific RAG implementation
 uv run rag-eval evaluate --rag-type vector_semantic
 
@@ -86,12 +47,64 @@ uv run rag-eval evaluate --rag-type vector_hybrid
 # Run evaluation on Graph RAG
 uv run rag-eval evaluate --rag-type graph_rag
 
+# Run evaluation on Filesystem RAG
+uv run rag-eval evaluate --rag-type filesystem_rag
+
 # Run evaluation on all implementations
 uv run rag-eval evaluate --rag-type all --output reports
 
 # Launch the web UI
 uv run rag-eval ui
 ```
+...
+## Filesystem RAG Setup (Agentic)
+
+The Filesystem RAG implementation employs an **LLM-guided agent** that navigates a prepared filesystem structure to find and retrieve relevant information, mimicking how a human developer explores a codebase.
+
+### How Filesystem RAG Works
+
+Unlike traditional RAG that uses vector similarity, Filesystem RAG operates in two stages:
+
+1. **Document Preparation**:
+   - Converts all documents (PDF, DOCX, TXT) to clean Markdown.
+   - Performs hybrid analysis (Heuristic for simple docs, LLM for complex ones).
+   - Builds a structured directory index (`_index/`, `_summaries/`, `_meta/`).
+   - Generates topic maps, entity registries, and question seeds.
+
+2. **Agentic Retrieval**:
+   - A ReAct-based agent receives the query and routes it (Known-item vs Exploratory).
+   - The agent uses tools to navigate the prepared filesystem.
+   - It reads summaries before full documents and follows references.
+
+### Using Filesystem RAG
+
+```bash
+# 1. Prepare documents (builds the indexed filesystem structure)
+uv run rag-eval prepare --rag-type filesystem_rag --input-dir data/raw
+
+# 2. Run evaluation
+uv run rag-eval evaluate --rag-type filesystem_rag
+
+# 3. View results and reasoning traces in UI
+uv run rag-eval ui
+```
+
+### Agent Tools
+
+The agent has access to several specialized tools:
+- `list_directory`: Explore the index structure.
+- `read_file`: Read document content (supports progressive disclosure for large files).
+- `grep_search`: Keyword/Regex searching across the corpus.
+- `find_files`: Locate files by name or pattern.
+- `get_file_info`: Inspect metadata without reading full content.
+
+### Filesystem RAG Features
+
+- **No Vector DB Required**: Operates directly on the filesystem.
+- **Interpretable Reasoning**: Each query generates a "Reasoning Trace" visible in the UI.
+- **Progressive Disclosure**: Only reads what is necessary to answer the question.
+- **Human-Readable Indexes**: The prepared structure is fully browsable by humans.
+
 
 ### Using the Streamlit UI
 

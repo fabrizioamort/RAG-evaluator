@@ -252,17 +252,23 @@ def render_comparison_tab(report: dict[str, Any]) -> None:
         metrics = results["metrics_summary"]
         perf = results.get("performance_metrics", {})
 
-        comparison_data.append(
-            {
-                "Implementation": impl_name,
-                "Pass Rate": f"{results['pass_rate']:.1f}%",
-                "Faithfulness": f"{metrics.get('faithfulness_avg', 0):.3f}",
-                "Relevancy": f"{metrics.get('answer_relevancy_avg', 0):.3f}",
-                "Precision": f"{metrics.get('contextual_precision_avg', 0):.3f}",
-                "Recall": f"{metrics.get('contextual_recall_avg', 0):.3f}",
-                "Avg Latency": f"{perf.get('avg_retrieval_time', 0):.2f}s",
-            }
-        )
+        row = {
+            "Implementation": impl_name,
+            "Pass Rate": f"{results['pass_rate']:.1f}%",
+            "Faithfulness": f"{metrics.get('faithfulness_avg', 0):.3f}",
+            "Relevancy": f"{metrics.get('answer_relevancy_avg', 0):.3f}",
+            "Precision": f"{metrics.get('contextual_precision_avg', 0):.3f}",
+            "Recall": f"{metrics.get('contextual_recall_avg', 0):.3f}",
+            "Avg Latency": f"{perf.get('avg_retrieval_time', 0):.2f}s",
+        }
+
+        # Add Filesystem RAG metrics if available
+        if "avg_tool_calls" in perf:
+            row["Avg Tool Calls"] = f"{perf['avg_tool_calls']:.1f}"
+        if "avg_files_read" in perf:
+            row["Avg Files Read"] = f"{perf['avg_files_read']:.1f}"
+
+        comparison_data.append(row)
 
     df_comparison = pd.DataFrame(comparison_data)
     st.dataframe(df_comparison, use_container_width=True, hide_index=True)
@@ -376,6 +382,22 @@ def render_query_explorer_tab(report: dict[str, Any]) -> None:
             if tc.get("context_chunks_retrieved", 0) > 0:
                 with st.expander("Retrieved Context"):
                     st.write(f"Retrieved {tc['context_chunks_retrieved']} chunks")
+                    for i, chunk in enumerate(tc.get("context", [])):
+                        st.markdown(f"**Chunk {i + 1}:**")
+                        st.code(chunk, language="markdown")
+
+            # Filesystem RAG Reasoning Trace
+            if "reasoning_trace" in tc.get("metadata", {}):
+                with st.expander("🕵️ Reasoning Trace (Filesystem RAG)", expanded=False):
+                    trace = tc["metadata"]["reasoning_trace"]
+                    for step in trace:
+                        with st.status(
+                            f"Step {step['iteration']}: {step['tool']}", state="complete"
+                        ):
+                            st.write("**Arguments:**")
+                            st.json(step["args"])
+                            st.write("**Result Preview:**")
+                            st.code(step["result_preview"], language="markdown")
 
             # Performance
             retrieval_time = tc.get("retrieval_time", 0)
