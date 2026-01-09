@@ -66,37 +66,6 @@ class GraphIndexer:
         except Exception as e:
             print(f"Warning: Could not create vector index: {e}")
 
-    def index_documents(self, documents_path: str) -> dict[str, Any]:
-        """Index documents into Neo4j knowledge graph.
-
-        Args:
-            documents_path: Path to directory containing documents
-
-        Returns:
-            Dictionary with indexing statistics
-        """
-        docs_path = Path(documents_path)
-
-        if not docs_path.exists():
-            raise ValueError(f"Documents path does not exist: {documents_path}")
-
-        # Validate extensions
-        valid_extensions = {".txt", ".pdf", ".docx"}
-        all_text_content = []
-        doc_sources = []
-
-        # Load documents
-        for file_path in docs_path.rglob("*"):
-            if file_path.suffix.lower() in valid_extensions and file_path.is_file():
-                try:
-                    loader = create_loader(str(file_path))
-                    doc = loader.load(str(file_path))
-                    all_text_content.append(doc.content)
-                    doc_sources.append(doc.source)
-                    print(f"Loaded: {file_path.name}")
-                except Exception as e:
-                    print(f"Warning: Failed to load {file_path.name}: {e}")
-
     async def _process_document_with_retry(
         self, kg_builder: SimpleKGPipeline, text: str, max_retries: int = 3, delay: float = 2.0
     ) -> Any:
