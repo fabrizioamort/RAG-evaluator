@@ -82,7 +82,7 @@ def load_latest_results(reports_dir: Path, exclude_types: list[str]) -> dict[str
         latest_file = max(files, key=os.path.getmtime)
 
         try:
-            with open(latest_file, "r", encoding="utf-8") as f:
+            with open(latest_file, encoding="utf-8") as f:
                 result = json.load(f)
                 impl_name = result.get("rag_implementation")
                 loaded_results[impl_name] = result
@@ -182,7 +182,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         for rag_type in rag_types:
             print(f"\n{'=' * 70}")
             print(f"Evaluating: {rag_type}")
-            print(f"{ '=' * 70}")
+            print(f"{'=' * 70}")
 
             # Get RAG implementation
             rag_impl = get_rag_implementation(rag_type)

@@ -158,11 +158,18 @@ class RAGEvaluator:
             print(f"\n{'=' * 60}")
             print("Running DeepEval metrics evaluation...")
             print(f"Async mode: {settings.deepeval_async_mode}")
+            if settings.deepeval_async_mode:
+                print(f"Max concurrent tasks: {settings.deepeval_max_concurrent}")
+                print(f"Throttle value: {settings.deepeval_throttle_value}")
             print(f"{'=' * 60}\n")
 
         # Run DeepEval evaluation
         # Use AsyncConfig to control parallel/sequential execution
-        async_config = AsyncConfig(run_async=settings.deepeval_async_mode)
+        async_config = AsyncConfig(
+            run_async=settings.deepeval_async_mode,
+            max_concurrent=settings.deepeval_max_concurrent,
+            throttle_value=settings.deepeval_throttle_value,
+        )
         evaluation_results = evaluate(  # type: ignore[operator]
             deepeval_test_cases,
             self.metrics,

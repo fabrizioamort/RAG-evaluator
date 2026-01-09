@@ -40,7 +40,8 @@ class Settings(BaseSettings):
         default=0.5, description="Weight for dense vs sparse (0=sparse only, 1=dense only)"
     )
     sparse_model_name: str = Field(
-        default="prithivida/Splade_PP_en_v1", description="FastEmbed sparse model for keyword search"
+        default="prithivida/Splade_PP_en_v1",
+        description="FastEmbed sparse model for keyword search",
     )
 
     # Graph RAG Configuration
@@ -89,6 +90,12 @@ class Settings(BaseSettings):
     )
     deepeval_max_retries: int = Field(
         default=3, description="DeepEval maximum retry attempts (default: 3)"
+    )
+    deepeval_max_concurrent: int = Field(
+        default=10, description="Maximum concurrent DeepEval tasks (default: 10)"
+    )
+    deepeval_throttle_value: float = Field(
+        default=0.0, description="DeepEval throttle value in seconds (default: 0.0)"
     )
 
 

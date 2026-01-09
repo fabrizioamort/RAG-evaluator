@@ -124,6 +124,57 @@ class HybridSearchRAG(BaseRAG):
             values=sparse_emb.values.tolist(),
         )
 
+    def _process_batch(
+        self, batch_chunks: list[LangChainDocument], start_index: int
+    ) -> list[models.PointStruct]:
+        """Process a batch of chunks: generate embeddings and create points.
+
+        Args:
+            batch_chunks: List of document chunks
+            start_index: Starting ID for points
+
+        Returns:
+            List of Qdrant points
+        """
+        texts = [chunk.page_content for chunk in batch_chunks]
+
+        # Batch dense embeddings (OpenAI)
+        dense_response = self.openai_client.embeddings.create(
+            model=settings.embedding_model,
+            input=texts,
+        )
+        dense_embeddings = [data.embedding for data in dense_response.data]
+
+        # Batch sparse embeddings (FastEmbed)
+        # FastEmbed returns a generator, so we convert to list
+        sparse_embeddings = list(self.sparse_model.embed(texts))
+
+        points = []
+        for i, (text, dense, sparse) in enumerate(zip(texts, dense_embeddings, sparse_embeddings)):
+            idx = start_index + i
+            chunk = batch_chunks[i]
+
+            sparse_vec = models.SparseVector(
+                indices=sparse.indices.tolist(),
+                values=sparse.values.tolist(),
+            )
+
+            point = models.PointStruct(
+                id=idx,
+                vector={
+                    "dense": dense,
+                    "sparse": sparse_vec,
+                },
+                payload={
+                    "text": text,
+                    "source": chunk.metadata.get("source", "unknown"),
+                    "chunk_index": idx,
+                },
+            )
+            points.append(point)
+
+        return points
+
     def prepare_documents(self, documents_path: str) -> None:
         """Prepare and index documents with both dense and sparse vectors.
 
@@ -178,41 +229,33 @@ class HybridSearchRAG(BaseRAG):
             # Collection might be empty, which is fine
             pass
 
-        # Prepare and upload points
-        points = []
+        # Process in batches
+        batch_size = 100
+        total_chunks = len(chunks)
 
-        for i, chunk in enumerate(chunks):
-            # Get both embeddings
-            dense_vec = self._get_dense_embedding(chunk.page_content)
-            sparse_vec = self._get_sparse_embedding(chunk.page_content)
+        for i in range(0, total_chunks, batch_size):
+            batch = chunks[i : i + batch_size]
 
-            # Create point with named vectors
-            point = models.PointStruct(
-                id=i,
-                vector={
-                    "dense": dense_vec,
-                    "sparse": sparse_vec,
-                },
-                payload={
-                    "text": chunk.page_content,
-                    "source": chunk.metadata.get("source", "unknown"),
-                    "chunk_index": i,
-                },
-            )
-            points.append(point)
+            try:
+                # Process batch (generate embeddings)
+                points = self._process_batch(batch, start_index=i)
 
-            # Progress indicator
-            if (i + 1) % 10 == 0:
-                print(f"Processed {i + 1}/{len(chunks)} chunks")
+                # Upload batch to Qdrant
+                self.client.upsert(
+                    collection_name=self.collection_name,
+                    points=points,
+                )
 
-        # Upload to Qdrant
-        self.client.upsert(
-            collection_name=self.collection_name,
-            points=points,
-        )
+                print(
+                    f"Processed and uploaded chunks {i + 1}-{min(i + batch_size, total_chunks)}/{total_chunks}"
+                )
 
-        self._total_chunks = len(chunks)
-        print(f"Successfully indexed {len(chunks)} chunks in Qdrant (hybrid mode)")
+            except Exception as e:
+                print(f"Error processing batch starting at index {i}: {e}")
+                raise
+
+        self._total_chunks = total_chunks
+        print(f"Successfully indexed {total_chunks} chunks in Qdrant (hybrid mode)")
 
     def query(self, question: str, top_k: int = 5) -> dict[str, Any]:
         """Query using hybrid search (dense + sparse with RRF fusion).

@@ -97,18 +97,76 @@ class GraphIndexer:
                 except Exception as e:
                     print(f"Warning: Failed to load {file_path.name}: {e}")
 
-        if not all_text_content:
+    async def _process_document_with_retry(
+        self, kg_builder: SimpleKGPipeline, text: str, max_retries: int = 3, delay: float = 2.0
+    ) -> Any:
+        """Process a single document text with retry logic for rate limits.
+
+        Args:
+            kg_builder: The initialized SimpleKGPipeline
+            text: Text content to process
+            max_retries: Maximum number of retries
+            delay: Delay between retries in seconds
+
+        Returns:
+            Result from kg_builder
+        """
+        for attempt in range(max_retries + 1):
+            try:
+                return await kg_builder.run_async(text=text)
+            except Exception as e:
+                # Check for rate limit error messages in the exception string
+                error_str = str(e).lower()
+                if "rate limit" in error_str or "429" in error_str:
+                    if attempt < max_retries:
+                        wait_time = delay * (2**attempt)  # Exponential backoff
+                        print(
+                            f"Rate limit hit. Retrying in {wait_time:.1f}s (Attempt {attempt + 1}/{max_retries})..."
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+                # If not rate limit or max retries reached, raise
+                raise e
+
+    def index_documents(self, documents_path: str) -> dict[str, Any]:
+        """Index documents into Neo4j knowledge graph.
+
+        Args:
+            documents_path: Path to directory containing documents
+
+        Returns:
+            Dictionary with indexing statistics
+        """
+        docs_path = Path(documents_path)
+
+        if not docs_path.exists():
+            raise ValueError(f"Documents path does not exist: {documents_path}")
+
+        # Validate extensions
+        valid_extensions = {".txt", ".pdf", ".docx"}
+        documents_to_process = []
+        doc_sources = []
+
+        # Load documents
+        for file_path in docs_path.rglob("*"):
+            if file_path.suffix.lower() in valid_extensions and file_path.is_file():
+                try:
+                    loader = create_loader(str(file_path))
+                    doc = loader.load(str(file_path))
+                    documents_to_process.append(doc.content)
+                    doc_sources.append(doc.source)
+                    print(f"Loaded: {file_path.name}")
+                except Exception as e:
+                    print(f"Warning: Failed to load {file_path.name}: {e}")
+
+        if not documents_to_process:
             raise ValueError(f"No documents found in {documents_path}")
 
-        # Combine all documents into single text for processing
-        combined_text = "\n\n".join(all_text_content)
-        print(f"\nLoaded {len(all_text_content)} documents")
+        print(f"\nLoaded {len(documents_to_process)} documents")
 
         # Initialize LLM and embedder
-        # Configure LLM parameters based on model capabilities
         llm_params: dict[str, Any] = {"response_format": {"type": "json_object"}}
 
-        # Only add temperature for models that support it (not gpt-5-nano, o1, etc.)
         if "nano" not in self.llm_model.lower() and "o1" not in self.llm_model.lower():
             llm_params["temperature"] = 0
 
@@ -119,8 +177,6 @@ class GraphIndexer:
 
         embedder = OpenAIEmbeddings(model=self.embedding_model)
 
-        # Define flexible schema for dynamic entity extraction
-        # The LLM will infer appropriate node types and relationships
         schema = {
             "node_types": ["Entity", "Concept", "Person", "Organization", "Location", "Event"],
             "relationship_types": [
@@ -138,7 +194,6 @@ class GraphIndexer:
             ],
         }
 
-        # Create knowledge graph pipeline
         kg_builder = SimpleKGPipeline(
             llm=llm,
             driver=self.driver,
@@ -149,11 +204,25 @@ class GraphIndexer:
             perform_entity_resolution=True,
         )
 
+        # Run async pipeline wrapper
+        async def process_all_documents() -> None:
+            print("\nBuilding knowledge graph iteratively...")
+            total = len(documents_to_process)
+
+            for i, text in enumerate(documents_to_process):
+                print(f"Processing document {i + 1}/{total} ({len(text)} chars)...")
+                try:
+                    await self._process_document_with_retry(kg_builder, text)
+                    # Add small delay between successful calls to be polite to the API
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    print(f"Error processing document {i + 1}: {e}")
+                    # Continue with next document instead of crashing entire pipeline
+                    continue
+
         try:
-            # Run async pipeline
-            print("\nBuilding knowledge graph (this may take a few minutes)...")
-            result = asyncio.run(kg_builder.run_async(text=combined_text))
-            print(f"Knowledge graph construction completed: {result}")
+            asyncio.run(process_all_documents())
+            print("Knowledge graph construction completed.")
 
             # Create vector indexes after graph is built
             self._create_vector_indexes()
@@ -162,7 +231,7 @@ class GraphIndexer:
             stats = self._get_graph_statistics()
 
             return {
-                "documents_processed": len(all_text_content),
+                "documents_processed": len(documents_to_process),
                 "sources": doc_sources,
                 **stats,
             }

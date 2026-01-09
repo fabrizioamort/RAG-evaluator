@@ -43,12 +43,12 @@ def clean_neo4j():
 
 def main():
     print("=== RAG Evaluator Clean-up Tool ===\n")
-    
+
     print("1. Cleaning filesystem artifacts (ChromaDB, Filesystem RAG)...")
     clean_filesystem()
     print("\n2. Cleaning Neo4j database...")
     clean_neo4j()
-    
+
     print("\nNote: Qdrant collection is automatically cleared when running 'prepare'.")
     print("\n=== Clean-up Complete ===")
 
