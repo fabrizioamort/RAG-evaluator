@@ -59,3 +59,15 @@ htmlcov/
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
+
+# Platform - Frontend
+platform/frontend/node_modules/
+platform/frontend/dist/
+platform/frontend/.vite/
+
+# Platform - Backend
+platform/backend/.venv/
+platform/backend/storage/
+
+# Storage directories
+storage/

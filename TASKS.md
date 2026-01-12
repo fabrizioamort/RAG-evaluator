@@ -27,7 +27,8 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 1.1 Project Structure Setup
 
-- [ ] **P1.1.1** Create `platform/` directory structure
+- [x] **P1.1.1** Create `platform/` directory structure
+
   ```
   platform/
   ├── backend/
@@ -46,19 +47,20 @@ Dependencies are noted as `[Depends: TASK_ID]`
       ├── package.json
       └── vite.config.ts
   ```
+
   **Acceptance:** All directories exist with `__init__.py` where needed
 
-- [ ] **P1.1.2** Create `platform/backend/pyproject.toml`
+- [x] **P1.1.2** Create `platform/backend/pyproject.toml`
   - Dependencies: fastapi, uvicorn, sqlalchemy[asyncio], alembic, pydantic-settings, asyncpg, aiosqlite, litellm, httpx, structlog
   - Dev dependencies: pytest, pytest-asyncio, pytest-cov, ruff, mypy
   **Acceptance:** `uv sync` succeeds in `platform/backend/`
 
-- [ ] **P1.1.3** Create `platform/frontend/package.json`
+- [x] **P1.1.3** Create `platform/frontend/package.json`
   - Dependencies: react, react-dom, react-router-dom, @tanstack/react-query, axios
   - Dev dependencies: vite, typescript, tailwindcss, postcss, autoprefixer, @types/react
   **Acceptance:** `npm install` succeeds
 
-- [ ] **P1.1.4** Configure Tailwind CSS + shadcn/ui
+- [x] **P1.1.4** Configure Tailwind CSS + shadcn/ui
   - Create `tailwind.config.js`
   - Create `postcss.config.js`
   - Initialize shadcn/ui with `npx shadcn-ui@latest init`
@@ -66,7 +68,8 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 1.2 Backend Core Setup
 
-- [ ] **P1.2.1** Create `app/config.py` with Pydantic Settings
+- [x] **P1.2.1** Create `app/config.py` with Pydantic Settings
+
   ```python
   class Settings(BaseSettings):
       DATABASE_URL: str
@@ -75,27 +78,28 @@ Dependencies are noted as `[Depends: TASK_ID]`
       OPENAI_API_KEY: str | None = None
       # ... etc
   ```
+
   **Acceptance:** Settings load from `.env` and environment variables
 
-- [ ] **P1.2.2** Create `app/database.py` with SQLAlchemy async engine
+- [x] **P1.2.2** Create `app/database.py` with SQLAlchemy async engine
   - Support both PostgreSQL (`asyncpg`) and SQLite (`aiosqlite`)
   - Async session factory
   - `get_db` dependency for FastAPI
   **Acceptance:** Can connect to both SQLite and PostgreSQL
 
-- [ ] **P1.2.3** Create `app/main.py` FastAPI application
+- [x] **P1.2.3** Create `app/main.py` FastAPI application
   - CORS middleware configured
   - Exception handlers
   - Router includes
   - Lifespan events (startup/shutdown)
   **Acceptance:** `uvicorn app.main:app` starts without errors
 
-- [ ] **P1.2.4** Create health endpoint `GET /api/v1/health`
+- [x] **P1.2.4** Create health endpoint `GET /api/v1/health`
   - Returns `{"status": "healthy", "database": "connected"}`
   - Actually checks DB connectivity
   **Acceptance:** Returns 200 when DB is up, 503 when down
 
-- [ ] **P1.2.5** Setup structured logging (`app/utils/logging_config.py`)
+- [x] **P1.2.5** Setup structured logging (`app/utils/logging_config.py`)
   - JSON format with structlog
   - Request ID context variable
   - Log level from config
@@ -103,144 +107,144 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 1.3 Database Models (SQLAlchemy)
 
-- [ ] **P1.3.1** Create base model class (`app/models/base.py`)
+- [x] **P1.3.1** Create base model class (`app/models/base.py`)
   - UUID primary key mixin
   - Timestamp mixin (created_at, updated_at)
   - Declarative base
   **Acceptance:** Base classes importable
 
-- [ ] **P1.3.2** Create `app/models/project.py`
+- [x] **P1.3.2** Create `app/models/project.py`
   - Fields: id, name, description, status, tags, created_at, updated_at
   - Relationships to knowledge_bases, test_sets, rag_configs, evaluations, webhooks
   **Acceptance:** Model can be imported, relationships defined
 
-- [ ] **P1.3.3** Create `app/models/knowledge_base.py`
+- [x] **P1.3.3** Create `app/models/knowledge_base.py`
   - Fields per schema
   - Relationship to documents, versions
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.4** Create `app/models/knowledge_base_version.py`
+- [x] **P1.3.4** Create `app/models/knowledge_base_version.py`
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.5** Create `app/models/document.py`
+- [x] **P1.3.5** Create `app/models/document.py`
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.6** Create `app/models/test_template.py`
+- [x] **P1.3.6** Create `app/models/test_template.py`
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.7** Create `app/models/test_set.py`
+- [x] **P1.3.7** Create `app/models/test_set.py`
   - Relationship to test_cases
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.8** Create `app/models/test_case.py`
+- [x] **P1.3.8** Create `app/models/test_case.py`
   - Relationship to template, provenance artifact
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.9** Create `app/models/test_generation_job.py`
+- [x] **P1.3.9** Create `app/models/test_generation_job.py`
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.10** Create `app/models/rag_config.py`
+- [x] **P1.3.10** Create `app/models/rag_config.py`
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.11** Create `app/models/artifact.py`
+- [x] **P1.3.11** Create `app/models/artifact.py`
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.12** Create `app/models/run_manifest.py`
+- [x] **P1.3.12** Create `app/models/run_manifest.py`
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.13** Create `app/models/evaluation.py`
+- [x] **P1.3.13** Create `app/models/evaluation.py`
   - Relationships to kb, kb_version, test_set, rag_config, manifest, results
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.14** Create `app/models/evaluation_job.py`
+- [x] **P1.3.14** Create `app/models/evaluation_job.py`
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.15** Create `app/models/evaluation_result.py`
+- [x] **P1.3.15** Create `app/models/evaluation_result.py`
   - Relationships to artifacts
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.16** Create `app/models/webhook.py`
+- [x] **P1.3.16** Create `app/models/webhook.py`
   **Acceptance:** Model matches schema
 
-- [ ] **P1.3.17** Create `app/models/__init__.py` exporting all models
+- [x] **P1.3.17** Create `app/models/__init__.py` exporting all models
   **Acceptance:** `from app.models import Project, KnowledgeBase, ...` works
 
 ### 1.4 Alembic Migrations
 
-- [ ] **P1.4.1** Initialize Alembic (`alembic init alembic`)
+- [x] **P1.4.1** Initialize Alembic (`alembic init alembic`)
   - Configure `alembic.ini` for async
   - Update `env.py` for async engine
   **Acceptance:** `alembic` commands work
 
-- [ ] **P1.4.2** Create initial migration
+- [x] **P1.4.2** Create initial migration
   - All tables from Phase 1.3
   - All indexes
   **Acceptance:** `alembic upgrade head` creates all tables
 
-- [ ] **P1.4.3** Test migration on SQLite
+- [x] **P1.4.3** Test migration on SQLite
   **Acceptance:** Migration works with SQLite URL
 
-- [ ] **P1.4.4** Test migration on PostgreSQL (Docker)
+- [x] **P1.4.4** Test migration on PostgreSQL (Docker)
   **Acceptance:** Migration works with PostgreSQL URL
 
 ### 1.5 Docker Configuration
 
-- [ ] **P1.5.1** Create `platform/backend/Dockerfile`
+- [x] **P1.5.1** Create `platform/backend/Dockerfile`
   - Multi-stage build
   - UV for dependency management
   - Non-root user
   **Acceptance:** `docker build` succeeds
 
-- [ ] **P1.5.2** Create `docker/docker-compose.yml`
+- [x] **P1.5.2** Create `docker/docker-compose.yml`
   - PostgreSQL service
   - Backend service
   - Frontend service (placeholder)
   - Volumes for data persistence
   **Acceptance:** `docker-compose up` starts all services
 
-- [ ] **P1.5.3** Create `docker/docker-compose.dev.yml`
+- [x] **P1.5.3** Create `docker/docker-compose.dev.yml`
   - SQLite mode
   - Hot reload for backend
   **Acceptance:** Dev mode works without PostgreSQL
 
-- [ ] **P1.5.4** Create `docker/init-db.sql`
+- [x] **P1.5.4** Create `docker/init-db.sql`
   - Create database if not exists
   **Acceptance:** PostgreSQL initializes correctly
 
 ### 1.6 Frontend Foundation
 
-- [ ] **P1.6.1** Create Vite + React + TypeScript setup
+- [x] **P1.6.1** Create Vite + React + TypeScript setup
   - `vite.config.ts`
   - `tsconfig.json`
   - `src/main.tsx`
   **Acceptance:** `npm run dev` starts dev server
 
-- [ ] **P1.6.2** Configure React Router
+- [x] **P1.6.2** Configure React Router
   - `src/App.tsx` with router setup
   - Basic route structure (/, /projects, /evaluations)
   **Acceptance:** Routes navigate correctly
 
-- [ ] **P1.6.3** Setup TanStack Query
+- [x] **P1.6.3** Setup TanStack Query
   - QueryClient provider
   - Default options (staleTime, retry)
   **Acceptance:** useQuery works in components
 
-- [ ] **P1.6.4** Create API client (`src/api/client.ts`)
+- [x] **P1.6.4** Create API client (`src/api/client.ts`)
   - Axios instance with base URL from env
   - Request/response interceptors for errors
   **Acceptance:** API calls work
 
-- [ ] **P1.6.5** Create basic layout component
+- [x] **P1.6.5** Create basic layout component
   - Sidebar navigation
   - Header
   - Main content area
   **Acceptance:** Layout renders correctly
 
-- [ ] **P1.6.6** Install core shadcn/ui components
+- [x] **P1.6.6** Install core shadcn/ui components
   - Button, Card, Input, Label, Select, Table, Tabs, Dialog, Toast
   **Acceptance:** Components importable and styled
 
-- [ ] **P1.6.7** Create placeholder pages
+- [x] **P1.6.7** Create placeholder pages
   - Dashboard (/)
   - Projects (/projects)
   - Not Found (404)
@@ -248,18 +252,18 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 1.7 Backend Tests Setup
 
-- [ ] **P1.7.1** Create `tests/conftest.py`
+- [x] **P1.7.1** Create `tests/conftest.py`
   - Test database fixture (SQLite in-memory)
   - Async client fixture
   - Test settings override
   **Acceptance:** Fixtures available in tests
 
-- [ ] **P1.7.2** Create `tests/test_health.py`
+- [x] **P1.7.2** Create `tests/test_health.py`
   - Test health endpoint returns 200
   - Test health with DB down returns 503
   **Acceptance:** Tests pass
 
-- [ ] **P1.7.3** Setup pytest configuration in `pyproject.toml`
+- [x] **P1.7.3** Setup pytest configuration in `pyproject.toml`
   - asyncio_mode = "auto"
   - Test paths
   - Coverage settings
@@ -267,13 +271,13 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 1.8 Documentation
 
-- [ ] **P1.8.1** Create `platform/backend/README.md`
+- [x] **P1.8.1** Create `platform/backend/README.md`
   - Setup instructions
   - Environment variables
   - Running locally
   **Acceptance:** New developer can set up from README
 
-- [ ] **P1.8.2** Create `.env.example` for backend
+- [x] **P1.8.2** Create `.env.example` for backend
   **Acceptance:** All required vars documented
 
 ---

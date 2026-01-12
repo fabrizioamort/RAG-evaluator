@@ -1815,18 +1815,19 @@ services:
 
 ### Phase 1: Foundation (Week 1-2)
 
-- [ ] Setup project structure (`platform/backend`, `platform/frontend`)
-- [ ] Database setup with SQLAlchemy + Alembic
-  - [ ] PostgreSQL as default
-  - [ ] SQLite support for dev (zero-config local usage)
-- [ ] FastAPI skeleton with health endpoint
-- [ ] SQLAlchemy models (all tables including new ones)
-- [ ] React + Vite + Tailwind + shadcn/ui setup
-- [ ] Docker Compose base configuration
-- [ ] Structured logging with correlation IDs
-- [ ] Basic error handling
+- [x] Setup project structure (`platform/backend`, `platform/frontend`)
+- [x] Database setup with SQLAlchemy + Alembic
+  - [x] PostgreSQL as default
+  - [x] SQLite support for dev (zero-config local usage)
+- [x] FastAPI skeleton with health endpoint
+- [x] SQLAlchemy models (all tables including new ones)
+- [x] React + Vite + Tailwind + shadcn/ui setup
+- [x] Docker Compose base configuration
+- [x] Structured logging with correlation IDs
+- [x] Basic error handling
 
 **Deliverables:**
+
 - Working backend skeleton with DB connection (both Postgres and SQLite)
 - Working frontend skeleton with routing
 - Docker Compose for local development
@@ -1844,6 +1845,7 @@ services:
 - [ ] LiteLLM integration for multi-provider support
 
 **Deliverables:**
+
 - Full CRUD for all core entities
 - Document upload with validation
 - KB versioning working
@@ -1868,6 +1870,7 @@ services:
 - [ ] Cancel evaluation support
 
 **Deliverables:**
+
 - Working evaluation pipeline
 - Restart-safe execution with checkpoints
 - Real-time progress in UI (survives page refresh)
@@ -1887,6 +1890,7 @@ services:
 - [ ] Difficulty auto-classification
 
 **Deliverables:**
+
 - Working test generation from KB
 - Quality gates rejecting low-quality questions
 - Review workflow in UI
@@ -1906,6 +1910,7 @@ services:
 - [ ] Export: JSON, Markdown
 
 **Deliverables:**
+
 - Rich evaluation detail page with explainability
 - Retrieval trace visualization
 - Baseline comparison
@@ -1924,6 +1929,7 @@ services:
 - [ ] End-to-end testing
 
 **Deliverables:**
+
 - Secure webhook integration
 - Polished UI
 - Complete documentation

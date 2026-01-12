@@ -1,0 +1,23 @@
+"""Run manifest model for reproducibility."""
+
+from typing import Any
+
+from sqlalchemy import String
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.models.base import BaseModelNoUpdate
+
+
+class RunManifest(BaseModelNoUpdate):
+    """Immutable snapshot of configuration at evaluation time."""
+
+    __tablename__ = "run_manifests"
+
+    rag_config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    kb_version_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    generation_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    eval_judge_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    prompt_templates: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    rag_evaluator_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    platform_version: Mapped[str | None] = mapped_column(String(50), nullable=True)

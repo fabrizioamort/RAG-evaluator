@@ -1,0 +1,56 @@
+[
+  {
+    "name": "Definition",
+    "description": "Simple definitional questions",
+    "category": "factual",
+    "question_template": "What is {concept}?",
+    "answer_template": "{concept} is {definition}",
+    "entity_types": ["concept"],
+    "complexity_level": "easy"
+  },
+  {
+    "name": "Process Explanation",
+    "description": "How something works",
+    "category": "factual",
+    "question_template": "How does {process} work?",
+    "answer_template": "{process} works by {explanation}",
+    "entity_types": ["process"],
+    "complexity_level": "medium"
+  },
+  {
+    "name": "Multi-hop Relationship",
+    "description": "Questions requiring connecting multiple entities",
+    "category": "multi_hop",
+    "question_template": "How does {entity_a} relate to {entity_b}?",
+    "answer_template": "{entity_a} relates to {entity_b} through {relationship}",
+    "entity_types": ["entity_a", "entity_b"],
+    "complexity_level": "hard"
+  },
+  {
+    "name": "Comparison",
+    "description": "Compare two items",
+    "category": "comparison",
+    "question_template": "What are the differences between {item_a} and {item_b}?",
+    "answer_template": "{item_a} differs from {item_b} in {aspects}",
+    "entity_types": ["item_a", "item_b"],
+    "complexity_level": "medium"
+  },
+  {
+    "name": "Cause and Effect",
+    "description": "Questions about causality",
+    "category": "inferential",
+    "question_template": "What causes {effect}?",
+    "answer_template": "{effect} is caused by {causes}",
+    "entity_types": ["effect"],
+    "complexity_level": "medium"
+  },
+  {
+    "name": "List Enumeration",
+    "description": "List items in a category",
+    "category": "factual",
+    "question_template": "What are the main types of {category}?",
+    "answer_template": "The main types of {category} are {items}",
+    "entity_types": ["category"],
+    "complexity_level": "easy"
+  }
+]

@@ -1,0 +1,40 @@
+version: "3.9"
+
+# Development override - uses SQLite, no Docker DB needed
+# Usage: docker-compose -f docker-compose.dev.yml up
+
+services:
+  backend:
+    build:
+      context: ../platform/backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:///./storage/dev.db
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      STORAGE_PATH: /app/storage
+      LOG_LEVEL: DEBUG
+      LOG_FORMAT: console
+      DEBUG: "true"
+      CORS_ORIGINS: '["http://localhost:3000", "http://localhost:5173"]'
+    volumes:
+      - ../storage:/app/storage
+      - ../platform/backend/app:/app/app:ro  # Hot reload support
+    ports:
+      - "8000:8000"
+    # No DB dependency for SQLite
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../platform/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
