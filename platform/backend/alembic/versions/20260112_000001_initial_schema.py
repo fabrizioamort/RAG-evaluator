@@ -28,7 +28,7 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("status", sa.String(length=20), nullable=False, server_default="active"),
         sa.Column(
-            "tags", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default="[]"
+            "tags", sa.JSON(), nullable=False, server_default="[]"
         ),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
@@ -51,7 +51,7 @@ def upgrade() -> None:
         sa.Column("storage_path", sa.String(length=500), nullable=True),
         sa.Column("index_path", sa.String(length=500), nullable=True),
         sa.Column(
-            "metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default="{}"
+            "metadata", sa.JSON(), nullable=False, server_default="{}"
         ),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
@@ -71,7 +71,7 @@ def upgrade() -> None:
         sa.Column("change_type", sa.String(length=50), nullable=False),
         sa.Column(
             "document_snapshot",
-            postgresql.JSONB(astext_type=sa.Text()),
+            sa.JSON(),
             nullable=False,
             server_default="[]",
         ),
@@ -117,7 +117,7 @@ def upgrade() -> None:
         sa.Column("answer_template", sa.Text(), nullable=True),
         sa.Column(
             "entity_types",
-            postgresql.JSONB(astext_type=sa.Text()),
+            sa.JSON(),
             nullable=False,
             server_default="[]",
         ),
@@ -157,7 +157,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column(
-            "tags", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default="[]"
+            "tags", sa.JSON(), nullable=False, server_default="[]"
         ),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
@@ -176,7 +176,7 @@ def upgrade() -> None:
         sa.Column("expected_answer", sa.Text(), nullable=False),
         sa.Column(
             "ground_truth_context",
-            postgresql.JSONB(astext_type=sa.Text()),
+            sa.JSON(),
             nullable=False,
             server_default="[]",
         ),
@@ -205,7 +205,7 @@ def upgrade() -> None:
         sa.Column("knowledge_base_id", sa.UUID(), nullable=True),
         sa.Column("status", sa.String(length=50), nullable=False, server_default="pending"),
         sa.Column(
-            "config", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default="{}"
+            "config", sa.JSON(), nullable=False, server_default="{}"
         ),
         sa.Column("questions_generated", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("questions_total", sa.Integer(), nullable=False, server_default="0"),
@@ -230,7 +230,7 @@ def upgrade() -> None:
         sa.Column("rag_type", sa.String(length=50), nullable=False),
         sa.Column(
             "parameters",
-            postgresql.JSONB(astext_type=sa.Text()),
+            sa.JSON(),
             nullable=False,
             server_default="{}",
         ),
@@ -248,13 +248,13 @@ def upgrade() -> None:
     op.create_table(
         "run_manifests",
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("rag_config_snapshot", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column("kb_version_snapshot", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("rag_config_snapshot", sa.JSON(), nullable=False),
+        sa.Column("kb_version_snapshot", sa.JSON(), nullable=False),
         sa.Column("generation_model", sa.String(length=100), nullable=True),
         sa.Column("eval_judge_model", sa.String(length=100), nullable=True),
         sa.Column(
             "prompt_templates",
-            postgresql.JSONB(astext_type=sa.Text()),
+            sa.JSON(),
             nullable=False,
             server_default="{}",
         ),
@@ -279,15 +279,15 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=50), nullable=False, server_default="pending"),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("summary_metrics", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("cost_metrics", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("performance_metrics", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("summary_metrics", sa.JSON(), nullable=True),
+        sa.Column("cost_metrics", sa.JSON(), nullable=True),
+        sa.Column("performance_metrics", sa.JSON(), nullable=True),
         sa.Column("pass_rate", sa.Float(), nullable=True),
         sa.Column("is_baseline", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("baseline_reason", sa.Text(), nullable=True),
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column(
-            "tags", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default="[]"
+            "tags", sa.JSON(), nullable=False, server_default="[]"
         ),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column(
@@ -325,7 +325,7 @@ def upgrade() -> None:
         sa.Column("last_checkpoint", sa.Integer(), nullable=False, server_default="0"),
         sa.Column(
             "checkpoint_data",
-            postgresql.JSONB(astext_type=sa.Text()),
+            sa.JSON(),
             nullable=False,
             server_default="{}",
         ),
@@ -386,7 +386,7 @@ def upgrade() -> None:
         sa.Column("url", sa.String(length=500), nullable=False),
         sa.Column("secret", sa.String(length=255), nullable=False),
         sa.Column(
-            "events", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default="[]"
+            "events", sa.JSON(), nullable=False, server_default="[]"
         ),
         sa.Column("active", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("failure_count", sa.Integer(), nullable=False, server_default="0"),

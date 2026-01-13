@@ -12,15 +12,20 @@ A comprehensive evaluation framework for comparing different RAG (Retrieval Augm
 
 ## Overview
 
-This project implements and evaluates four different RAG approaches:
+The project has evolved into two main components:
 
-1. **Vector Semantic Search** ✅ - Using ChromaDB for pure semantic similarity
-2. **Hybrid Search** ✅ - Combining dense (semantic) and sparse (keyword) vectors using Qdrant with RRF fusion
-3. **Graph RAG** ✅ - Using Neo4j graph database with neo4j-graphrag for hybrid vector + graph retrieval
-4. **Filesystem RAG** ✅ - Direct filesystem search with LLM-guided retrieval (Agentic)
+1. **Core RAG Implementation CLI**: The original command-line interface for RAG evaluation.
+2. **RAG Evaluation Platform (Web UI)**: A new, comprehensive web-based platform for managing projects, knowledge bases, and evaluations.
+
+3. **Vector Semantic Search** ✅ - Using ChromaDB for pure semantic similarity
+4. **Hybrid Search** ✅ - Combining dense (semantic) and sparse (keyword) vectors using Qdrant with RRF fusion
+5. **Graph RAG** ✅ - Using Neo4j graph database with neo4j-graphrag for hybrid vector + graph retrieval
+6. **Filesystem RAG** ✅ - Direct filesystem search with LLM-guided retrieval (Agentic)
 
 ## Evaluation Metrics
+
 ...
+
 ## Quick Start
 
 ### Using the CLI
@@ -56,7 +61,9 @@ uv run rag-eval evaluate --rag-type all --output reports
 # Launch the web UI
 uv run rag-eval ui
 ```
+
 ...
+
 ## Filesystem RAG Setup (Agentic)
 
 The Filesystem RAG implementation employs an **LLM-guided agent** that navigates a prepared filesystem structure to find and retrieve relevant information, mimicking how a human developer explores a codebase.
@@ -92,6 +99,7 @@ uv run rag-eval ui
 ### Agent Tools
 
 The agent has access to several specialized tools:
+
 - `list_directory`: Explore the index structure.
 - `read_file`: Read document content (supports progressive disclosure for large files).
 - `grep_search`: Keyword/Regex searching across the corpus.
@@ -104,7 +112,6 @@ The agent has access to several specialized tools:
 - **Interpretable Reasoning**: Each query generates a "Reasoning Trace" visible in the UI.
 - **Progressive Disclosure**: Only reads what is necessary to answer the question.
 - **Human-Readable Indexes**: The prepared structure is fully browsable by humans.
-
 
 ### Using the Streamlit UI
 
@@ -140,10 +147,11 @@ docker compose up -d qdrant
 ```
 
 This starts Qdrant on:
+
 - HTTP API: `http://localhost:6333`
 - GRPC: `localhost:6334`
 
-2. **Configuration** (optional): Customize in `.env`:
+1. **Configuration** (optional): Customize in `.env`:
 
 ```bash
 QDRANT_URL=http://localhost:6333
@@ -385,6 +393,32 @@ uv run rag-eval evaluate --rag-type all
 
 This generates a comparison report highlighting strengths and weaknesses of each approach.
 
+## RAG Evaluation Platform (Web UI)
+
+A comprehensive web-based platform to manage RAG projects, knowledge bases, and evaluations.
+
+### Quick Start (Web UI)
+
+#### Backend Setup
+
+```bash
+cd platform/backend
+cp .env.example .env  # Edit .env with your keys
+uv sync --all-extras
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload --port 8000
+```
+
+#### Frontend Setup
+
+```bash
+cd platform/frontend
+npm install
+npm run dev
+```
+
+The UI will be available at `http://localhost:3000`.
+
 ## Project Structure
 
 ```
@@ -459,7 +493,7 @@ Key configuration options in `.env`:
 **Database Configuration:**
 
 - `CHROMA_PERSIST_DIRECTORY` - ChromaDB storage location (default: ./data/chroma_db)
-- `QDRANT_URL` - Qdrant HTTP endpoint (default: http://localhost:6333)
+- `QDRANT_URL` - Qdrant HTTP endpoint (default: <http://localhost:6333>)
 - `QDRANT_COLLECTION_NAME` - Qdrant collection name (default: hybrid_rag)
 - `NEO4J_URI` - Neo4j connection URI (for Graph RAG)
 - `NEO4J_PASSWORD` - Neo4j password
