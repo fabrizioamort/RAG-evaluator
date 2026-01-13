@@ -120,6 +120,97 @@ export interface DocumentUploadResponse {
   total_size_bytes: number
 }
 
+export interface TestCase {
+  id: string
+  test_set_id: string
+  template_id: string | null
+  question: string
+  expected_answer: string
+  ground_truth_context: string[]
+  difficulty: 'easy' | 'medium' | 'hard'
+  category: string | null
+  question_type: 'factual' | 'reasoning' | 'comparison' | 'multi_hop'
+  is_generated: boolean
+  is_reviewed: boolean
+  quality_score: number | null
+  provenance_artifact_id: string | null
+  created_at: string
+}
+
+export interface TestSet {
+  id: string
+  project_id: string
+  name: string
+  description: string | null
+  tags: string[]
+  test_case_count: number
+  created_at: string
+  test_cases?: TestCase[]
+}
+
+export interface TestSetCreate {
+  name: string
+  description?: string
+  tags?: string[]
+}
+
+export interface TestCaseCreate {
+  question: string
+  expected_answer: string
+  ground_truth_context?: string[]
+  difficulty?: 'easy' | 'medium' | 'hard'
+  category?: string
+  question_type?: 'factual' | 'reasoning' | 'comparison' | 'multi_hop'
+}
+
+export interface RAGConfig {
+  id: string
+  project_id: string
+  name: string
+  rag_type: string
+  parameters: Record<string, any>
+  llm_provider: string
+  llm_model: string
+  llm_base_url: string | null
+  created_at: string
+}
+
+export interface RAGConfigCreate {
+  name: string
+  rag_type: string
+  parameters?: Record<string, any>
+  llm_provider?: string
+  llm_model?: string
+  llm_base_url?: string
+}
+
+export interface RAGTypeParameter {
+  name: string
+  type: 'string' | 'integer' | 'float' | 'boolean'
+  description: string
+  required: boolean
+  default: any
+  min_value?: number
+  max_value?: number
+  choices?: string[]
+}
+
+export interface RAGTypeInfo {
+  name: string
+  display_name: string
+  description: string
+  parameters: RAGTypeParameter[]
+  requires_index: boolean
+}
+
+export interface LLMProviderInfo {
+  name: string
+  display_name: string
+  models: string[]
+  requires_api_key: boolean
+  supports_base_url: boolean
+}
+
 // API functions
 export const api = {
   health: {
@@ -154,5 +245,36 @@ export const api = {
     deleteDocument: (kbId: string, docId: string) =>
       apiClient.delete(`/knowledge-bases/${kbId}/documents/${docId}`),
     getStatus: (id: string) => apiClient.get(`/knowledge-bases/${id}/status`),
+  },
+  testSets: {
+    list: (projectId: string, params?: { limit?: number; offset?: number }) =>
+      apiClient.get<PaginatedList<TestSet>>(`/projects/${projectId}/test-sets`, { params }),
+    get: (id: string) => apiClient.get<TestSet>(`/test-sets/${id}`),
+    create: (projectId: string, data: TestSetCreate) =>
+      apiClient.post<TestSet>(`/projects/${projectId}/test-sets`, data),
+    update: (id: string, data: Partial<TestSetCreate>) =>
+      apiClient.put<TestSet>(`/test-sets/${id}`, data),
+    delete: (id: string) => apiClient.delete(`/test-sets/${id}`),
+    import: (id: string, data: any) => apiClient.post(`/test-sets/${id}/import`, data),
+    export: (id: string) => apiClient.get(`/test-sets/${id}/export`, { responseType: 'blob' }),
+    addCase: (testSetId: string, data: TestCaseCreate) =>
+      apiClient.post<TestCase>(`/test-sets/${testSetId}/cases`, data),
+    updateCase: (testSetId: string, caseId: string, data: Partial<TestCaseCreate>) =>
+      apiClient.put<TestCase>(`/test-sets/${testSetId}/cases/${caseId}`, data),
+    deleteCase: (testSetId: string, caseId: string) =>
+      apiClient.delete(`/test-sets/${testSetId}/cases/${caseId}`),
+  },
+  ragConfigs: {
+    list: (projectId: string, params?: { limit?: number; offset?: number }) =>
+      apiClient.get<PaginatedList<RAGConfig>>(`/projects/${projectId}/rag-configs`, { params }),
+    get: (id: string) => apiClient.get<RAGConfig>(`/rag-configs/${id}`),
+    create: (projectId: string, data: RAGConfigCreate) =>
+      apiClient.post<RAGConfig>(`/projects/${projectId}/rag-configs`, data),
+    update: (id: string, data: Partial<RAGConfigCreate>) =>
+      apiClient.put<RAGConfig>(`/rag-configs/${id}`, data),
+    delete: (id: string) => apiClient.delete(`/rag-configs/${id}`),
+    getTypes: () => apiClient.get<RAGTypeInfo[]>('/rag-types'),
+    getParameters: (type: string) => apiClient.get<RAGTypeParameter[]>(`/rag-types/${type}/parameters`),
+    getLLMProviders: () => apiClient.get<LLMProviderInfo[]>('/llm-providers'),
   },
 }

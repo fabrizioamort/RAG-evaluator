@@ -15,6 +15,11 @@ import {
 } from 'lucide-react'
 import { api, KnowledgeBaseCreate } from '@/api/client'
 import { cn } from '@/lib/utils'
+import { TestSetList } from '@/components/test-sets/TestSetList'
+import { TestSetDetail } from '@/components/test-sets/TestSetDetail'
+import { CreateTestSetDialog } from '@/components/test-sets/CreateTestSetDialog'
+import { RAGConfigList } from '@/components/rag-configs/RAGConfigList'
+import { RAGConfigDialog } from '@/components/rag-configs/RAGConfigDialog'
 import { KBList } from '@/components/knowledge-bases/KBList'
 import { CreateKBDialog } from '@/components/knowledge-bases/CreateKBDialog'
 
@@ -52,15 +57,13 @@ function KnowledgeBasesTab({ projectId }: { projectId: string }) {
                     <h2 className="text-xl font-semibold">Knowledge Bases</h2>
                     <p className="text-sm text-muted-foreground">Manage documents for retrieval and indexing.</p>
                 </div>
-                {kbs.length > 0 && (
-                    <button
-                        onClick={() => setIsDialogOpen(true)}
-                        className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md"
-                    >
-                        <Plus className="h-4 w-4" />
-                        New KB
-                    </button>
-                )}
+                <button
+                    onClick={() => setIsDialogOpen(true)}
+                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md"
+                >
+                    <Plus className="h-4 w-4" />
+                    New KB
+                </button>
             </div>
 
             <KBList
@@ -78,8 +81,177 @@ function KnowledgeBasesTab({ projectId }: { projectId: string }) {
         </div>
     )
 }
-const TestSetsTab = () => <div className="py-10 text-center text-muted-foreground">Test Sets content coming soon...</div>
-const RAGConfigsTab = () => <div className="py-10 text-center text-muted-foreground">RAG Configurations content coming soon...</div>
+
+function TestSetsTab({ projectId }: { projectId: string }) {
+    const [selectedTestSetId, setSelectedTestSetId] = useState<string | null>(null)
+    const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+    const queryClient = useQueryClient()
+
+    const { data, isLoading } = useQuery({
+        queryKey: ['test-sets', projectId],
+        queryFn: () => api.testSets.list(projectId),
+        enabled: !!projectId,
+    })
+
+    const createMutation = useMutation({
+        mutationFn: (data: any) => api.testSets.create(projectId, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['test-sets', projectId] })
+        },
+    })
+
+    const deleteMutation = useMutation({
+        mutationFn: (id: string) => api.testSets.delete(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['test-sets', projectId] })
+        },
+    })
+
+    if (selectedTestSetId) {
+        return <TestSetDetail testSetId={selectedTestSetId} onBack={() => setSelectedTestSetId(null)} />
+    }
+
+    if (isLoading) {
+        return (
+            <div className="flex justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+            </div>
+        )
+    }
+
+    const testSets = data?.data?.items || []
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-xl font-semibold">Test Sets</h2>
+                    <p className="text-sm text-muted-foreground">Manage collections of questions and answers for evaluation.</p>
+                </div>
+                {testSets.length > 0 && (
+                    <button
+                        onClick={() => setIsCreateDialogOpen(true)}
+                        className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md"
+                    >
+                        <Plus className="h-4 w-4" />
+                        New Test Set
+                    </button>
+                )}
+            </div>
+
+            <TestSetList
+                testSets={testSets}
+                onCreateClick={() => setIsCreateDialogOpen(true)}
+                onViewDetail={(id) => setSelectedTestSetId(id)}
+                onDelete={(id) => deleteMutation.mutate(id)}
+                onExport={() => {
+                    // Export logic handled in detail, or add here if needed for list
+                }}
+            />
+
+            <CreateTestSetDialog
+                isOpen={isCreateDialogOpen}
+                onClose={() => setIsCreateDialogOpen(false)}
+                onSubmit={async (data) => {
+                    await createMutation.mutateAsync(data)
+                }}
+            />
+        </div>
+    )
+}
+
+function RAGConfigsTab({ projectId }: { projectId: string }) {
+    const [isDialogOpen, setIsDialogOpen] = useState(false)
+    const [editingConfig, setEditingConfig] = useState<any>(undefined)
+    const queryClient = useQueryClient()
+
+    const { data, isLoading } = useQuery({
+        queryKey: ['rag-configs', projectId],
+        queryFn: () => api.ragConfigs.list(projectId),
+        enabled: !!projectId,
+    })
+
+    const createMutation = useMutation({
+        mutationFn: (data: any) => api.ragConfigs.create(projectId, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['rag-configs', projectId] })
+        },
+    })
+
+    const updateMutation = useMutation({
+        mutationFn: ({ id, data }: { id: string, data: any }) => api.ragConfigs.update(id, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['rag-configs', projectId] })
+        },
+    })
+
+    const deleteMutation = useMutation({
+        mutationFn: (id: string) => api.ragConfigs.delete(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['rag-configs', projectId] })
+        },
+    })
+
+    if (isLoading) {
+        return (
+            <div className="flex justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+            </div>
+        )
+    }
+
+    const configs = data?.data?.items || []
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-xl font-semibold">RAG Configurations</h2>
+                    <p className="text-sm text-muted-foreground">Define different retrieval and generation settings.</p>
+                </div>
+                {configs.length > 0 && (
+                    <button
+                        onClick={() => {
+                            setEditingConfig(undefined)
+                            setIsDialogOpen(true)
+                        }}
+                        className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md"
+                    >
+                        <Plus className="h-4 w-4" />
+                        New Config
+                    </button>
+                )}
+            </div>
+
+            <RAGConfigList
+                configs={configs}
+                onCreateClick={() => {
+                    setEditingConfig(undefined)
+                    setIsDialogOpen(true)
+                }}
+                onEdit={(config) => {
+                    setEditingConfig(config)
+                    setIsDialogOpen(true)
+                }}
+                onDelete={(id) => deleteMutation.mutate(id)}
+            />
+
+            <RAGConfigDialog
+                isOpen={isDialogOpen}
+                onClose={() => setIsDialogOpen(false)}
+                config={editingConfig}
+                onSubmit={async (data) => {
+                    if (editingConfig) {
+                        await updateMutation.mutateAsync({ id: editingConfig.id, data })
+                    } else {
+                        await createMutation.mutateAsync(data)
+                    }
+                }}
+            />
+        </div>
+    )
+}
+
 const EvaluationsTab = () => <div className="py-10 text-center text-muted-foreground">Evaluations content coming soon...</div>
 
 const tabs = [
@@ -190,8 +362,8 @@ export function ProjectDetail() {
             {/* Tab Content */}
             <div className="mt-6">
                 {activeTab === 'kb' && <KnowledgeBasesTab projectId={p.id} />}
-                {activeTab === 'tests' && <TestSetsTab />}
-                {activeTab === 'rags' && <RAGConfigsTab />}
+                {activeTab === 'tests' && <TestSetsTab projectId={p.id} />}
+                {activeTab === 'rags' && <RAGConfigsTab projectId={p.id} />}
                 {activeTab === 'evals' && <EvaluationsTab />}
             </div>
         </div>

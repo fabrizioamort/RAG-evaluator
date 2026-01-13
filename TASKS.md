@@ -484,26 +484,26 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 2.11 Frontend - Test Sets UI
 
-- [ ] **P2.11.1** Create Test Sets list component
+- [x] **P2.11.1** Create Test Sets list component
   **Acceptance:** Lists test sets
 
-- [ ] **P2.11.2** Create Test Set detail view
+- [x] **P2.11.2** Create Test Set detail view
   - Test cases table
   - Add/edit/delete cases
   - Import/export buttons
   **Acceptance:** Full CRUD works
 
-- [ ] **P2.11.3** Create Test Case editor
+- [x] **P2.11.3** Create Test Case editor
   - Question, expected answer, context fields
   - Difficulty, category selects
   **Acceptance:** Can edit test cases
 
 ### 2.12 Frontend - RAG Configs UI
 
-- [ ] **P2.12.1** Create RAG Configs list component
+- [x] **P2.12.1** Create RAG Configs list component
   **Acceptance:** Lists configs
 
-- [ ] **P2.12.2** Create RAG Config editor
+- [x] **P2.12.2** Create RAG Config editor
   - Type selector
   - Dynamic parameter form based on type
   - LLM provider selector
