@@ -603,44 +603,44 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 3.5 Cost Tracking
 
-- [ ] **P3.5.1** Create `app/services/cost_tracker.py`
+- [x] **P3.5.1** Create `app/services/cost_tracker.py`
   - Token to cost calculation
   - Per-model pricing
   - Aggregate costs
   **Acceptance:** Costs calculated correctly
 
-- [ ] **P3.5.2** Create `app/utils/pricing_defaults.py`
+- [x] **P3.5.2** Create `app/utils/pricing_defaults.py`
   - Default prices for common models
   - Configurable overrides
   **Acceptance:** Pricing available
 
 ### 3.6 Store Results with Artifacts
 
-- [ ] **P3.6.1** Store retrieved_context as artifact
+- [x] **P3.6.1** Store retrieved_context as artifact
   **Acceptance:** Context stored as artifact
 
-- [ ] **P3.6.2** Store retrieval_trace as artifact
+- [x] **P3.6.2** Store retrieval_trace as artifact
   **Acceptance:** Trace stored as artifact
 
-- [ ] **P3.6.3** Store raw_metrics as artifact
+- [x] **P3.6.3** Store raw_metrics as artifact
   **Acceptance:** Metrics stored as artifact
 
 ### 3.7 Frontend - Evaluation Progress
 
-- [ ] **P3.7.1** Create `useEvaluationStream` hook
+- [x] **P3.7.1** Create `useEvaluationStream` hook
   - SSE connection management
   - Reconnection logic
   - State updates
   **Acceptance:** Hook works with SSE
 
-- [ ] **P3.7.2** Create EvaluationProgress component
+- [x] **P3.7.2** Create EvaluationProgress component
   - Progress bar
   - Test case counter
   - Elapsed/remaining time
   - Pause/Cancel buttons
   **Acceptance:** Shows live progress
 
-- [ ] **P3.7.3** Create "Start Evaluation" wizard
+- [x] **P3.7.3** Create "Start Evaluation" wizard
   - Select KB, Test Set, RAG Config
   - Review and confirm
   - Navigate to progress view
@@ -648,14 +648,14 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 3.8 Tests
 
-- [ ] **P3.8.1** Test evaluation lifecycle
+- [x] **P3.8.1** Test evaluation lifecycle
   - Start, progress, complete
   **Acceptance:** Full lifecycle tested
 
-- [ ] **P3.8.2** Test pause/resume
+- [x] **P3.8.2** Test pause/resume
   **Acceptance:** Checkpoints work
 
-- [ ] **P3.8.3** Test cancel
+- [x] **P3.8.3** Test cancel
   **Acceptance:** Cancellation works
 
 ---

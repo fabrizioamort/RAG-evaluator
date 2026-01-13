@@ -11,10 +11,12 @@ import {
     Tag,
     Loader2,
     AlertCircle,
-    Plus
+    Plus,
+    Play,
+    ChevronRight
 } from 'lucide-react'
-import { api, KnowledgeBaseCreate } from '@/api/client'
 import { cn } from '@/lib/utils'
+import { api, KnowledgeBaseCreate, Evaluation } from '@/api/client'
 import { TestSetList } from '@/components/test-sets/TestSetList'
 import { TestSetDetail } from '@/components/test-sets/TestSetDetail'
 import { CreateTestSetDialog } from '@/components/test-sets/CreateTestSetDialog'
@@ -22,6 +24,8 @@ import { RAGConfigList } from '@/components/rag-configs/RAGConfigList'
 import { RAGConfigDialog } from '@/components/rag-configs/RAGConfigDialog'
 import { KBList } from '@/components/knowledge-bases/KBList'
 import { CreateKBDialog } from '@/components/knowledge-bases/CreateKBDialog'
+import { StartEvaluationWizard } from '@/components/evaluations/StartEvaluationWizard'
+import { EvaluationProgress } from '@/components/evaluations/EvaluationProgress'
 
 function KnowledgeBasesTab({ projectId }: { projectId: string }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -252,7 +256,166 @@ function RAGConfigsTab({ projectId }: { projectId: string }) {
     )
 }
 
-const EvaluationsTab = () => <div className="py-10 text-center text-muted-foreground">Evaluations content coming soon...</div>
+function EvaluationsTab({ projectId }: { projectId: string }) {
+    const [isWizardOpen, setIsWizardOpen] = useState(false)
+    const [activeEvaluationId, setActiveEvaluationId] = useState<string | null>(null)
+    const queryClient = useQueryClient()
+
+    const { data, isLoading } = useQuery({
+        queryKey: ['evaluations', projectId],
+        queryFn: () => api.evaluations.list(projectId),
+        enabled: !!projectId,
+    })
+
+    if (activeEvaluationId) {
+        return (
+            <div className="space-y-6">
+                <button
+                    onClick={() => {
+                        setActiveEvaluationId(null)
+                        queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
+                    }}
+                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to Evaluations
+                </button>
+                <EvaluationProgress
+                    evaluationId={activeEvaluationId}
+                    onClose={() => {
+                        setActiveEvaluationId(null)
+                        queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
+                    }}
+                />
+            </div>
+        )
+    }
+
+    if (isLoading) {
+        return (
+            <div className="flex justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+            </div>
+        )
+    }
+
+    const evaluations = data?.data?.items || []
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-xl font-semibold">Evaluations</h2>
+                    <p className="text-sm text-muted-foreground">Monitor RAG performance over time.</p>
+                </div>
+                <button
+                    onClick={() => setIsWizardOpen(true)}
+                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md"
+                >
+                    <Play className="h-4 w-4" />
+                    Launch Eval
+                </button>
+            </div>
+
+            {evaluations.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 bg-card/50">
+                    <div className="rounded-full bg-primary/10 p-5 text-primary">
+                        <FlaskConical className="h-10 w-10" />
+                    </div>
+                    <h3 className="mt-5 text-xl font-semibold">No evaluations yet</h3>
+                    <p className="mt-2 text-center text-muted-foreground max-w-sm">
+                        Start your first RAG evaluation to measure performance across different metrics.
+                    </p>
+                    <button
+                        onClick={() => setIsWizardOpen(true)}
+                        className="mt-6 flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md"
+                    >
+                        <Play className="h-4 w-4" />
+                        Start First Evaluation
+                    </button>
+                </div>
+            ) : (
+                <div className="grid gap-4">
+                    {evaluations.map((evalItem: Evaluation) => (
+                        <div
+                            key={evalItem.id}
+                            className="group relative flex items-center justify-between rounded-xl border border-border bg-card p-4 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer"
+                            onClick={() => setActiveEvaluationId(evalItem.id)}
+                        >
+                            <div className="flex items-center gap-4">
+                                <div className={cn(
+                                    "flex h-10 w-10 items-center justify-center rounded-lg",
+                                    evalItem.status === 'completed' ? "bg-green-500/10 text-green-600" :
+                                        evalItem.status === 'failed' ? "bg-red-500/10 text-red-600" :
+                                            evalItem.status === 'running' ? "bg-blue-500/10 text-blue-600 animate-pulse" :
+                                                "bg-muted text-muted-foreground"
+                                )}>
+                                    <FlaskConical className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <p className="font-bold">Evaluation #{evalItem.id.slice(0, 8)}</p>
+                                        <span className={cn(
+                                            "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                            evalItem.status === 'completed' ? "bg-green-500/10 text-green-600" :
+                                                evalItem.status === 'failed' ? "bg-red-500/10 text-red-600" :
+                                                    evalItem.status === 'running' ? "bg-blue-500/10 text-blue-600" :
+                                                        "bg-muted text-muted-foreground"
+                                        )}>
+                                            {evalItem.status}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground font-medium">
+                                        <div className="flex items-center gap-1">
+                                            <Calendar className="h-3 w-3" />
+                                            {new Date(evalItem.created_at).toLocaleString()}
+                                        </div>
+                                        <div>{evalItem.result_count} results</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-6">
+                                {evalItem.pass_rate !== null && (
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Pass Rate</p>
+                                        <p className={cn(
+                                            "text-lg font-black",
+                                            evalItem.pass_rate >= 0.7 ? "text-green-500" : "text-amber-500"
+                                        )}>
+                                            {(evalItem.pass_rate * 100).toFixed(0)}%
+                                        </p>
+                                    </div>
+                                )}
+                                {evalItem.summary_metrics?.overall_avg !== undefined && (
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Avg Score</p>
+                                        <p className="text-lg font-black text-primary">
+                                            {evalItem.summary_metrics.overall_avg.toFixed(2)}
+                                        </p>
+                                    </div>
+                                )}
+                                <div className="rounded-full p-2 bg-muted/50 group-hover:bg-primary group-hover:text-primary-foreground transition-all">
+                                    <ChevronRight className="h-4 w-4" />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            <StartEvaluationWizard
+                projectId={projectId}
+                isOpen={isWizardOpen}
+                onClose={() => setIsWizardOpen(false)}
+                onStarted={(id) => {
+                    setActiveEvaluationId(id)
+                    queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
+                }}
+            />
+        </div>
+    )
+}
 
 const tabs = [
     { id: 'kb', name: 'Knowledge Bases', icon: Database },
@@ -364,7 +527,7 @@ export function ProjectDetail() {
                 {activeTab === 'kb' && <KnowledgeBasesTab projectId={p.id} />}
                 {activeTab === 'tests' && <TestSetsTab projectId={p.id} />}
                 {activeTab === 'rags' && <RAGConfigsTab projectId={p.id} />}
-                {activeTab === 'evals' && <EvaluationsTab />}
+                {activeTab === 'evals' && <EvaluationsTab projectId={p.id} />}
             </div>
         </div>
     )

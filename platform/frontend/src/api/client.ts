@@ -211,6 +211,67 @@ export interface LLMProviderInfo {
   supports_base_url: boolean
 }
 
+export interface SummaryMetrics {
+  faithfulness_avg?: number
+  relevancy_avg?: number
+  precision_avg?: number
+  recall_avg?: number
+  overall_avg?: number
+}
+
+export interface Evaluation {
+  id: string
+  project_id: string
+  knowledge_base_id: string | null
+  test_set_id: string | null
+  rag_config_id: string | null
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused'
+  started_at: string | null
+  completed_at: string | null
+  summary_metrics: SummaryMetrics | null
+  pass_rate: number | null
+  error_message: string | null
+  result_count: number
+  created_at: string
+}
+
+export interface EvaluationCreate {
+  knowledge_base_id: string
+  test_set_id: string
+  rag_config_id: string
+  notes?: string
+  tags?: string[]
+}
+
+export interface EvaluationResult {
+  id: string
+  evaluation_id: string
+  test_case_id: string | null
+  generated_answer: string | null
+  faithfulness_score: number | null
+  relevancy_score: number | null
+  precision_score: number | null
+  recall_score: number | null
+  latency_seconds: number | null
+  cost_usd: string | null
+  created_at: string
+}
+
+export interface ProgressEvent {
+  event_type: 'started' | 'progress' | 'completed' | 'error' | 'paused' | 'resumed'
+  evaluation_id: string
+  timestamp: string
+  total_test_cases?: number
+  completed?: number
+  total?: number
+  current_question?: string
+  last_result?: EvaluationResult
+  summary_metrics?: SummaryMetrics
+  pass_rate?: number
+  error_message?: string
+  resuming_from?: number
+}
+
 // API functions
 export const api = {
   health: {
@@ -276,5 +337,18 @@ export const api = {
     getTypes: () => apiClient.get<RAGTypeInfo[]>('/rag-types'),
     getParameters: (type: string) => apiClient.get<RAGTypeParameter[]>(`/rag-types/${type}/parameters`),
     getLLMProviders: () => apiClient.get<LLMProviderInfo[]>('/llm-providers'),
+  },
+  evaluations: {
+    list: (projectId: string, params?: { limit?: number; offset?: number }) =>
+      apiClient.get<PaginatedList<Evaluation>>(`/projects/${projectId}/evaluations`, { params }),
+    get: (id: string) => apiClient.get<Evaluation>(`/evaluations/${id}`),
+    create: (data: EvaluationCreate) => apiClient.post<Evaluation>('/evaluations', data),
+    getResults: (id: string, params?: { limit?: number; offset?: number }) =>
+      apiClient.get<PaginatedList<EvaluationResult>>(`/evaluations/${id}/results`, { params }),
+    cancel: (id: string) => apiClient.post(`/evaluations/${id}/cancel`),
+    pause: (id: string) => apiClient.post(`/evaluations/${id}/pause`),
+    resume: (id: string) => apiClient.post(`/evaluations/${id}/resume`),
+    retry: (id: string) => apiClient.post<Evaluation>(`/evaluations/${id}/retry`),
+    getStreamUrl: (id: string) => `${API_BASE_URL}/api/v1/evaluations/${id}/stream`,
   },
 }

@@ -61,7 +61,7 @@ async def test_evaluation_runner_success(db_session: AsyncSession, setup_data: E
 
     # Mock RAG adapter result
     mock_rag_instance = MagicMock()
-    mock_rag_instance.query = AsyncMock(
+    mock_rag_instance.query_with_trace = AsyncMock(
         return_value={
             "answer": "Testing small units of code in isolation.",
             "context": ["Unit testing definition..."],
@@ -69,6 +69,7 @@ async def test_evaluation_runner_success(db_session: AsyncSession, setup_data: E
                 "token_usage": {"prompt_tokens": 10, "completion_tokens": 5},
                 "cost": 0.001,
             },
+            "retrieval_trace": {"strategy": "vector", "steps": []},
         }
     )
 
@@ -84,7 +85,7 @@ async def test_evaluation_runner_success(db_session: AsyncSession, setup_data: E
         # Setup RAG Adapter mock
         mock_adapter = mock_get_rag_service.return_value
         mock_adapter.get_or_create_rag.return_value = mock_rag_instance
-        mock_adapter.query = mock_rag_instance.query
+        mock_adapter.query_with_trace = mock_rag_instance.query_with_trace
 
         # Setup metric mocks
         for m_class, name in [
@@ -140,6 +141,9 @@ async def test_evaluation_runner_success(db_session: AsyncSession, setup_data: E
         results = res_count.scalars().all()
         assert len(results) == 1
         assert results[0].faithfulness_score == 0.9
+        assert results[0].retrieved_context_artifact_id is not None
+        assert results[0].retrieval_trace_artifact_id is not None
+        assert results[0].raw_metrics_artifact_id is not None
 
 
 @pytest.mark.asyncio

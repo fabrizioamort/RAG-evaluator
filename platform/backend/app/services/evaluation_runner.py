@@ -21,6 +21,7 @@ from app.models.evaluation import Evaluation
 from app.models.evaluation_result import EvaluationResult
 from app.models.test_case import TestCase
 from app.models.test_set import TestSet
+from app.services.artifact_store import ArtifactStore, get_artifact_store
 from app.services.job_checkpoint_service import get_checkpoint_service
 from app.services.job_event_log import get_job_event_log
 from app.services.rag_adapter import get_rag_adapter_service
@@ -48,6 +49,7 @@ class EvaluationRunner:
         self.checkpoint_service = get_checkpoint_service(db_session)
         self.event_log = get_job_event_log()
         self.rag_adapter = get_rag_adapter_service()
+        self.artifact_store = get_artifact_store()
 
         # Will be loaded during run()
         self.evaluation: Optional[Evaluation] = None
@@ -166,8 +168,8 @@ class EvaluationRunner:
                 start_time = time.time()
 
                 try:
-                    # RAG Query
-                    response = await self.rag_adapter.query(rag, test_case.question)
+                    # RAG Query with full trace
+                    response = await self.rag_adapter.query_with_trace(rag, test_case.question)
                     latency = time.time() - start_time
 
                     # Create DeepEval test case for scoring
@@ -231,6 +233,32 @@ class EvaluationRunner:
                         # Fallback to response cost if tokens are missing
                         cost_usd = Decimal(str(response.get("metadata", {}).get("cost", 0.0)))
 
+                    # Store artifacts
+                    retrieval_trace = response.get("retrieval_trace")
+                    retrieval_trace_artifact = await self.artifact_store.store_json(
+                        self.db, retrieval_trace, ArtifactStore.KIND_RETRIEVAL_TRACE
+                    )
+
+                    retrieved_context_data = response.get("context", [])
+                    retrieved_context_artifact = await self.artifact_store.store_json(
+                        self.db, retrieved_context_data, ArtifactStore.KIND_RETRIEVED_CONTEXT
+                    )
+
+                    # Collect raw metrics for artifact
+                    raw_metrics = {
+                        "metric_results": [
+                            {
+                                "name": metric.__class__.__name__,
+                                "score": metric.score,
+                                "reason": getattr(metric, "reason", None),
+                            }
+                            for metric in metrics
+                        ]
+                    }
+                    raw_metrics_artifact = await self.artifact_store.store_json(
+                        self.db, raw_metrics, ArtifactStore.KIND_RAW_METRICS
+                    )
+
                     result_model = EvaluationResult(
                         evaluation_id=self.evaluation_id,
                         test_case_id=test_case.id,
@@ -239,6 +267,9 @@ class EvaluationRunner:
                         prompt_tokens=prompt_tokens,
                         completion_tokens=completion_tokens,
                         cost_usd=cost_usd,
+                        retrieved_context_artifact_id=retrieved_context_artifact.id,
+                        retrieval_trace_artifact_id=retrieval_trace_artifact.id,
+                        raw_metrics_artifact_id=raw_metrics_artifact.id,
                         **scores,
                     )
                     self.db.add(result_model)
