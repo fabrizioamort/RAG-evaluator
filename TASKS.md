@@ -346,13 +346,13 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 2.3 Knowledge Bases API
 
-- [ ] **P2.3.1** Create `app/services/storage_service.py`
+- [x] **P2.3.1** Create `app/services/storage_service.py`
   - Save uploaded file to storage path
   - Generate unique filenames
   - Calculate checksums
   **Acceptance:** Files saved correctly
 
-- [ ] **P2.3.2** Create `app/api/knowledge_bases.py`
+- [x] **P2.3.2** Create `app/api/knowledge_bases.py`
   - GET /projects/{pid}/knowledge-bases
   - POST /projects/{pid}/knowledge-bases
   - GET /knowledge-bases/{id}
@@ -362,24 +362,24 @@ Dependencies are noted as `[Depends: TASK_ID]`
   - GET /knowledge-bases/{id}/versions
   **Acceptance:** All endpoints work
 
-- [ ] **P2.3.3** Implement KB versioning logic
+- [x] **P2.3.3** Implement KB versioning logic
   - Auto-increment version on document changes
   - Store document snapshot per version
   **Acceptance:** Versions created on changes
 
-- [ ] **P2.3.4** Write tests for KB API
+- [x] **P2.3.4** Write tests for KB API
   **Acceptance:** Full coverage
 
 ### 2.4 Artifact Store Service
 
-- [ ] **P2.4.1** Create `app/services/artifact_store.py`
+- [x] **P2.4.1** Create `app/services/artifact_store.py`
   - Content-addressed storage (SHA256)
   - Store to filesystem
   - Retrieve by key
   - Deduplication
   **Acceptance:** Artifacts stored and retrievable
 
-- [ ] **P2.4.2** Write tests for artifact store
+- [x] **P2.4.2** Write tests for artifact store
   - Store/retrieve cycle
   - Deduplication works
   - Large content handling
@@ -387,18 +387,18 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 2.5 Test Sets API
 
-- [ ] **P2.5.1** Create `app/api/test_sets.py`
+- [x] **P2.5.1** Create `app/api/test_sets.py`
   - Full CRUD for test sets
   - CRUD for test cases within sets
   - Import/export JSON endpoints
   **Acceptance:** All endpoints work
 
-- [ ] **P2.5.2** Implement JSON import/export
+- [x] **P2.5.2** Implement JSON import/export
   - Validate imported structure
   - Export with metadata
   **Acceptance:** Round-trip works
 
-- [ ] **P2.5.3** Write tests for test sets API
+- [x] **P2.5.3** Write tests for test sets API
   **Acceptance:** Full coverage
 
 ### 2.6 Test Templates API

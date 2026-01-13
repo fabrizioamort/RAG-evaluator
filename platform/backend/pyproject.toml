@@ -13,6 +13,7 @@ dependencies = [
     "pydantic-settings>=2.1.0",
     "asyncpg>=0.29.0",
     "aiosqlite>=0.19.0",
+    "aiofiles>=23.2.0",
     "litellm>=1.17.0",
     "httpx>=0.26.0",
     "structlog>=24.1.0",
@@ -29,6 +30,7 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.8.0",
     "httpx>=0.26.0",
+    "types-aiofiles>=23.2.0",
 ]
 
 [build-system]
