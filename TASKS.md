@@ -446,37 +446,37 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 2.9 Frontend - Projects UI
 
-- [ ] **P2.9.1** Create Projects list page
+- [x] **P2.9.1** Create Projects list page
   - Table with name, status, KB count, evaluation count
   - Create button
   - Status filter
   **Acceptance:** Lists projects from API
 
-- [ ] **P2.9.2** Create Project detail page
+- [x ] **P2.9.2** Create Project detail page
   - Project info card
   - Tabs: Knowledge Bases, Test Sets, RAG Configs, Evaluations
   - Edit/Archive buttons
   **Acceptance:** Shows project details
 
-- [ ] **P2.9.3** Create Project create/edit dialog
+- [x] **P2.9.3** Create Project create/edit dialog
   - Form with validation
   - Tags input
   **Acceptance:** Can create/edit projects
 
 ### 2.10 Frontend - Knowledge Bases UI
 
-- [ ] **P2.10.1** Create KB list component (within project)
+- [x] **P2.10.1** Create KB list component (within project)
   - Table with name, status, doc count, version
   - Create button
   **Acceptance:** Lists KBs
 
-- [ ] **P2.10.2** Create KB detail view
+- [x] **P2.10.2** Create KB detail view
   - Document list with upload
   - Version history
   - Index status
   **Acceptance:** Shows KB details
 
-- [ ] **P2.10.3** Create document upload component
+- [x] **P2.10.3** Create document upload component
   - Drag-and-drop zone
   - Multi-file upload
   - Progress indicator
