@@ -421,14 +421,14 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 2.7 RAG Configs API
 
-- [ ] **P2.7.1** Create `app/api/rag_configs.py`
+- [x] **P2.7.1** Create `app/api/rag_configs.py`
   - CRUD for RAG configs
   - GET /rag-types (list available)
   - GET /rag-types/{type}/parameters (schema)
   - GET /llm-providers (list available)
   **Acceptance:** All endpoints work
 
-- [ ] **P2.7.2** Define RAG type registry
+- [x] **P2.7.2** Define RAG type registry
   - Map type name to implementation class
   - Parameter schemas per type
   **Acceptance:** Types discoverable

@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from app.api import health, knowledge_bases, projects, test_sets, test_templates
+from app.api import health, knowledge_bases, projects, rag_configs, test_sets, test_templates
 from app.config import settings
 from app.database import engine, init_db
 from app.utils.logging_config import get_logger, request_id_var, setup_logging
@@ -134,6 +134,7 @@ app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
 app.include_router(knowledge_bases.router, prefix=settings.API_V1_PREFIX)
 app.include_router(test_sets.router, prefix=settings.API_V1_PREFIX)
 app.include_router(test_templates.router, prefix=settings.API_V1_PREFIX)
+app.include_router(rag_configs.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/")
