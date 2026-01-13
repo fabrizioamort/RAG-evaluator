@@ -11,8 +11,14 @@ from openai import OpenAI
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.exceptions import UnexpectedResponse
 
-from rag_evaluator.common.base_rag import BaseRAG
+from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
 from rag_evaluator.common.document_loaders import create_loader
+from rag_evaluator.common.provider_interfaces import (
+    GeneratedAnswer,
+    RetrievalTrace,
+    RetrievedChunk,
+    RetrievedContext,
+)
 from rag_evaluator.config import settings
 
 
@@ -23,14 +29,16 @@ class HybridSearchRAG(BaseRAG):
         self,
         collection_name: str | None = None,
         qdrant_url: str | None = None,
+        config: RAGConfig | None = None,
     ) -> None:
         """Initialize hybrid search RAG with Qdrant.
 
         Args:
             collection_name: Name of the Qdrant collection (defaults to settings)
             qdrant_url: Qdrant server URL (defaults to settings)
+            config: Optional RAGConfig for LLM and embedding configuration
         """
-        super().__init__("Hybrid Search (Semantic + Keyword)")
+        super().__init__("Hybrid Search (Semantic + Keyword)", config=config)
 
         # Initialize Qdrant client
         self.qdrant_url = qdrant_url or settings.qdrant_url
@@ -48,9 +56,11 @@ class HybridSearchRAG(BaseRAG):
         )
 
         # Text splitter for chunking (smaller chunks for hybrid search)
+        chunk_size = self.config.parameters.get("chunk_size", settings.hybrid_chunk_size)
+        chunk_overlap = self.config.parameters.get("chunk_overlap", settings.hybrid_chunk_overlap)
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=settings.hybrid_chunk_size,
-            chunk_overlap=settings.hybrid_chunk_overlap,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
             length_function=len,
         )
 
@@ -100,10 +110,14 @@ class HybridSearchRAG(BaseRAG):
         Returns:
             Dense embedding vector (1536 dimensions)
         """
+        model = self.config.embedding_model or settings.embedding_model
         response = self.openai_client.embeddings.create(
-            model=settings.embedding_model,
+            model=model,
             input=text,
         )
+        # Track embedding tokens
+        if hasattr(response, "usage") and response.usage:
+            self._token_usage.add_embedding_tokens(response.usage.total_tokens)
         return response.data[0].embedding  # type: ignore[no-any-return]
 
     def _get_sparse_embedding(self, text: str) -> models.SparseVector:
@@ -139,10 +153,14 @@ class HybridSearchRAG(BaseRAG):
         texts = [chunk.page_content for chunk in batch_chunks]
 
         # Batch dense embeddings (OpenAI)
+        model = self.config.embedding_model or settings.embedding_model
         dense_response = self.openai_client.embeddings.create(
-            model=settings.embedding_model,
+            model=model,
             input=texts,
         )
+        # Track embedding tokens
+        if hasattr(dense_response, "usage") and dense_response.usage:
+            self._token_usage.add_embedding_tokens(dense_response.usage.total_tokens)
         dense_embeddings = [data.embedding for data in dense_response.data]
 
         # Batch sparse embeddings (FastEmbed)
@@ -249,6 +267,7 @@ class HybridSearchRAG(BaseRAG):
                 print(
                     f"Processed and uploaded chunks {i + 1}-{min(i + batch_size, total_chunks)}/{total_chunks}"
                 )
+                self._report_progress(min(i + batch_size, total_chunks), total_chunks)
 
             except Exception as e:
                 print(f"Error processing batch starting at index {i}: {e}")
@@ -257,27 +276,32 @@ class HybridSearchRAG(BaseRAG):
         self._total_chunks = total_chunks
         print(f"Successfully indexed {total_chunks} chunks in Qdrant (hybrid mode)")
 
-    def query(self, question: str, top_k: int = 5) -> dict[str, Any]:
-        """Query using hybrid search (dense + sparse with RRF fusion).
+    def retrieve(self, question: str, top_k: int = 5) -> RetrievedContext:
+        """Retrieve context using hybrid search (dense + sparse with RRF fusion).
 
         Args:
-            question: The question to answer
+            question: The question to retrieve context for
             top_k: Number of top documents to retrieve
 
         Returns:
-            Dictionary containing answer, context, and metadata
+            RetrievedContext with chunks and trace information
         """
-        # Start timing
         start_time = time.time()
 
         # Get both embeddings for the question
+        dense_start = time.time()
         dense_vec = self._get_dense_embedding(question)
+        dense_time = time.time() - dense_start
+
+        sparse_start = time.time()
         sparse_vec = self._get_sparse_embedding(question)
+        sparse_time = time.time() - sparse_start
 
         # Hybrid search with RRF fusion
         # Prefetch more candidates from each search, then fuse
         prefetch_limit = top_k * 4  # Prefetch more for better fusion
 
+        query_start = time.time()
         results = self.client.query_points(
             collection_name=self.collection_name,
             prefetch=[
@@ -296,28 +320,115 @@ class HybridSearchRAG(BaseRAG):
             limit=top_k,
             with_payload=True,
         )
+        query_time = time.time() - query_start
 
         # Extract retrieved chunks
         retrieved_chunks = []
-        retrieved_metadata = []
+        chunk_details = []
 
-        for point in results.points:
+        for i, point in enumerate(results.points):
             if point.payload:
-                retrieved_chunks.append(point.payload.get("text", ""))
-                retrieved_metadata.append(
-                    {
-                        "source": point.payload.get("source", "unknown"),
-                        "chunk_index": point.payload.get("chunk_index", -1),
-                        "score": point.score,
-                    }
+                text = point.payload.get("text", "")
+                source = point.payload.get("source", "unknown")
+                chunk_idx = point.payload.get("chunk_index", -1)
+
+                retrieved_chunks.append(text)
+                chunk_details.append(
+                    RetrievedChunk(
+                        content=text,
+                        document_id=source,
+                        chunk_id=f"chunk_{chunk_idx}",
+                        score=point.score if point.score else 0.0,
+                        rank=i,
+                        source=source,
+                        metadata={
+                            "chunk_index": chunk_idx,
+                            "fusion_score": point.score,
+                        },
+                    )
                 )
 
         retrieval_time = time.time() - start_time
         self._retrieval_times.append(retrieval_time)
 
+        # Build trace
+        trace = RetrievalTrace(
+            strategy="hybrid",
+            total_duration_ms=retrieval_time * 1000,
+            fusion_details={
+                "method": "RRF",
+                "prefetch_limit": prefetch_limit,
+                "k": 60,  # RRF default k
+            },
+        )
+        trace.add_step(
+            step_type="dense_embedding",
+            input_data={"query": question},
+            output_refs=["dense_vector"],
+            duration_ms=dense_time * 1000,
+        )
+        trace.add_step(
+            step_type="sparse_embedding",
+            input_data={"query": question, "model": "SPLADE"},
+            output_refs=["sparse_vector"],
+            duration_ms=sparse_time * 1000,
+        )
+        trace.add_step(
+            step_type="hybrid_search",
+            input_data={
+                "top_k": top_k,
+                "collection": self.collection_name,
+                "fusion": "RRF",
+            },
+            output_refs=[c.chunk_id for c in chunk_details],
+            duration_ms=query_time * 1000,
+            metadata={
+                "dense_prefetch": prefetch_limit,
+                "sparse_prefetch": prefetch_limit,
+            },
+        )
+        trace.retrieved_chunks = chunk_details
+
+        return RetrievedContext(
+            chunks=retrieved_chunks,
+            chunk_details=chunk_details,
+            trace=trace,
+            retrieval_time=retrieval_time,
+        )
+
+    def _retrieve_only(self, question: str, top_k: int = 5) -> dict[str, Any]:
+        """Perform retrieval without generation.
+
+        Args:
+            question: The question to retrieve context for
+            top_k: Number of top documents to retrieve
+
+        Returns:
+            Dictionary with context and metadata
+        """
+        context = self.retrieve(question, top_k)
+        return {
+            "context": context.chunks,
+            "metadata": {
+                "sources": [c.source for c in context.chunk_details],
+                "scores": [c.score for c in context.chunk_details],
+                "fusion_method": "RRF",
+            },
+        }
+
+    def _generate_only(self, question: str, context_chunks: list[str]) -> str:
+        """Generate answer from context without retrieval.
+
+        Args:
+            question: The question to answer
+            context_chunks: Retrieved context chunks
+
+        Returns:
+            Generated answer text
+        """
         # Generate answer using LLM with retrieved context
         context_text = "\n\n".join(
-            [f"[{i + 1}] {chunk}" for i, chunk in enumerate(retrieved_chunks)]
+            [f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)]
         )
 
         prompt = f"""Answer the following question based only on the provided context. If the answer cannot be found in the context, say "I cannot answer this question based on the provided context."
@@ -330,8 +441,9 @@ Question: {question}
 Answer:"""
 
         # Call OpenAI API
+        model = self.config.llm_model or settings.openai_model
         completion_params: dict[str, Any] = {
-            "model": settings.openai_model,
+            "model": model,
             "messages": [
                 {
                     "role": "system",
@@ -342,21 +454,75 @@ Answer:"""
         }
 
         # Only add temperature for models that support it (not gpt-5-nano)
-        if "nano" not in settings.openai_model.lower():
+        if "nano" not in model.lower():
             completion_params["temperature"] = 0.0
 
         response = self.openai_client.chat.completions.create(**completion_params)
 
-        answer = response.choices[0].message.content or "No answer generated"
+        # Track token usage
+        if response.usage:
+            self._token_usage.add_prompt_tokens(response.usage.prompt_tokens)
+            self._token_usage.add_completion_tokens(response.usage.completion_tokens)
+
+        return response.choices[0].message.content or "No answer generated"
+
+    def generate(self, question: str, context: RetrievedContext) -> GeneratedAnswer:
+        """Generate answer from retrieved context.
+
+        Args:
+            question: The question to answer
+            context: Previously retrieved context
+
+        Returns:
+            GeneratedAnswer with text and token usage
+        """
+        start_time = time.time()
+
+        answer = self._generate_only(question, context.chunks)
+
+        generation_time = time.time() - start_time
+
+        return GeneratedAnswer(
+            text=answer,
+            generation_time=generation_time,
+            prompt_tokens=self._token_usage.prompt_tokens,
+            completion_tokens=self._token_usage.completion_tokens,
+        )
+
+    def query(self, question: str, top_k: int = 5) -> dict[str, Any]:
+        """Query using hybrid search (dense + sparse with RRF fusion).
+
+        Args:
+            question: The question to answer
+            top_k: Number of top documents to retrieve
+
+        Returns:
+            Dictionary containing answer, context, and metadata
+        """
+        # Reset token usage for this query
+        self.reset_token_usage()
+
+        # Start timing
+        start_time = time.time()
+
+        # Retrieve context
+        context = self.retrieve(question, top_k)
+
+        # Generate answer
+        answer = self._generate_only(question, context.chunks)
+
+        total_time = time.time() - start_time
 
         return {
             "answer": answer,
-            "context": retrieved_chunks,
+            "context": context.chunks,
             "metadata": {
-                "retrieval_time": retrieval_time,
-                "chunks_retrieved": len(retrieved_chunks),
-                "sources": [meta.get("source", "unknown") for meta in retrieved_metadata],
+                "retrieval_time": context.retrieval_time,
+                "chunks_retrieved": len(context.chunks),
+                "sources": [c.source for c in context.chunk_details],
                 "fusion_method": "RRF",
+                "token_usage": self._token_usage.to_dict(),
+                "total_time": total_time,
             },
         }
 
@@ -385,6 +551,9 @@ Answer:"""
             "total_queries": len(self._retrieval_times),
             "collection_name": self.collection_name,
             "fusion_method": "RRF",
-            "chunk_size": settings.hybrid_chunk_size,
-            "chunk_overlap": settings.hybrid_chunk_overlap,
+            "chunk_size": self.config.parameters.get("chunk_size", settings.hybrid_chunk_size),
+            "chunk_overlap": self.config.parameters.get(
+                "chunk_overlap", settings.hybrid_chunk_overlap
+            ),
+            "token_usage": self._token_usage.to_dict(),
         }

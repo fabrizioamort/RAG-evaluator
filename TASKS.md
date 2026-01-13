@@ -517,41 +517,41 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 3.1 Core Library Modifications
 
-- [ ] **P3.1.1** Modify `src/rag_evaluator/common/base_rag.py`
+- [x] **P3.1.1** Modify `src/rag_evaluator/common/base_rag.py`
   - Add RAGConfig dataclass
   - Add retrieve() abstract method
   - Add generate() abstract method
   - Update query() to use retrieve+generate
   **Acceptance:** Existing tests still pass
 
-- [ ] **P3.1.2** Create `src/rag_evaluator/common/provider_interfaces.py`
+- [x] **P3.1.2** Create `src/rag_evaluator/common/provider_interfaces.py`
   - RetrievedChunk, RetrievalTrace, RetrievedContext
   - GeneratedAnswer
   - LLMProvider, EmbeddingProvider ABCs
   **Acceptance:** Interfaces importable
 
-- [ ] **P3.1.3** Create `src/rag_evaluator/common/token_tracker.py`
+- [x] **P3.1.3** Create `src/rag_evaluator/common/token_tracker.py`
   - TokenUsage dataclass
   **Acceptance:** Token tracking works
 
-- [ ] **P3.1.4** Update VectorSemanticRAG for new interface
+- [x] **P3.1.4** Update VectorSemanticRAG for new interface
   - Implement retrieve()
   - Implement generate()
   - Return RetrievalTrace
   **Acceptance:** Existing functionality preserved
 
-- [ ] **P3.1.5** Update VectorHybridRAG for new interface
+- [x] **P3.1.5** Update VectorHybridRAG for new interface
   **Acceptance:** Works with new interface
 
-- [ ] **P3.1.6** Update GraphRAG for new interface
+- [x] **P3.1.6** Update GraphRAG for new interface
   **Acceptance:** Works with new interface
 
-- [ ] **P3.1.7** Update FilesystemRAG for new interface
+- [x] **P3.1.7** Update FilesystemRAG for new interface
   **Acceptance:** Works with new interface
 
 ### 3.2 RAG Adapter Service
 
-- [ ] **P3.2.1** Create `app/services/rag_adapter.py`
+- [x] **P3.2.1** Create `app/services/rag_adapter.py`
   - Instantiate RAG from RAGConfig model
   - Map config parameters to RAG constructor
   - Handle index paths

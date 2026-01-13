@@ -9,7 +9,13 @@ from neo4j_graphrag.generation import GraphRAG
 from neo4j_graphrag.llm.openai_llm import OpenAILLM
 from neo4j_graphrag.retrievers import VectorCypherRetriever
 
-from rag_evaluator.common.base_rag import BaseRAG
+from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
+from rag_evaluator.common.provider_interfaces import (
+    GeneratedAnswer,
+    RetrievalTrace,
+    RetrievedChunk,
+    RetrievedContext,
+)
 from rag_evaluator.config import settings
 from rag_evaluator.rag_implementations.graph_rag.indexer import GraphIndexer
 
@@ -23,6 +29,7 @@ class Neo4jGraphRAG(BaseRAG):
         neo4j_username: str | None = None,
         neo4j_password: str | None = None,
         vector_index_name: str = "chunk_embeddings",
+        config: RAGConfig | None = None,
     ) -> None:
         """Initialize Neo4j Graph RAG.
 
@@ -31,8 +38,9 @@ class Neo4jGraphRAG(BaseRAG):
             neo4j_username: Neo4j username (defaults to settings)
             neo4j_password: Neo4j password (defaults to settings)
             vector_index_name: Name of the vector index to use
+            config: Optional RAGConfig for LLM and embedding configuration
         """
-        super().__init__("Neo4j Graph RAG")
+        super().__init__("Neo4j Graph RAG", config=config)
 
         # Use settings as defaults
         self.neo4j_uri = neo4j_uri or settings.neo4j_uri
@@ -45,17 +53,21 @@ class Neo4jGraphRAG(BaseRAG):
             self.neo4j_uri, auth=(self.neo4j_username, self.neo4j_password)
         )
 
+        # Get model from config or settings
+        embedding_model = self.config.embedding_model or settings.embedding_model
+        llm_model = self.config.llm_model or settings.openai_model
+
         # Initialize embedder and LLM
-        self.embedder = OpenAIEmbeddings(model=settings.embedding_model)
+        self.embedder = OpenAIEmbeddings(model=embedding_model)
 
         # LLM configuration for answer generation
         llm_params: dict[str, Any] = {}
         # Only add temperature for models that support it
-        if "nano" not in settings.openai_model.lower():
+        if "nano" not in llm_model.lower():
             llm_params["temperature"] = 0.2
 
         self.llm = OpenAILLM(
-            model_name=settings.openai_model,
+            model_name=llm_model,
             model_params=llm_params,
         )
 
@@ -112,12 +124,15 @@ class Neo4jGraphRAG(BaseRAG):
         Args:
             documents_path: Path to the directory containing documents
         """
+        llm_model = self.config.llm_model or settings.openai_model
+        embedding_model = self.config.embedding_model or settings.embedding_model
+
         indexer = GraphIndexer(
             neo4j_uri=self.neo4j_uri,
             neo4j_username=self.neo4j_username,
             neo4j_password=self.neo4j_password,
-            llm_model=settings.openai_model,
-            embedding_model=settings.embedding_model,
+            llm_model=llm_model,
+            embedding_model=embedding_model,
         )
 
         print(f"\nIndexing documents from: {documents_path}")
@@ -130,6 +145,206 @@ class Neo4jGraphRAG(BaseRAG):
         print(f"Node label distribution: {stats['node_labels']}")
         print("================================\n")
 
+    def retrieve(self, question: str, top_k: int = 5) -> RetrievedContext:
+        """Retrieve context using graph traversal and vector similarity.
+
+        Args:
+            question: The question to retrieve context for
+            top_k: Number of top chunks to retrieve
+
+        Returns:
+            RetrievedContext with chunks and trace information
+        """
+        start_time = time.time()
+
+        try:
+            # Use retriever directly for just retrieval
+            retriever_result = self.retriever.search(
+                query_text=question,
+                top_k=top_k,
+            )
+
+            retrieval_time = time.time() - start_time
+            self._retrieval_times.append(retrieval_time)
+
+            # Extract context from retriever results
+            context_chunks = []
+            chunk_details = []
+
+            if retriever_result and retriever_result.items:
+                for i, item in enumerate(retriever_result.items):
+                    # Include both chunk text and graph metadata
+                    context_text = item.content
+                    metadata = item.metadata or {}
+
+                    # Build enriched context with entity information
+                    entities = metadata.get("entities", [])
+                    related = metadata.get("related_entities", [])
+
+                    enriched_text = context_text
+                    if entities:
+                        enriched_text += f"\n[Entities: {', '.join(entities)}]"
+                    if related:
+                        enriched_text += f"\n[Related: {', '.join(related)}]"
+
+                    context_chunks.append(enriched_text)
+
+                    # Determine source from metadata
+                    source = metadata.get("source", "graph_node")
+
+                    chunk_details.append(
+                        RetrievedChunk(
+                            content=context_text,
+                            document_id=source,
+                            chunk_id=f"graph_chunk_{i}",
+                            score=item.score if hasattr(item, "score") else 1.0 - (i * 0.1),
+                            rank=i,
+                            source=source,
+                            metadata={
+                                "entities": entities,
+                                "related_entities": related,
+                                "relationship_types": metadata.get("relationship_types", []),
+                            },
+                        )
+                    )
+
+            # Build trace
+            trace = RetrievalTrace(
+                strategy="graph",
+                total_duration_ms=retrieval_time * 1000,
+            )
+            trace.add_step(
+                step_type="vector_search",
+                input_data={"query": question, "top_k": top_k},
+                output_refs=[c.chunk_id for c in chunk_details],
+                duration_ms=retrieval_time * 500,  # Approximate
+                metadata={"index": self.vector_index_name},
+            )
+            trace.add_step(
+                step_type="graph_expansion",
+                input_data={"cypher_query": "entity_relationship_expansion"},
+                output_refs=[c.chunk_id for c in chunk_details],
+                duration_ms=retrieval_time * 500,  # Approximate
+                metadata={
+                    "patterns": ["MENTIONS", "RELATED_TO", "ASSOCIATED_WITH", "PART_OF"],
+                },
+            )
+            trace.retrieved_chunks = chunk_details
+
+            return RetrievedContext(
+                chunks=context_chunks,
+                chunk_details=chunk_details,
+                trace=trace,
+                retrieval_time=retrieval_time,
+            )
+
+        except Exception as e:
+            retrieval_time = time.time() - start_time
+            self._retrieval_times.append(retrieval_time)
+
+            # Return empty context with error in trace
+            trace = RetrievalTrace(
+                strategy="graph",
+                total_duration_ms=retrieval_time * 1000,
+            )
+            trace.add_step(
+                step_type="error",
+                input_data={"query": question},
+                output_refs=[],
+                duration_ms=retrieval_time * 1000,
+                metadata={"error": str(e)},
+            )
+
+            return RetrievedContext(
+                chunks=[],
+                chunk_details=[],
+                trace=trace,
+                retrieval_time=retrieval_time,
+            )
+
+    def _retrieve_only(self, question: str, top_k: int = 5) -> dict[str, Any]:
+        """Perform retrieval without generation.
+
+        Args:
+            question: The question to retrieve context for
+            top_k: Number of top chunks to retrieve
+
+        Returns:
+            Dictionary with context and metadata
+        """
+        context = self.retrieve(question, top_k)
+        return {
+            "context": context.chunks,
+            "metadata": {
+                "sources": [c.source for c in context.chunk_details],
+                "graph_enhanced": True,
+            },
+        }
+
+    def _generate_only(self, question: str, context_chunks: list[str]) -> str:
+        """Generate answer from context without retrieval.
+
+        Args:
+            question: The question to answer
+            context_chunks: Retrieved context chunks
+
+        Returns:
+            Generated answer text
+        """
+        # Build context for LLM
+        context_text = "\n\n".join(
+            [f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)]
+        )
+
+        prompt = f"""Answer the following question based only on the provided context which includes graph-derived entity relationships. If the answer cannot be found in the context, say "I cannot answer this question based on the provided context."
+
+Context:
+{context_text}
+
+Question: {question}
+
+Answer:"""
+
+        # Use the LLM directly
+        try:
+            response = self.llm.invoke(prompt)
+
+            # Note: neo4j-graphrag LLM doesn't provide token counts directly
+            # We estimate based on character count
+            estimated_prompt_tokens = len(prompt) // 4
+            estimated_completion_tokens = len(response.content) // 4 if response.content else 0
+
+            self._token_usage.add_prompt_tokens(estimated_prompt_tokens)
+            self._token_usage.add_completion_tokens(estimated_completion_tokens)
+
+            return response.content or "No answer generated"
+
+        except Exception as e:
+            return f"Error generating answer: {str(e)}"
+
+    def generate(self, question: str, context: RetrievedContext) -> GeneratedAnswer:
+        """Generate answer from retrieved context.
+
+        Args:
+            question: The question to answer
+            context: Previously retrieved context
+
+        Returns:
+            GeneratedAnswer with text and token usage
+        """
+        start_time = time.time()
+
+        answer = self._generate_only(question, context.chunks)
+
+        generation_time = time.time() - start_time
+
+        return GeneratedAnswer(
+            text=answer,
+            generation_time=generation_time,
+            prompt_tokens=self._token_usage.prompt_tokens,
+            completion_tokens=self._token_usage.completion_tokens,
+        )
+
     def query(self, question: str, top_k: int = 5) -> dict[str, Any]:
         """Query using graph traversal and vector similarity.
 
@@ -140,6 +355,9 @@ class Neo4jGraphRAG(BaseRAG):
         Returns:
             Dictionary containing answer, context, and metadata
         """
+        # Reset token usage for this query
+        self.reset_token_usage()
+
         start_time = time.time()
         self._total_queries += 1
 
@@ -173,6 +391,12 @@ class Neo4jGraphRAG(BaseRAG):
 
                     context_chunks.append(context_text)
 
+            # Estimate token usage
+            prompt_estimate = len(question) // 4
+            completion_estimate = len(response.answer) // 4 if response.answer else 0
+            self._token_usage.add_prompt_tokens(prompt_estimate)
+            self._token_usage.add_completion_tokens(completion_estimate)
+
             return {
                 "answer": response.answer,
                 "context": context_chunks,
@@ -180,6 +404,7 @@ class Neo4jGraphRAG(BaseRAG):
                     "retrieval_time": retrieval_time,
                     "chunks_retrieved": len(context_chunks),
                     "graph_enhanced": True,
+                    "token_usage": self._token_usage.to_dict(),
                 },
             }
 
@@ -195,6 +420,7 @@ class Neo4jGraphRAG(BaseRAG):
                     "retrieval_time": retrieval_time,
                     "chunks_retrieved": 0,
                     "error": str(e),
+                    "token_usage": self._token_usage.to_dict(),
                 },
             }
 
@@ -216,6 +442,7 @@ class Neo4jGraphRAG(BaseRAG):
         return {
             "avg_retrieval_time": avg_retrieval_time,
             "total_queries": self._total_queries,
+            "token_usage": self._token_usage.to_dict(),
             **graph_stats,
         }
 

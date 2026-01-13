@@ -10,8 +10,14 @@ from langchain_core.documents import Document as LangChainDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
 
-from rag_evaluator.common.base_rag import BaseRAG
+from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
 from rag_evaluator.common.document_loaders import create_loader
+from rag_evaluator.common.provider_interfaces import (
+    GeneratedAnswer,
+    RetrievalTrace,
+    RetrievedChunk,
+    RetrievedContext,
+)
 from rag_evaluator.config import settings
 
 
@@ -19,15 +25,19 @@ class ChromaSemanticRAG(BaseRAG):
     """RAG implementation using ChromaDB for semantic vector search."""
 
     def __init__(
-        self, collection_name: str = "rag_documents", persist_directory: str | None = None
+        self,
+        collection_name: str = "rag_documents",
+        persist_directory: str | None = None,
+        config: RAGConfig | None = None,
     ) -> None:
         """Initialize ChromaDB semantic RAG.
 
         Args:
             collection_name: Name of the ChromaDB collection to use
             persist_directory: Optional custom persistence directory (defaults to settings)
+            config: Optional RAGConfig for LLM and embedding configuration
         """
-        super().__init__("ChromaDB Semantic Search")
+        super().__init__("ChromaDB Semantic Search", config=config)
 
         # Initialize ChromaDB client
         persist_path = persist_directory or settings.chroma_persist_directory
@@ -49,9 +59,11 @@ class ChromaSemanticRAG(BaseRAG):
         )
 
         # Text splitter for chunking documents
+        chunk_size = self.config.parameters.get("chunk_size", 1000)
+        chunk_overlap = self.config.parameters.get("chunk_overlap", 200)
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
             length_function=len,
         )
 
@@ -68,7 +80,11 @@ class ChromaSemanticRAG(BaseRAG):
         Returns:
             Embedding vector
         """
-        response = self.openai_client.embeddings.create(model=settings.embedding_model, input=text)
+        model = self.config.embedding_model or settings.embedding_model
+        response = self.openai_client.embeddings.create(model=model, input=text)
+        # Track embedding tokens
+        if hasattr(response, "usage") and response.usage:
+            self._token_usage.add_embedding_tokens(response.usage.total_tokens)
         return response.data[0].embedding  # type: ignore[no-any-return]
 
     def prepare_documents(self, documents_path: str) -> None:
@@ -123,6 +139,8 @@ class ChromaSemanticRAG(BaseRAG):
         chunk_metadatas: list[dict[str, Any]] = []
         chunk_embeddings: list[list[float]] = []
 
+        total_chunks = len(chunks)
+
         # Process chunks in batches for efficiency
         for i, chunk in enumerate(chunks):
             chunk_id = f"chunk_{i}"
@@ -143,6 +161,7 @@ class ChromaSemanticRAG(BaseRAG):
             # Progress indicator
             if (i + 1) % 10 == 0:
                 print(f"Processed {i + 1}/{len(chunks)} chunks")
+                self._report_progress(i + 1, total_chunks)
 
         # Add to ChromaDB collection
         self.collection.add(
@@ -155,19 +174,16 @@ class ChromaSemanticRAG(BaseRAG):
         self._total_chunks = len(chunks)
         print(f"Successfully indexed {len(chunks)} chunks in ChromaDB")
 
-    def query(self, question: str, top_k: int = 5) -> dict[str, Any]:
-        """Query using semantic similarity search.
+    def _retrieve_only(self, question: str, top_k: int = 5) -> dict[str, Any]:
+        """Perform retrieval without generation.
 
         Args:
-            question: The question to answer
+            question: The question to retrieve context for
             top_k: Number of top documents to retrieve
 
         Returns:
-            Dictionary containing answer, context, and metadata
+            Dictionary with context and metadata
         """
-        # Start timing
-        start_time = time.time()
-
         # Get embedding for the question
         question_embedding = self._get_embedding(question)
 
@@ -180,13 +196,111 @@ class ChromaSemanticRAG(BaseRAG):
         # Extract retrieved chunks
         retrieved_chunks = results["documents"][0] if results["documents"] else []
         retrieved_metadata = results["metadatas"][0] if results["metadatas"] else []
+        distances_list = results.get("distances")
+        distances = distances_list[0] if distances_list else []
+
+        return {
+            "context": retrieved_chunks,
+            "metadata": {
+                "sources": [meta.get("source", "unknown") for meta in retrieved_metadata],
+                "chunk_indices": [meta.get("chunk_index", -1) for meta in retrieved_metadata],
+                "distances": distances,
+            },
+        }
+
+    def retrieve(self, question: str, top_k: int = 5) -> RetrievedContext:
+        """Retrieve context for a question.
+
+        Args:
+            question: The question to retrieve context for
+            top_k: Number of top documents to retrieve
+
+        Returns:
+            RetrievedContext with chunks and trace information
+        """
+        start_time = time.time()
+
+        # Get embedding for the question
+        question_embedding = self._get_embedding(question)
+        embedding_time = time.time() - start_time
+
+        # Query ChromaDB
+        query_start = time.time()
+        results = self.collection.query(
+            query_embeddings=[question_embedding],  # type: ignore[arg-type]
+            n_results=top_k,
+        )
+        query_time = time.time() - query_start
+
+        # Extract retrieved chunks
+        retrieved_chunks = results["documents"][0] if results["documents"] else []
+        retrieved_metadata = results["metadatas"][0] if results["metadatas"] else []
+        distances_list = results.get("distances")
+        distances = distances_list[0] if distances_list else []
 
         retrieval_time = time.time() - start_time
         self._retrieval_times.append(retrieval_time)
 
+        # Build chunk details
+        chunk_details = []
+        for i, (chunk, meta) in enumerate(zip(retrieved_chunks, retrieved_metadata)):
+            source = str(meta.get("source", "unknown"))
+            distance = distances[i] if i < len(distances) else 0.0
+            # Convert distance to similarity score (cosine distance -> similarity)
+            score = 1.0 - distance if distance else 1.0
+
+            chunk_details.append(
+                RetrievedChunk(
+                    content=chunk,
+                    document_id=source,
+                    chunk_id=f"chunk_{meta.get('chunk_index', i)}",
+                    score=score,
+                    rank=i,
+                    source=source,
+                    metadata={"distance": distance, **meta},
+                )
+            )
+
+        # Build trace
+        trace = RetrievalTrace(
+            strategy="vector",
+            total_duration_ms=retrieval_time * 1000,
+        )
+        trace.add_step(
+            step_type="embedding",
+            input_data={"query": question},
+            output_refs=["query_embedding"],
+            duration_ms=embedding_time * 1000,
+        )
+        trace.add_step(
+            step_type="vector_search",
+            input_data={"top_k": top_k, "collection": self.collection_name},
+            output_refs=[c.chunk_id for c in chunk_details],
+            duration_ms=query_time * 1000,
+            metadata={"method": "cosine_similarity"},
+        )
+        trace.retrieved_chunks = chunk_details
+
+        return RetrievedContext(
+            chunks=retrieved_chunks,
+            chunk_details=chunk_details,
+            trace=trace,
+            retrieval_time=retrieval_time,
+        )
+
+    def _generate_only(self, question: str, context_chunks: list[str]) -> str:
+        """Generate answer from context without retrieval.
+
+        Args:
+            question: The question to answer
+            context_chunks: Retrieved context chunks
+
+        Returns:
+            Generated answer text
+        """
         # Generate answer using LLM with retrieved context
         context_text = "\n\n".join(
-            [f"[{i + 1}] {chunk}" for i, chunk in enumerate(retrieved_chunks)]
+            [f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)]
         )
 
         prompt = f"""Answer the following question based only on the provided context. If the answer cannot be found in the context, say "I cannot answer this question based on the provided context."
@@ -199,9 +313,9 @@ Question: {question}
 Answer:"""
 
         # Call OpenAI API
-        # Note: Some models like gpt-5-nano don't support temperature parameter
+        model = self.config.llm_model or settings.openai_model
         completion_params: dict[str, Any] = {
-            "model": settings.openai_model,
+            "model": model,
             "messages": [
                 {
                     "role": "system",
@@ -212,20 +326,74 @@ Answer:"""
         }
 
         # Only add temperature for models that support it (not gpt-5-nano)
-        if "nano" not in settings.openai_model.lower():
+        if "nano" not in model.lower():
             completion_params["temperature"] = 0.0
 
         response = self.openai_client.chat.completions.create(**completion_params)
 
-        answer = response.choices[0].message.content or "No answer generated"
+        # Track token usage
+        if response.usage:
+            self._token_usage.add_prompt_tokens(response.usage.prompt_tokens)
+            self._token_usage.add_completion_tokens(response.usage.completion_tokens)
+
+        return response.choices[0].message.content or "No answer generated"
+
+    def generate(self, question: str, context: RetrievedContext) -> GeneratedAnswer:
+        """Generate answer from retrieved context.
+
+        Args:
+            question: The question to answer
+            context: Previously retrieved context
+
+        Returns:
+            GeneratedAnswer with text and token usage
+        """
+        start_time = time.time()
+
+        answer = self._generate_only(question, context.chunks)
+
+        generation_time = time.time() - start_time
+
+        return GeneratedAnswer(
+            text=answer,
+            generation_time=generation_time,
+            prompt_tokens=self._token_usage.prompt_tokens,
+            completion_tokens=self._token_usage.completion_tokens,
+        )
+
+    def query(self, question: str, top_k: int = 5) -> dict[str, Any]:
+        """Query using semantic similarity search.
+
+        Args:
+            question: The question to answer
+            top_k: Number of top documents to retrieve
+
+        Returns:
+            Dictionary containing answer, context, and metadata
+        """
+        # Reset token usage for this query
+        self.reset_token_usage()
+
+        # Start timing
+        start_time = time.time()
+
+        # Retrieve context
+        context = self.retrieve(question, top_k)
+
+        # Generate answer
+        answer = self._generate_only(question, context.chunks)
+
+        total_time = time.time() - start_time
 
         return {
             "answer": answer,
-            "context": retrieved_chunks,
+            "context": context.chunks,
             "metadata": {
-                "retrieval_time": retrieval_time,
-                "chunks_retrieved": len(retrieved_chunks),
-                "sources": [meta.get("source", "unknown") for meta in retrieved_metadata],
+                "retrieval_time": context.retrieval_time,
+                "chunks_retrieved": len(context.chunks),
+                "sources": [c.source for c in context.chunk_details],
+                "token_usage": self._token_usage.to_dict(),
+                "total_time": total_time,
             },
         }
 
@@ -249,4 +417,5 @@ Answer:"""
             "total_chunks": collection_count,
             "total_queries": len(self._retrieval_times),
             "collection_name": self.collection_name,
+            "token_usage": self._token_usage.to_dict(),
         }
