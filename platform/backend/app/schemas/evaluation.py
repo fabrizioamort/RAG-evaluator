@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Sequence
 from uuid import UUID
 
 from pydantic import Field
@@ -181,7 +182,7 @@ class EvaluationList(PaginatedResponse):
 class EvaluationResultList(PaginatedResponse):
     """Paginated list of evaluation results."""
 
-    items: list[EvaluationResultResponse]
+    items: Sequence[EvaluationResultResponse]
 
 
 # SSE Progress Events

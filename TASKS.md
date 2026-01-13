@@ -559,18 +559,18 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 3.3 Evaluation Job Management
 
-- [ ] **P3.3.1** Create `app/services/job_event_log.py`
+- [x] **P3.3.1** Create `app/services/job_event_log.py`
   - Persisted event log
   - SSE stream creation
   - Checkpoint save/restore
   **Acceptance:** Events persisted, streams work
 
-- [ ] **P3.3.2** Create `app/services/job_checkpoint_service.py`
+- [x] **P3.3.2** Create `app/services/job_checkpoint_service.py`
   - Save checkpoint with results so far
   - Restore checkpoint for resume
   **Acceptance:** Checkpoints work
 
-- [ ] **P3.3.3** Create `app/services/evaluation_runner.py`
+- [x] **P3.3.3** Create `app/services/evaluation_runner.py`
   - Main evaluation loop
   - Progress reporting
   - Checkpoint every N test cases
@@ -579,7 +579,7 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 3.4 Evaluation API
 
-- [ ] **P3.4.1** Create `app/api/evaluations.py`
+- [x] **P3.4.1** Create `app/api/evaluations.py`
   - POST /evaluations (start new)
   - GET /evaluations/{id}
   - GET /evaluations/{id}/results (paginated)
@@ -590,13 +590,13 @@ Dependencies are noted as `[Depends: TASK_ID]`
   - POST /evaluations/{id}/retry
   **Acceptance:** All endpoints work
 
-- [ ] **P3.4.2** Implement SSE endpoint
+- [x] **P3.4.2** Implement SSE endpoint
   - EventSourceResponse
   - Reconnection support (Last-Event-ID)
   - State reconstruction from DB
   **Acceptance:** Frontend receives progress events
 
-- [ ] **P3.4.3** Create run manifest on evaluation start
+- [x] **P3.4.3** Create run manifest on evaluation start
   - Snapshot all config
   - Store library versions
   **Acceptance:** Manifest created and retrievable

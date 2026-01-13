@@ -8,7 +8,6 @@ Create Date: 2026-01-12
 from typing import Sequence, Union
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -27,9 +26,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("status", sa.String(length=20), nullable=False, server_default="active"),
-        sa.Column(
-            "tags", sa.JSON(), nullable=False, server_default="[]"
-        ),
+        sa.Column("tags", sa.JSON(), nullable=False, server_default="[]"),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
@@ -50,9 +47,7 @@ def upgrade() -> None:
         sa.Column("current_version", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("storage_path", sa.String(length=500), nullable=True),
         sa.Column("index_path", sa.String(length=500), nullable=True),
-        sa.Column(
-            "metadata", sa.JSON(), nullable=False, server_default="{}"
-        ),
+        sa.Column("metadata", sa.JSON(), nullable=False, server_default="{}"),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
@@ -156,9 +151,7 @@ def upgrade() -> None:
         sa.Column("project_id", sa.UUID(), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column(
-            "tags", sa.JSON(), nullable=False, server_default="[]"
-        ),
+        sa.Column("tags", sa.JSON(), nullable=False, server_default="[]"),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
@@ -204,9 +197,7 @@ def upgrade() -> None:
         sa.Column("test_set_id", sa.UUID(), nullable=False),
         sa.Column("knowledge_base_id", sa.UUID(), nullable=True),
         sa.Column("status", sa.String(length=50), nullable=False, server_default="pending"),
-        sa.Column(
-            "config", sa.JSON(), nullable=False, server_default="{}"
-        ),
+        sa.Column("config", sa.JSON(), nullable=False, server_default="{}"),
         sa.Column("questions_generated", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("questions_total", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("questions_rejected", sa.Integer(), nullable=False, server_default="0"),
@@ -286,9 +277,7 @@ def upgrade() -> None:
         sa.Column("is_baseline", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("baseline_reason", sa.Text(), nullable=True),
         sa.Column("notes", sa.Text(), nullable=True),
-        sa.Column(
-            "tags", sa.JSON(), nullable=False, server_default="[]"
-        ),
+        sa.Column("tags", sa.JSON(), nullable=False, server_default="[]"),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
@@ -385,9 +374,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("url", sa.String(length=500), nullable=False),
         sa.Column("secret", sa.String(length=255), nullable=False),
-        sa.Column(
-            "events", sa.JSON(), nullable=False, server_default="[]"
-        ),
+        sa.Column("events", sa.JSON(), nullable=False, server_default="[]"),
         sa.Column("active", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("failure_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("last_triggered_at", sa.DateTime(timezone=True), nullable=True),

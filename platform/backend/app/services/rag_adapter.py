@@ -221,7 +221,7 @@ class RAGAdapterService:
         rag_config = RAGConfig(
             name=config_model.name,
             parameters=config_model.parameters or {},
-            storage_path=index_path or str(settings.STORAGE_PATH / "indexes"),
+            storage_path=index_path or str(Path(settings.STORAGE_PATH) / "indexes"),
             llm_provider=config_model.llm_provider,
             llm_model=config_model.llm_model,
             llm_base_url=config_model.llm_base_url,
@@ -258,7 +258,7 @@ class RAGAdapterService:
         elif config_model.rag_type == "filesystem_rag":
             kwargs["llm_model"] = config_model.llm_model
             kwargs["prepared_path"] = index_path or str(
-                settings.STORAGE_PATH / "indexes" / f"fs_{config_model.project_id}"
+                Path(settings.STORAGE_PATH) / "indexes" / f"fs_{config_model.project_id}"
             )
             kwargs["word_threshold"] = config_model.parameters.get("word_threshold", 1000)
             kwargs["max_iterations"] = config_model.parameters.get("max_iterations", 10)
@@ -340,8 +340,9 @@ class RAGAdapterService:
 
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, rag.prepare_documents, documents_path)
-
-            return rag.get_metrics()
+            # Get metrics returns a dict[str, Any]
+            metrics: dict[str, Any] = rag.get_metrics()
+            return metrics
         except Exception as e:
             logger.error("Document preparation failed", error=str(e))
             raise
@@ -365,7 +366,7 @@ class RAGAdapterService:
         import asyncio
 
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, rag.query, question, top_k)
+        result: dict[str, Any] = await loop.run_in_executor(None, rag.query, question, top_k)
         return result
 
     async def query_with_trace(
@@ -387,7 +388,9 @@ class RAGAdapterService:
         import asyncio
 
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, rag.query_with_trace, question, top_k)
+        result: dict[str, Any] = await loop.run_in_executor(
+            None, rag.query_with_trace, question, top_k
+        )
         return result
 
     async def retrieve(
