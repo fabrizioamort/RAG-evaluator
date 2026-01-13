@@ -435,13 +435,13 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 2.8 LLM Provider Service
 
-- [ ] **P2.8.1** Create `app/services/llm_provider.py`
+- [x] **P2.8.1** Create `app/services/llm_provider.py`
   - LiteLLM integration
   - Support openai, ollama, anthropic
   - Token counting
   **Acceptance:** Can call multiple providers
 
-- [ ] **P2.8.2** Write tests with mocked LLM calls
+- [x] **P2.8.2** Write tests with mocked LLM calls
   **Acceptance:** Provider switching works
 
 ### 2.9 Frontend - Projects UI
