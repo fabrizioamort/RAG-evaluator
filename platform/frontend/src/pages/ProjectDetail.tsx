@@ -26,6 +26,7 @@ import { KBList } from '@/components/knowledge-bases/KBList'
 import { CreateKBDialog } from '@/components/knowledge-bases/CreateKBDialog'
 import { StartEvaluationWizard } from '@/components/evaluations/StartEvaluationWizard'
 import { EvaluationProgress } from '@/components/evaluations/EvaluationProgress'
+import { EvaluationResults } from '@/components/evaluations/EvaluationResults'
 
 function KnowledgeBasesTab({ projectId }: { projectId: string }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -267,7 +268,22 @@ function EvaluationsTab({ projectId }: { projectId: string }) {
         enabled: !!projectId,
     })
 
+    const evaluations = data?.data?.items || []
+    const activeEvaluation = evaluations.find(e => e.id === activeEvaluationId)
+
     if (activeEvaluationId) {
+        if (activeEvaluation?.status === 'completed') {
+            return (
+                <EvaluationResults
+                    evaluationId={activeEvaluationId}
+                    onBack={() => {
+                        setActiveEvaluationId(null)
+                        queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
+                    }}
+                />
+            )
+        }
+
         return (
             <div className="space-y-6">
                 <button
@@ -299,7 +315,6 @@ function EvaluationsTab({ projectId }: { projectId: string }) {
         )
     }
 
-    const evaluations = data?.data?.items || []
 
     return (
         <div className="space-y-6">

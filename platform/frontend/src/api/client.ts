@@ -249,12 +249,27 @@ export interface EvaluationResult {
   test_case_id: string | null
   generated_answer: string | null
   faithfulness_score: number | null
+  faithfulness_reason: string | null
   relevancy_score: number | null
+  relevancy_reason: string | null
   precision_score: number | null
+  precision_reason: string | null
   recall_score: number | null
+  recall_reason: string | null
   latency_seconds: number | null
   cost_usd: string | null
+  prompt_tokens: number | null
+  completion_tokens: number | null
   created_at: string
+  // Artifacts
+  retrieved_context_artifact_id?: string | null
+  retrieval_trace_artifact_id?: string | null
+  raw_metrics_artifact_id?: string | null
+  // Augmented from joined test case
+  question?: string
+  expected_answer?: string
+  difficulty?: string
+  category?: string
 }
 
 export interface ProgressEvent {

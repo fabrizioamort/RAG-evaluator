@@ -182,7 +182,7 @@ class EvaluationList(PaginatedResponse):
 class EvaluationResultList(PaginatedResponse):
     """Paginated list of evaluation results."""
 
-    items: Sequence[EvaluationResultResponse]
+    items: Sequence[EvaluationResultWithTestCase]
 
 
 # SSE Progress Events
