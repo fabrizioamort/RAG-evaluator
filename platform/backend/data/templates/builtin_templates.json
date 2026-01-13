@@ -1,0 +1,73 @@
+[
+    {
+        "name": "Factual Recall",
+        "description": "Simple factual questions about specific entities or concepts.",
+        "category": "factual",
+        "question_template": "What is {entity}?",
+        "answer_template": "{entity} is {description}.",
+        "entity_types": [
+            "entity",
+            "concept"
+        ],
+        "complexity_level": "easy"
+    },
+    {
+        "name": "Relationship Comparison",
+        "description": "Comparing two entities on a specific attribute.",
+        "category": "comparison",
+        "question_template": "How does {entity1} compare to {entity2} regarding {attribute}?",
+        "answer_template": "Comparing {entity1} and {entity2}, {entity1} is {value1} while {entity2} is {value2} regarding {attribute}.",
+        "entity_types": [
+            "entity",
+            "attribute"
+        ],
+        "complexity_level": "medium"
+    },
+    {
+        "name": "Multi-hop Reasoning",
+        "description": "Questions that require connecting multiple pieces of information.",
+        "category": "multi_hop",
+        "question_template": "What is the relationship between {entity1} and the {attribute} of {entity2}?",
+        "answer_template": "{entity1} is related to {entity2}'s {attribute} via {connection}.",
+        "entity_types": [
+            "entity",
+            "attribute"
+        ],
+        "complexity_level": "hard"
+    },
+    {
+        "name": "Temporal Event",
+        "description": "Questions about when specific events occurred.",
+        "category": "factual",
+        "question_template": "When did {event} take place?",
+        "answer_template": "{event} took place on {date}.",
+        "entity_types": [
+            "event",
+            "date"
+        ],
+        "complexity_level": "easy"
+    },
+    {
+        "name": "Definition and Context",
+        "description": "Detailed definition of a term within a specific domain.",
+        "category": "inferential",
+        "question_template": "Define {term} in the context of {domain}.",
+        "answer_template": "In the context of {domain}, {term} refers to {definition}.",
+        "entity_types": [
+            "term",
+            "domain"
+        ],
+        "complexity_level": "medium"
+    },
+    {
+        "name": "Procedural Steps",
+        "description": "Step-by-step instructions for a specific action.",
+        "category": "factual",
+        "question_template": "What are the steps to {action}?",
+        "answer_template": "According to the documentation, to {action}: 1. {step1}, 2. {step2}, 3. {step3}.",
+        "entity_types": [
+            "action"
+        ],
+        "complexity_level": "medium"
+    }
+]

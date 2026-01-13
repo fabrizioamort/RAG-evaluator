@@ -1,5 +1,7 @@
 """Test template Pydantic schemas."""
 
+from uuid import UUID
+
 from pydantic import Field
 
 from app.schemas.base import BaseResponseSchema, BaseSchema, PaginatedResponse
@@ -64,7 +66,7 @@ class TestTemplateList(PaginatedResponse):
 class TestTemplateSummary(BaseSchema):
     """Minimal template info for selection."""
 
-    id: str
+    id: UUID
     name: str
     category: str | None
     complexity_level: str

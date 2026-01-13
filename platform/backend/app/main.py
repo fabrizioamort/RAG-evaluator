@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from app.api import health, knowledge_bases, projects, test_sets
+from app.api import health, knowledge_bases, projects, test_sets, test_templates
 from app.config import settings
 from app.database import engine, init_db
 from app.utils.logging_config import get_logger, request_id_var, setup_logging
@@ -39,6 +39,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.is_sqlite:
         await init_db()
         logger.info("Database initialized (SQLite mode)")
+
+    # Load builtin templates
+    from app.database import get_db_context
+    from app.utils.template_loader import load_builtin_templates
+
+    async with get_db_context() as db:
+        await load_builtin_templates(db)
 
     yield
 
@@ -126,6 +133,7 @@ app.include_router(health.router, prefix=settings.API_V1_PREFIX)
 app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
 app.include_router(knowledge_bases.router, prefix=settings.API_V1_PREFIX)
 app.include_router(test_sets.router, prefix=settings.API_V1_PREFIX)
+app.include_router(test_templates.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/")

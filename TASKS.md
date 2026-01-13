@@ -403,19 +403,19 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 2.6 Test Templates API
 
-- [ ] **P2.6.1** Create `app/api/test_templates.py`
+- [x] **P2.6.1** Create `app/api/test_templates.py`
   - GET /test-templates (list builtin + custom)
   - POST /test-templates (create custom)
   - PUT /test-templates/{id}
   - DELETE /test-templates/{id} (not builtin)
   **Acceptance:** All endpoints work
 
-- [ ] **P2.6.2** Load builtin templates on startup
+- [x] **P2.6.2** Load builtin templates on startup
   - Read from `data/templates/builtin_templates.json`
   - Insert if not exists
   **Acceptance:** Builtin templates available
 
-- [ ] **P2.6.3** Create `data/templates/builtin_templates.json`
+- [x] **P2.6.3** Create `data/templates/builtin_templates.json`
   - 6 template types per plan
   **Acceptance:** Valid JSON, templates useful
 
