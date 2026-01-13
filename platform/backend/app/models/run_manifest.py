@@ -3,10 +3,9 @@
 from typing import Any
 
 from sqlalchemy import String
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import BaseModelNoUpdate
+from app.models.base import BaseModelNoUpdate, JSONType
 
 
 class RunManifest(BaseModelNoUpdate):
@@ -14,10 +13,10 @@ class RunManifest(BaseModelNoUpdate):
 
     __tablename__ = "run_manifests"
 
-    rag_config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    kb_version_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    rag_config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    kb_version_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
     generation_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     eval_judge_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    prompt_templates: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    prompt_templates: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     rag_evaluator_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     platform_version: Mapped[str | None] = mapped_column(String(50), nullable=True)

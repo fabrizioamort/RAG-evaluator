@@ -4,11 +4,10 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import ForeignKey, String
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import BaseModelNoUpdate
+from app.models.base import BaseModelNoUpdate, JSONType
 
 if TYPE_CHECKING:
     from app.models.evaluation import Evaluation
@@ -27,7 +26,7 @@ class RAGConfig(BaseModelNoUpdate):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     rag_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    parameters: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     llm_provider: Mapped[str] = mapped_column(String(50), default="openai", nullable=False)
     llm_model: Mapped[str] = mapped_column(String(100), default="gpt-4o-mini", nullable=False)
     llm_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

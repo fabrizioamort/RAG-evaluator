@@ -288,48 +288,48 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 2.1 Pydantic Schemas
 
-- [ ] **P2.1.1** Create `app/schemas/base.py`
+- [x] **P2.1.1** Create `app/schemas/base.py`
   - Base response model with id, created_at
   - Pagination schema (offset, limit, total)
   **Acceptance:** Base schemas importable
 
-- [ ] **P2.1.2** Create `app/schemas/project.py`
+- [x] **P2.1.2** Create `app/schemas/project.py`
   - ProjectCreate, ProjectUpdate, ProjectResponse, ProjectList
   **Acceptance:** Schemas validate correctly
 
-- [ ] **P2.1.3** Create `app/schemas/knowledge_base.py`
+- [x] **P2.1.3** Create `app/schemas/knowledge_base.py`
   - KBCreate, KBResponse, KBWithDocuments, DocumentUploadResponse
   **Acceptance:** Schemas validate correctly
 
-- [ ] **P2.1.4** Create `app/schemas/test_set.py`
+- [x] **P2.1.4** Create `app/schemas/test_set.py`
   - TestSetCreate, TestSetResponse, TestCaseCreate, TestCaseResponse
   **Acceptance:** Schemas validate correctly
 
-- [ ] **P2.1.5** Create `app/schemas/test_template.py`
+- [x] **P2.1.5** Create `app/schemas/test_template.py`
   - TemplateCreate, TemplateResponse
   **Acceptance:** Schemas validate correctly
 
-- [ ] **P2.1.6** Create `app/schemas/rag_config.py`
+- [x] **P2.1.6** Create `app/schemas/rag_config.py`
   - RAGConfigCreate, RAGConfigResponse, RAGTypeInfo
   **Acceptance:** Schemas validate correctly
 
-- [ ] **P2.1.7** Create `app/schemas/evaluation.py`
+- [x] **P2.1.7** Create `app/schemas/evaluation.py`
   - EvaluationCreate, EvaluationResponse, EvaluationResultResponse
   - ProgressEvent schema for SSE
   **Acceptance:** Schemas validate correctly
 
-- [ ] **P2.1.8** Create `app/schemas/webhook.py`
+- [x] **P2.1.8** Create `app/schemas/webhook.py`
   - WebhookCreate, WebhookResponse, WebhookTest
   **Acceptance:** Schemas validate correctly
 
 ### 2.2 Projects API
 
-- [ ] **P2.2.1** Create `app/api/deps.py`
+- [x] **P2.2.1** Create `app/api/deps.py`
   - get_db dependency
   - Common query params (pagination)
   **Acceptance:** Dependencies injectable
 
-- [ ] **P2.2.2** Create `app/api/projects.py`
+- [x] **P2.2.2** Create `app/api/projects.py`
   - GET /projects (list with filters)
   - POST /projects (create)
   - GET /projects/{id} (detail)
@@ -338,7 +338,7 @@ Dependencies are noted as `[Depends: TASK_ID]`
   - POST /projects/{id}/archive
   **Acceptance:** All endpoints work, tested
 
-- [ ] **P2.2.3** Write tests for projects API
+- [x] **P2.2.3** Write tests for projects API
   - CRUD operations
   - Validation errors
   - Not found errors

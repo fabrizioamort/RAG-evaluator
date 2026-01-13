@@ -5,11 +5,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import BaseModelNoUpdate
+from app.models.base import BaseModelNoUpdate, JSONType
 
 if TYPE_CHECKING:
     from app.models.knowledge_base import KnowledgeBase
@@ -32,7 +31,7 @@ class TestGenerationJob(BaseModelNoUpdate):
         nullable=True,
     )
     status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
-    config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     questions_generated: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     questions_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     questions_rejected: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

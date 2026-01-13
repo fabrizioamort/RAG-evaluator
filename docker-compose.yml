@@ -22,6 +22,6 @@ services:
     volumes:
       - ./data/neo4j_data:/data
     environment:
-      - NEO4J_AUTH=neo4j/password123
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD}
       - NEO4J_PLUGINS=["apoc"]
     restart: unless-stopped

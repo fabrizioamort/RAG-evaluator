@@ -5,7 +5,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: rageval
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-rageval_secret}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: rageval
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -24,7 +24,7 @@ services:
       context: ../platform/backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://rageval:${DB_PASSWORD:-rageval_secret}@db:5432/rageval
+      DATABASE_URL: postgresql+asyncpg://rageval:${DB_PASSWORD}@db:5432/rageval
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
@@ -73,7 +73,7 @@ services:
   neo4j:
     image: neo4j:5-community
     environment:
-      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-neo4j_secret}
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
       NEO4J_PLUGINS: '["apoc"]'
     ports:
       - "7474:7474"

@@ -4,11 +4,10 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import BaseModelNoUpdate
+from app.models.base import BaseModelNoUpdate, JSONType
 
 if TYPE_CHECKING:
     from app.models.evaluation import Evaluation
@@ -30,7 +29,9 @@ class KnowledgeBaseVersion(BaseModelNoUpdate):
     )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     change_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    document_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, default=list, nullable=False)
+    document_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSONType, default=list, nullable=False
+    )
     change_description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships

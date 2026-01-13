@@ -4,11 +4,10 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, Float, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import BaseModelNoUpdate
+from app.models.base import BaseModelNoUpdate, JSONType
 
 if TYPE_CHECKING:
     from app.models.artifact import Artifact
@@ -35,7 +34,7 @@ class TestCase(BaseModelNoUpdate):
     question: Mapped[str] = mapped_column(Text, nullable=False)
     expected_answer: Mapped[str] = mapped_column(Text, nullable=False)
     ground_truth_context: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, default=list, nullable=False
+        JSONType, default=list, nullable=False
     )
     difficulty: Mapped[str] = mapped_column(String(20), default="medium", nullable=False)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)

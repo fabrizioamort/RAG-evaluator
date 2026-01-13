@@ -5,11 +5,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import BaseModelNoUpdate
+from app.models.base import BaseModelNoUpdate, JSONType
 
 if TYPE_CHECKING:
     from app.models.evaluation_job import EvaluationJob
@@ -61,14 +60,14 @@ class Evaluation(BaseModelNoUpdate):
     status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    summary_metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    cost_metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    performance_metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    summary_metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
+    cost_metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
+    performance_metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
     pass_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_baseline: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     baseline_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    tags: Mapped[dict[str, Any]] = mapped_column(JSONB, default=list, nullable=False)
+    tags: Mapped[dict[str, Any]] = mapped_column(JSONType, default=list, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships

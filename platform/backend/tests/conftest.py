@@ -7,9 +7,9 @@ from typing import Generator
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
     AsyncEngine,
     AsyncSession,
-    async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.pool import StaticPool
@@ -63,19 +63,38 @@ async def test_engine(test_settings: Settings) -> AsyncGenerator[AsyncEngine, No
 
 
 @pytest.fixture
-async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
-    """Create a test database session."""
-    async_session_maker = async_sessionmaker(
-        test_engine,
-        class_=AsyncSession,
+async def db_connection(test_engine: AsyncEngine) -> AsyncGenerator[AsyncConnection, None]:
+    """Create a test database connection with transaction for isolation."""
+    async with test_engine.connect() as connection:
+        # Start outer transaction that will be rolled back
+        transaction = await connection.begin()
+        yield connection
+        # Rollback the outer transaction to undo all changes
+        await transaction.rollback()
+
+
+@pytest.fixture
+async def db_session(db_connection: AsyncConnection) -> AsyncGenerator[AsyncSession, None]:
+    """Create a test database session using nested transactions for isolation.
+
+    Uses savepoints so that when the API calls commit(), it only commits
+    to the savepoint. The outer transaction is rolled back at the end.
+    """
+    # Start a nested transaction (savepoint)
+    nested = await db_connection.begin_nested()
+
+    session = AsyncSession(
+        bind=db_connection,
         expire_on_commit=False,
         autocommit=False,
         autoflush=False,
     )
 
-    async with async_session_maker() as session:
-        yield session
-        await session.rollback()
+    yield session
+
+    await session.close()
+    # Rollback the nested transaction
+    await nested.rollback()
 
 
 @pytest.fixture

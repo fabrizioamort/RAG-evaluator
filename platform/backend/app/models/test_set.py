@@ -4,11 +4,10 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import BaseModelNoUpdate
+from app.models.base import BaseModelNoUpdate, JSONType
 
 if TYPE_CHECKING:
     from app.models.evaluation import Evaluation
@@ -29,7 +28,7 @@ class TestSet(BaseModelNoUpdate):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    tags: Mapped[dict[str, Any]] = mapped_column(JSONB, default=list, nullable=False)
+    tags: Mapped[dict[str, Any]] = mapped_column(JSONType, default=list, nullable=False)
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="test_sets")
