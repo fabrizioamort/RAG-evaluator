@@ -118,31 +118,31 @@ class TestCreateEvaluation:
         assert response.status_code == 404
 
 
+@pytest.fixture
+async def sample_evaluation(
+    db_session: AsyncSession,
+    sample_project: Project,
+    sample_kb: KnowledgeBase,
+    sample_test_set: TestSet,
+    sample_rag_config: RAGConfig,
+) -> Evaluation:
+    """Create a sample evaluation."""
+    evaluation = Evaluation(
+        project_id=sample_project.id,
+        knowledge_base_id=sample_kb.id,
+        test_set_id=sample_test_set.id,
+        rag_config_id=sample_rag_config.id,
+        status="completed",
+        pass_rate=0.8,
+    )
+    db_session.add(evaluation)
+    await db_session.commit()
+    await db_session.refresh(evaluation)
+    return evaluation
+
+
 class TestGetEvaluation:
     """Tests for GET /api/v1/evaluations endpoints."""
-
-    @pytest.fixture
-    async def sample_evaluation(
-        self,
-        db_session: AsyncSession,
-        sample_project: Project,
-        sample_kb: KnowledgeBase,
-        sample_test_set: TestSet,
-        sample_rag_config: RAGConfig,
-    ) -> Evaluation:
-        """Create a sample evaluation."""
-        evaluation = Evaluation(
-            project_id=sample_project.id,
-            knowledge_base_id=sample_kb.id,
-            test_set_id=sample_test_set.id,
-            rag_config_id=sample_rag_config.id,
-            status="completed",
-            pass_rate=0.8,
-        )
-        db_session.add(evaluation)
-        await db_session.commit()
-        await db_session.refresh(evaluation)
-        return evaluation
 
     @pytest.mark.asyncio
     async def test_get_evaluation_detail(
@@ -272,3 +272,45 @@ class TestSetBaseline:
         # Check first eval
         await db_session.refresh(evaluation)
         assert evaluation.is_baseline is False
+
+
+class TestGetEvaluationManifest:
+    """Tests for GET /api/v1/evaluations/{id}/manifest."""
+
+    @pytest.mark.asyncio
+    async def test_get_manifest_success(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        sample_evaluation: Evaluation,
+    ) -> None:
+        """Test getting evaluation manifest."""
+        from app.models.run_manifest import RunManifest
+
+        # Create a manifest
+        manifest = RunManifest(
+            rag_config_snapshot={"test": "config"},
+            kb_version_snapshot={"key": "val"},
+            generation_model="gpt-4",
+            prompt_templates={"p": "t"},
+        )
+        db_session.add(manifest)
+        await db_session.flush()
+
+        # Link to evaluation
+        sample_evaluation.run_manifest_id = manifest.id
+        await db_session.commit()
+
+        response = await client.get(f"/api/v1/evaluations/{sample_evaluation.id}/manifest")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(manifest.id)
+        assert data["rag_config_snapshot"] == {"test": "config"}
+        assert data["generation_model"] == "gpt-4"
+
+    @pytest.mark.asyncio
+    async def test_get_manifest_not_found(self, client: AsyncClient) -> None:
+        """Test with non-existent evaluation."""
+        response = await client.get(f"/api/v1/evaluations/{uuid4()}/manifest")
+        assert response.status_code == 404

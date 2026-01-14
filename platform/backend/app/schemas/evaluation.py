@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Sequence
+from typing import Any, Sequence
 from uuid import UUID
 
 from pydantic import Field
@@ -263,3 +263,17 @@ class SetBaselineRequest(BaseSchema):
     """Schema for setting an evaluation as baseline."""
 
     reason: str = Field(min_length=1, description="Reason for marking as baseline")
+
+
+class RunManifestResponse(BaseSchema):
+    """Schema for run manifest response."""
+
+    id: UUID
+    rag_config_snapshot: dict[str, Any]
+    kb_version_snapshot: dict[str, Any]
+    generation_model: str | None
+    eval_judge_model: str | None
+    prompt_templates: dict[str, Any]
+    rag_evaluator_version: str | None
+    platform_version: str | None
+    created_at: datetime

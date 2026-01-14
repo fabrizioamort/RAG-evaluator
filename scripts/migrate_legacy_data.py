@@ -234,19 +234,6 @@ async def migrate_reports(session, project_id: uuid.UUID, test_set_id: uuid.UUID
         if pass_rate > 1.0:
             pass_rate = pass_rate / 100.0
 
-        eval_run = Evaluation(
-            id=uuid.uuid4(),
-            project_id=project_id,
-            test_set_id=test_set_id,
-            status="completed",
-            started_at=completed_at,
-            completed_at=completed_at,
-            summary_metrics=data.get("metrics", {}),
-            performance_metrics=data.get("performance_metrics", {}),
-            pass_rate=pass_rate,
-            notes=f"Imported from {report_file.name}",
-            tags=["legacy", "cli", impl_name.lower().replace(" ", "-")],
-        )
         session.add(eval_run)
         await session.flush()
 

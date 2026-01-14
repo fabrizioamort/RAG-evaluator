@@ -764,25 +764,25 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 5.3 Run Manifest Display
 
-- [ ] **P5.3.1** Add GET /evaluations/{id}/manifest
+- [x] **P5.3.1** Add GET /evaluations/{id}/manifest
   **Acceptance:** Manifest retrievable
 
-- [ ] **P5.3.2** Create ManifestViewer component
+- [x] **P5.3.2** Create ManifestViewer component
   - Show all config at eval time
   - Collapsible sections
   **Acceptance:** Manifest displayed
 
 ### 5.4 Baseline Tracking
 
-- [ ] **P5.4.1** Add POST /evaluations/{id}/set-baseline
+- [x] **P5.4.1** Add POST /evaluations/{id}/set-baseline
   - Mark as baseline with reason
   - Only one baseline per project
   **Acceptance:** Baseline settable
 
-- [ ] **P5.4.2** Add GET /projects/{pid}/baseline
+- [x] **P5.4.2** Add GET /projects/{pid}/baseline
   **Acceptance:** Baseline retrievable
 
-- [ ] **P5.4.3** Create BaselineComparison component
+- [x] **P5.4.3** Create BaselineComparison component
   - Side-by-side with baseline
   - Delta indicators
   **Acceptance:** Comparison works

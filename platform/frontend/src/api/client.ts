@@ -229,7 +229,8 @@ export interface Evaluation {
   started_at: string | null
   completed_at: string | null
   summary_metrics: SummaryMetrics | null
-  pass_rate: number | null
+  is_baseline: boolean
+  baseline_reason: string | null
   error_message: string | null
   result_count: number
   created_at: string
@@ -297,6 +298,19 @@ export interface RetrievalTrace {
   fusion_details?: Record<string, unknown>
   total_duration_ms: number
 }
+
+export interface RunManifest {
+  id: string
+  rag_config_snapshot: Record<string, unknown>
+  kb_version_snapshot: Record<string, unknown>
+  generation_model: string | null
+  eval_judge_model: string | null
+  prompt_templates: Record<string, unknown>
+  rag_evaluator_version: string | null
+  platform_version: string | null
+  created_at: string
+}
+
 
 export interface ProgressEvent {
   event_type: 'started' | 'progress' | 'completed' | 'error' | 'paused' | 'resumed'
@@ -384,6 +398,7 @@ export const api = {
     update: (id: string, data: ProjectUpdate) => apiClient.put<Project>(`/projects/${id}`, data),
     delete: (id: string) => apiClient.delete(`/projects/${id}`),
     archive: (id: string) => apiClient.post<Project>(`/projects/${id}/archive`),
+    getBaseline: (projectId: string) => apiClient.get<Evaluation>(`/projects/${projectId}/baseline`),
   },
   knowledgeBases: {
     list: (projectId: string, params?: { limit?: number; offset?: number }) =>
@@ -471,6 +486,10 @@ export const api = {
     retry: (id: string) => apiClient.post<Evaluation>(`/evaluations/${id}/retry`),
     getTrace: (evaluationId: string, resultId: string) =>
       apiClient.get<RetrievalTrace>(`/evaluations/${evaluationId}/trace/${resultId}`),
+    getManifest: (evaluationId: string) =>
+      apiClient.get<RunManifest>(`/evaluations/${evaluationId}/manifest`),
     getStreamUrl: (id: string) => `${API_BASE_URL}/api/v1/evaluations/${id}/stream`,
+    setBaseline: (id: string, reason: string) =>
+      apiClient.post<Evaluation>(`/evaluations/${id}/set-baseline`, { reason }),
   },
 }

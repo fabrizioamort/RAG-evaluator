@@ -14,6 +14,7 @@ from app.schemas.project import (
     ProjectResponse,
     ProjectUpdate,
 )
+from app.schemas.evaluation import EvaluationResponse
 from app.utils.logging_config import get_logger
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -308,3 +309,33 @@ async def archive_project(
     logger.info("Archived project", project_id=str(project_id))
 
     return _project_to_response(project)
+
+
+@router.get(
+    "/{project_id}/baseline",
+    response_model=EvaluationResponse,
+    summary="Get project baseline evaluation",
+    description="Retrieve the evaluation marked as baseline for this project.",
+)
+async def get_project_baseline(
+    db: DbSession,
+    project_id: UUID,
+) -> EvaluationResponse:
+    """Get the baseline evaluation for a project."""
+    from app.api.evaluations import _evaluation_to_response
+    from app.models.evaluation import Evaluation
+
+    query = select(Evaluation).where(
+        Evaluation.project_id == project_id,
+        Evaluation.is_baseline == True,  # noqa: E712
+    )
+    result = await db.execute(query)
+    evaluation = result.scalar_one_or_none()
+
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No baseline evaluation found for project {project_id}",
+        )
+
+    return _evaluation_to_response(evaluation)

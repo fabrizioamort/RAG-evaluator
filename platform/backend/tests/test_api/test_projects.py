@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.project import Project
+from app.models.evaluation import Evaluation
 
 
 @pytest.fixture
@@ -419,3 +420,45 @@ class TestProjectRelationshipCounts:
         assert data["test_set_count"] == 0
         assert data["rag_config_count"] == 0
         assert data["evaluation_count"] == 0
+
+
+class TestProjectBaseline:
+    """Tests for GET /api/v1/projects/{project_id}/baseline endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_get_project_baseline_success(
+        self, client: AsyncClient, db_session: AsyncSession, sample_project: Project
+    ) -> None:
+        """Test getting project baseline evaluation."""
+        # Create two evaluations, one baseline
+        eval1 = Evaluation(
+            project_id=sample_project.id,
+            status="completed",
+            is_baseline=True,
+            baseline_reason="Initial baseline",
+        )
+        eval2 = Evaluation(
+            project_id=sample_project.id,
+            status="completed",
+            is_baseline=False,
+        )
+        db_session.add_all([eval1, eval2])
+        await db_session.commit()
+
+        response = await client.get(f"/api/v1/projects/{sample_project.id}/baseline")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(eval1.id)
+        assert data["is_baseline"] is True
+        assert data["baseline_reason"] == "Initial baseline"
+
+    @pytest.mark.asyncio
+    async def test_get_project_baseline_not_found(
+        self, client: AsyncClient, sample_project: Project
+    ) -> None:
+        """Test getting baseline when none is set."""
+        response = await client.get(f"/api/v1/projects/{sample_project.id}/baseline")
+
+        assert response.status_code == 404
+        assert "no baseline evaluation found" in response.json()["detail"].lower()

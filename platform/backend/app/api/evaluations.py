@@ -26,6 +26,7 @@ from app.schemas.evaluation import (
     EvaluationResultList,
     EvaluationResultWithTestCase,
     PerformanceMetrics,
+    RunManifestResponse,
     SetBaselineRequest,
     SummaryMetrics,
 )
@@ -320,6 +321,57 @@ async def get_evaluation_result_trace(
         )
 
     return trace
+
+
+@router.get(
+    "/evaluations/{evaluation_id}/manifest",
+    response_model=RunManifestResponse,
+    summary="Get run manifest for an evaluation",
+)
+async def get_evaluation_manifest(
+    db: DbSession,
+    evaluation_id: UUID,
+) -> RunManifestResponse:
+    """Get the run manifest associated with an evaluation."""
+    # 1. Get the evaluation to find manifest ID
+    query = select(Evaluation).where(Evaluation.id == evaluation_id)
+    result = await db.execute(query)
+    evaluation = result.scalar_one_or_none()
+
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Evaluation {evaluation_id} not found",
+        )
+
+    if not evaluation.run_manifest_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No run manifest associated with evaluation {evaluation_id}",
+        )
+
+    # 2. Get the manifest
+    manifest_query = select(RunManifest).where(RunManifest.id == evaluation.run_manifest_id)
+    manifest_result = await db.execute(manifest_query)
+    manifest = manifest_result.scalar_one_or_none()
+
+    if not manifest:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run manifest {evaluation.run_manifest_id} not found",
+        )
+
+    return RunManifestResponse(
+        id=manifest.id,
+        rag_config_snapshot=manifest.rag_config_snapshot,
+        kb_version_snapshot=manifest.kb_version_snapshot,
+        generation_model=manifest.generation_model,
+        eval_judge_model=manifest.eval_judge_model,
+        prompt_templates=manifest.prompt_templates,
+        rag_evaluator_version=manifest.rag_evaluator_version,
+        platform_version=manifest.platform_version,
+        created_at=manifest.created_at,
+    )
 
 
 @router.get(
