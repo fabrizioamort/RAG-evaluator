@@ -10,6 +10,20 @@ from app.schemas.base import (
     PaginatedResponse,
     PaginationParams,
 )
+from app.schemas.comparison import (
+    AggregateMetrics,
+    ComparisonCreate,
+    ComparisonDetail,
+    ComparisonList,
+    ComparisonResponse,
+    ComparisonSummary,
+    CostMetricsDelta,
+    EvaluationComparisonResult,
+    MetricDelta,
+    PerformanceMetricsDelta,
+    PerQuestionDelta,
+    SummaryMetricsDelta,
+)
 from app.schemas.evaluation import (
     CostMetrics,
     EvaluationControl,
@@ -107,6 +121,19 @@ __all__ = [
     "HealthResponse",
     "ErrorDetail",
     "ErrorResponse",
+    # Comparison
+    "ComparisonCreate",
+    "ComparisonResponse",
+    "ComparisonDetail",
+    "ComparisonSummary",
+    "ComparisonList",
+    "AggregateMetrics",
+    "EvaluationComparisonResult",
+    "MetricDelta",
+    "SummaryMetricsDelta",
+    "CostMetricsDelta",
+    "PerformanceMetricsDelta",
+    "PerQuestionDelta",
     # Project
     "ProjectCreate",
     "ProjectUpdate",

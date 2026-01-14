@@ -8,13 +8,13 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession, Pagination, StatusFilter, TagsFilter
 from app.models.project import Project
+from app.schemas.evaluation import EvaluationResponse
 from app.schemas.project import (
     ProjectCreate,
     ProjectList,
     ProjectResponse,
     ProjectUpdate,
 )
-from app.schemas.evaluation import EvaluationResponse
 from app.utils.logging_config import get_logger
 
 router = APIRouter(prefix="/projects", tags=["Projects"])

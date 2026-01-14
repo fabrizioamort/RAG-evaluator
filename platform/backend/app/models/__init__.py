@@ -3,6 +3,7 @@
 from app.database import Base
 from app.models.artifact import Artifact
 from app.models.base import BaseModel, BaseModelNoUpdate
+from app.models.comparison import Comparison
 from app.models.document import Document
 from app.models.evaluation import Evaluation
 from app.models.evaluation_job import EvaluationJob
@@ -36,5 +37,6 @@ __all__ = [
     "Evaluation",
     "EvaluationJob",
     "EvaluationResult",
+    "Comparison",
     "Webhook",
 ]

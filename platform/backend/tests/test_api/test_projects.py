@@ -6,8 +6,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.project import Project
 from app.models.evaluation import Evaluation
+from app.models.project import Project
 
 
 @pytest.fixture

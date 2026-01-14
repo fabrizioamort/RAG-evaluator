@@ -1,6 +1,7 @@
 """API routes for the RAG Evaluation Platform."""
 
 from app.api import (
+    comparisons,
     evaluations,
     health,
     knowledge_bases,
@@ -18,4 +19,5 @@ __all__ = [
     "test_templates",
     "rag_configs",
     "evaluations",
+    "comparisons",
 ]

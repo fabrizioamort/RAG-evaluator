@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import BaseModel, JSONType
 
 if TYPE_CHECKING:
+    from app.models.comparison import Comparison
     from app.models.evaluation import Evaluation
     from app.models.knowledge_base import KnowledgeBase
     from app.models.rag_config import RAGConfig
@@ -48,6 +49,11 @@ class Project(BaseModel):
     )
     webhooks: Mapped[list["Webhook"]] = relationship(
         "Webhook",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    comparisons: Mapped[list["Comparison"]] = relationship(
+        "Comparison",
         back_populates="project",
         cascade="all, delete-orphan",
     )

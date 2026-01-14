@@ -789,12 +789,12 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 5.5 Comparison API
 
-- [ ] **P5.5.1** Create `app/api/comparisons.py`
+- [x] **P5.5.1** Create `app/api/comparisons.py`
   - POST /comparisons (compare 2+ evals)
   - GET /comparisons/{id}
   **Acceptance:** Comparisons work
 
-- [ ] **P5.5.2** Create comparison logic
+- [x] **P5.5.2** Create comparison logic
   - Aggregate metrics
   - Per-question deltas
   **Acceptance:** Comparison calculated

@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from app.api import (
+    comparisons,
     evaluations,
     health,
     knowledge_bases,
@@ -144,6 +145,7 @@ app.include_router(test_sets.router, prefix=settings.API_V1_PREFIX)
 app.include_router(test_templates.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rag_configs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(evaluations.router, prefix=settings.API_V1_PREFIX)
+app.include_router(comparisons.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/")
