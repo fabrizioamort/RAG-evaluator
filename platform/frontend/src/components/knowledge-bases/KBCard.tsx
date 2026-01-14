@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
     Database,
     FileText,
@@ -6,10 +8,12 @@ import {
     MoreVertical,
     CheckCircle2,
     AlertCircle,
-    Loader2
+    Loader2,
+    RefreshCw
 } from 'lucide-react'
-import { KnowledgeBase } from '@/api/client'
+import { api, KnowledgeBase } from '@/api/client'
 import { cn } from '@/lib/utils'
+import { IndexKBDialog } from './IndexKBDialog'
 
 interface KBCardProps {
     kb: KnowledgeBase
@@ -17,6 +21,26 @@ interface KBCardProps {
 
 export function KBCard({ kb }: KBCardProps) {
     const navigate = useNavigate()
+    const queryClient = useQueryClient()
+    const [isIndexDialogOpen, setIsIndexDialogOpen] = useState(false)
+
+    const indexMutation = useMutation({
+        mutationFn: (ragConfigId: string) => api.knowledgeBases.index(kb.id, { rag_config_id: ragConfigId }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['knowledge-base', kb.id] })
+            queryClient.invalidateQueries({ queryKey: ['knowledge-bases', kb.project_id] })
+            setIsIndexDialogOpen(false)
+        },
+    })
+
+    const handleIndex = (e: React.MouseEvent) => {
+        e.stopPropagation()
+        setIsIndexDialogOpen(true)
+    }
+
+    const onConfirmIndex = (ragConfigId: string) => {
+        indexMutation.mutate(ragConfigId)
+    }
 
     const statusConfig = {
         pending: { icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
@@ -76,12 +100,26 @@ export function KBCard({ kb }: KBCardProps) {
                     View Files
                 </button>
                 <button
-                    className="flex-1 rounded-md bg-primary/10 text-primary px-3 py-1.5 text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50"
-                    disabled={kb.status === 'indexing' || kb.document_count === 0}
+                    onClick={handleIndex}
+                    className="flex-1 rounded-md bg-primary/10 text-primary px-3 py-1.5 text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    disabled={kb.status === 'indexing' || kb.document_count === 0 || indexMutation.isPending}
                 >
+                    {kb.status === 'indexing' || indexMutation.isPending ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                        <RefreshCw className="h-3 w-3" />
+                    )}
                     Index KB
                 </button>
             </div>
+
+            <IndexKBDialog
+                projectId={kb.project_id}
+                kbName={kb.name}
+                isOpen={isIndexDialogOpen}
+                onClose={() => setIsIndexDialogOpen(false)}
+                onConfirm={onConfirmIndex}
+            />
         </div>
     )
 }

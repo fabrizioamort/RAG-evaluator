@@ -12,16 +12,19 @@ from app.models.document import Document
 from app.models.knowledge_base import KnowledgeBase
 from app.models.knowledge_base_version import KnowledgeBaseVersion
 from app.models.project import Project
+from app.models.rag_config import RAGConfig
 from app.schemas.knowledge_base import (
     DocumentResponse,
     DocumentUploadResponse,
     KnowledgeBaseCreate,
+    KnowledgeBaseIndexRequest,
     KnowledgeBaseList,
     KnowledgeBaseResponse,
     KnowledgeBaseUpdate,
     KnowledgeBaseVersionResponse,
     KnowledgeBaseWithDocuments,
 )
+from app.services.rag_adapter import RAGAdapterService, get_rag_adapter_service
 from app.services.storage_service import StorageService, get_storage_service
 from app.utils.logging_config import get_logger
 
@@ -590,5 +593,101 @@ async def get_kb_status(
     }
 
 
-# Note: POST /knowledge-bases/{kb_id}/index for triggering indexing
-# will be added when the RAG adapter service is implemented in Phase 3
+@router.post(
+    "/knowledge-bases/{kb_id}/index",
+    response_model=KnowledgeBaseResponse,
+    summary="Index a knowledge base",
+    description="Trigger the indexing/document preparation process for a knowledge base.",
+    responses={404: {"description": "Knowledge base not found"}},
+)
+async def index_knowledge_base(
+    db: DbSession,
+    kb_id: UUID,
+    request: KnowledgeBaseIndexRequest = KnowledgeBaseIndexRequest(),
+    rag_adapter: RAGAdapterService = Depends(get_rag_adapter_service),
+) -> KnowledgeBaseResponse:
+    """Trigger indexing for a knowledge base."""
+    kb = await _get_kb_or_404(db, kb_id)
+
+    if not kb.documents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot index an empty knowledge base. Please upload documents first.",
+        )
+
+    # Update status to indexing
+    kb.status = "indexing"
+    await db.commit()
+    await db.refresh(kb, ["documents"])
+
+    try:
+        # Determine RAG configuration to use
+        rag_config_model: RAGConfig | None = None
+        if request.rag_config_id:
+            # Load specific RAG config
+            config_query = select(RAGConfig).where(RAGConfig.id == request.rag_config_id)
+            config_result = await db.execute(config_query)
+            rag_config_model = config_result.scalar_one_or_none()
+
+            if not rag_config_model:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"RAG config with id {request.rag_config_id} not found",
+                )
+
+            # Ensure the config belongs to the same project (security check)
+            if rag_config_model.project_id != kb.project_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="RAG configuration must belong to the same project as the knowledge base",
+                )
+
+        if rag_config_model:
+            # Use the provided RAG configuration
+            rag = rag_adapter.get_or_create_rag(
+                rag_config_model, index_path=kb.index_path, force_new=True
+            )
+        else:
+            # Fallback to default vector_semantic RAG configuration
+            temp_config = RAGConfig(
+                project_id=kb.project_id,
+                name=f"Internal Indexing Config for {kb.name[:50]}",
+                rag_type="vector_semantic",
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                parameters={"collection_name": f"kb_{kb.id}"},
+            )
+            rag = rag_adapter.get_or_create_rag(
+                temp_config, index_path=kb.index_path, force_new=True
+            )
+
+        # Prepare documents (this is async and runs in executor)
+        await rag_adapter.prepare_documents(rag, kb.storage_path)
+
+        # Create a new version
+        await db.refresh(kb, ["documents"])
+        await _create_version(
+            db,
+            kb,
+            "reindexed",
+            "Knowledge base re-indexed",
+            documents=list(kb.documents) if kb.documents else [],
+        )
+
+        kb.status = "ready"
+        await db.commit()
+        await db.refresh(kb, ["documents"])
+
+        logger.info("Successfully indexed knowledge base", kb_id=str(kb_id))
+
+    except Exception as e:
+        logger.exception("Failed to index knowledge base", kb_id=str(kb_id))
+        kb.status = "error"
+        kb.metadata_["last_error"] = str(e)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Indexing failed: {str(e)}",
+        )
+
+    return _kb_to_response(kb)

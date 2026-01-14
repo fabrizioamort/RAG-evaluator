@@ -1,6 +1,7 @@
 """Tests for knowledge bases API endpoints."""
 
 import io
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -11,6 +12,7 @@ from app.models.document import Document
 from app.models.knowledge_base import KnowledgeBase
 from app.models.knowledge_base_version import KnowledgeBaseVersion
 from app.models.project import Project
+from app.models.rag_config import RAGConfig
 
 
 @pytest.fixture
@@ -75,6 +77,23 @@ async def sample_document(db_session: AsyncSession, sample_kb: KnowledgeBase) ->
     await db_session.commit()
     await db_session.refresh(doc)
     return doc
+
+
+@pytest.fixture
+async def sample_rag_config(db_session: AsyncSession, sample_project: Project) -> RAGConfig:
+    """Create a sample RAG configuration for testing."""
+    config = RAGConfig(
+        project_id=sample_project.id,
+        name="Test RAG Config",
+        rag_type="vector_semantic",
+        parameters={"collection_name": "test_collection"},
+        llm_provider="openai",
+        llm_model="gpt-4o-mini",
+    )
+    db_session.add(config)
+    await db_session.commit()
+    await db_session.refresh(config)
+    return config
 
 
 @pytest.fixture
@@ -672,3 +691,99 @@ class TestKBVersioning:
         assert doc_added_version is not None
         assert len(doc_added_version["document_snapshot"]) == 1
         assert doc_added_version["document_snapshot"][0]["filename"] == "snapshot_doc.txt"
+
+
+class TestKBIndexing:
+    """Tests for POST /api/v1/knowledge-bases/{kb_id}/index endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_index_kb_success(
+        self, client: AsyncClient, sample_kb: KnowledgeBase, sample_document: Document
+    ) -> None:
+        """Test indexing a KB successfully."""
+        from app.api.knowledge_bases import get_rag_adapter_service
+        from app.main import app
+
+        mock_adapter = MagicMock()
+        mock_adapter.get_or_create_rag.return_value = MagicMock()
+        mock_adapter.prepare_documents = AsyncMock(return_value={"total_chunks": 10})
+        
+        app.dependency_overrides[get_rag_adapter_service] = lambda: mock_adapter
+
+        try:
+            # Re-fetch KB in endpoint ensures we see documents
+            response = await client.post(f"/api/v1/knowledge-bases/{sample_kb.id}/index")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ready"
+            # Note: sample_kb starts with version 1 in fixture
+            assert data["current_version"] == 2
+        finally:
+            app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
+    async def test_index_kb_empty_fails(self, client: AsyncClient, sample_kb: KnowledgeBase) -> None:
+        """Test that indexing an empty KB fails."""
+        # sample_kb is created without documents initially in the fixture
+        response = await client.post(f"/api/v1/knowledge-bases/{sample_kb.id}/index")
+
+        assert response.status_code == 400
+        assert "empty" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_index_kb_failure_updates_status(
+        self, client: AsyncClient, sample_kb: KnowledgeBase, sample_document: Document
+    ) -> None:
+        """Test that indexing failure updates KB status to error."""
+        from app.api.knowledge_bases import get_rag_adapter_service
+        from app.main import app
+
+        mock_adapter = MagicMock()
+        mock_adapter.get_or_create_rag.return_value = MagicMock()
+        mock_adapter.prepare_documents = AsyncMock(side_effect=Exception("Indexing failed"))
+        
+        app.dependency_overrides[get_rag_adapter_service] = lambda: mock_adapter
+
+        try:
+            response = await client.post(f"/api/v1/knowledge-bases/{sample_kb.id}/index")
+
+            assert response.status_code == 500
+            
+            # Verify status is error
+            status_response = await client.get(f"/api/v1/knowledge-bases/{sample_kb.id}/status")
+            assert status_response.json()["status"] == "error"
+        finally:
+            app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
+    async def test_index_kb_with_config_success(
+        self,
+        client: AsyncClient,
+        sample_kb: KnowledgeBase,
+        sample_document: Document,
+        sample_rag_config: RAGConfig,
+    ) -> None:
+        """Test indexing a KB with a specific RAG configuration."""
+        from app.api.knowledge_bases import get_rag_adapter_service
+        from app.main import app
+
+        mock_adapter = MagicMock()
+        mock_adapter.get_or_create_rag.return_value = MagicMock()
+        mock_adapter.prepare_documents = AsyncMock(return_value={"total_chunks": 10})
+
+        app.dependency_overrides[get_rag_adapter_service] = lambda: mock_adapter
+
+        try:
+            response = await client.post(
+                f"/api/v1/knowledge-bases/{sample_kb.id}/index",
+                json={"rag_config_id": str(sample_rag_config.id)},
+            )
+
+            assert response.status_code == 200
+            # Ensure it called get_or_create_rag with the config
+            mock_adapter.get_or_create_rag.assert_called_once()
+            args, _ = mock_adapter.get_or_create_rag.call_args
+            assert args[0].id == sample_rag_config.id
+        finally:
+            app.dependency_overrides.clear()

@@ -314,7 +314,9 @@ export function TestGeneratorWizard({
                                                 onChange={(e) => setLlmModel(e.target.value)}
                                                 className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                                             >
-                                                <option value="gpt-4o-mini">GPT-4o Mini</option>
+                                                <option value="gpt-5.1">GPT-5.1</option>
+                                                <option value="gpt-5-mini">GPT-5 Mini</option>
+                                                <option value="gpt-5-nano">GPT-5 Nano</option>
                                                 <option value="gpt-4o">GPT-4o</option>
                                                 <option value="gpt-4-turbo">GPT-4 Turbo</option>
                                                 <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>

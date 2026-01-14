@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { api } from '@/api/client'
 import { cn } from '@/lib/utils'
+import { IndexKBDialog } from '@/components/knowledge-bases/IndexKBDialog'
 
 export function KBDetail() {
     const { id } = useParams<{ id: string }>()
@@ -32,6 +33,16 @@ export function KBDetail() {
         mutationFn: (docId: string) => api.knowledgeBases.deleteDocument(id!, docId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['knowledge-base', id] })
+        },
+    })
+
+    const [isIndexDialogOpen, setIsIndexDialogOpen] = useState(false)
+
+    const indexMutation = useMutation({
+        mutationFn: (ragConfigId: string) => api.knowledgeBases.index(id!, { rag_config_id: ragConfigId }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['knowledge-base', id] })
+            setIsIndexDialogOpen(false)
         },
     })
 
@@ -201,14 +212,24 @@ export function KBDetail() {
                         </div>
 
                         <button
+                            onClick={() => setIsIndexDialogOpen(true)}
                             className="w-full mt-6 flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-md disabled:opacity-50"
-                            disabled={k.status === 'indexing' || documents.length === 0}
+                            disabled={k.status === 'indexing' || documents.length === 0 || indexMutation.isPending}
                         >
+                            {(k.status === 'indexing' || indexMutation.isPending) && <Loader2 className="h-4 w-4 animate-spin" />}
                             Re-index Knowledge Base
                         </button>
                     </div>
                 </div>
             </div>
+
+            <IndexKBDialog
+                projectId={k.project_id}
+                kbName={k.name}
+                isOpen={isIndexDialogOpen}
+                onClose={() => setIsIndexDialogOpen(false)}
+                onConfirm={(ragConfigId) => indexMutation.mutate(ragConfigId)}
+            />
         </div>
     )
 }

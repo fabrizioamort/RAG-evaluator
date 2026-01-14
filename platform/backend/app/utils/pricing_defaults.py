@@ -5,6 +5,18 @@ from decimal import Decimal
 # Pricing per 1,000,000 tokens in USD
 # Based on current OpenAI pricing (as of late 2023/early 2024)
 DEFAULT_PRICING = {
+    "gpt-5,1": {
+        "prompt": Decimal("1.25"),
+        "completion": Decimal("10.00"),
+    },
+    "gpt-5-mini": {
+        "prompt": Decimal("0.25"),
+        "completion": Decimal("2.00"),
+    },
+    "gpt-5-nano": {
+        "prompt": Decimal("0.05"),
+        "completion": Decimal("0.40"),
+    },
     "gpt-4o": {
         "prompt": Decimal("5.00"),
         "completion": Decimal("15.00"),

@@ -440,6 +440,8 @@ export const api = {
     deleteDocument: (kbId: string, docId: string) =>
       apiClient.delete(`/knowledge-bases/${kbId}/documents/${docId}`),
     getStatus: (id: string) => apiClient.get(`/knowledge-bases/${id}/status`),
+    index: (id: string, data: { rag_config_id?: string } = {}) =>
+      apiClient.post<KnowledgeBase>(`/knowledge-bases/${id}/index`, data),
   },
   testSets: {
     list: (projectId: string, params?: { limit?: number; offset?: number }) =>

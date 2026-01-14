@@ -113,3 +113,11 @@ class KnowledgeBaseList(PaginatedResponse):
     """Paginated list of knowledge bases."""
 
     items: list[KnowledgeBaseResponse]
+
+
+class KnowledgeBaseIndexRequest(BaseSchema):
+    """Schema for indexing request."""
+
+    rag_config_id: UUID | None = Field(
+        default=None, description="Optional RAG configuration ID to use for indexing"
+    )

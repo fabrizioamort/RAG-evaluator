@@ -135,7 +135,7 @@ class RAGRegistry:
             LLMProviderInfo(
                 name="openai",
                 display_name="OpenAI",
-                models=["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"],
+                models=["gpt-5.1", "gpt-5-mini", "gpt-5-nano"],
                 requires_api_key=True,
                 supports_base_url=True,
             ),
