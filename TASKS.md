@@ -828,13 +828,13 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 5.8 Frontend - Evaluation Detail Page
 
-- [ ] **P5.8.1** Create full EvaluationDetail page
+- [x] **P5.8.1** Create full EvaluationDetail page
   - Summary metrics cards
   - Results by difficulty chart
   - Detailed results table
   **Acceptance:** Full detail view
 
-- [ ] **P5.8.2** Add expandable result rows
+- [x] **P5.8.2** Add expandable result rows
   - Show reasoning on expand
   - Link to trace viewer
   **Acceptance:** Results explorable

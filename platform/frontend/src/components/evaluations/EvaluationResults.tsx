@@ -12,12 +12,13 @@ import {
     Clock,
     Target
 } from 'lucide-react'
-import { api, EvaluationResult, Evaluation } from '../../api/client'
+import { api, EvaluationResult } from '../../api/client'
 import { cn } from '@/lib/utils'
 import { MetricExplainability } from './MetricExplainability'
 import { RetrievalTraceViewer } from './RetrievalTraceViewer'
 import { ManifestViewer } from './ManifestViewer'
 import { BaselineComparison } from './BaselineComparison'
+import { DifficultyChart } from './DifficultyChart'
 
 interface EvaluationResultsProps {
     evaluationId: string
@@ -168,23 +169,54 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                 />
                             )}
 
-                            {!baseline?.data && evaluation.data.summary_metrics && (
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    {[
-                                        { label: 'Faithfulness', value: evaluation.data.summary_metrics.faithfulness_avg, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
-                                        { label: 'Relevancy', value: evaluation.data.summary_metrics.relevancy_avg, color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/20' },
-                                        { label: 'Precision', value: evaluation.data.summary_metrics.precision_avg, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
-                                        { label: 'Recall', value: evaluation.data.summary_metrics.recall_avg, color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/20' }
-                                    ].map((m) => (
-                                        <div key={m.label} className={cn("rounded-xl border p-4", m.bg, m.border)}>
-                                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
-                                            <p className={cn("text-2xl font-black mt-1", m.color)}>
-                                                {m.value !== undefined && m.value !== null ? m.value.toFixed(2) : 'N/A'}
-                                            </p>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {/* Left Column: Metrics & Performance */}
+                                <div className="lg:col-span-2 space-y-4">
+                                    {!baseline?.data && (
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {[
+                                                { label: 'Faithfulness', value: evaluation.data.summary_metrics.faithfulness_avg, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
+                                                { label: 'Relevancy', value: evaluation.data.summary_metrics.relevancy_avg, color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/20' },
+                                                { label: 'Precision', value: evaluation.data.summary_metrics.precision_avg, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
+                                                { label: 'Recall', value: evaluation.data.summary_metrics.recall_avg, color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/20' }
+                                            ].map((m) => (
+                                                <div key={m.label} className={cn("rounded-xl border p-4", m.bg, m.border)}>
+                                                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
+                                                    <p className={cn("text-2xl font-black mt-1", m.color)}>
+                                                        {m.value !== undefined && m.value !== null ? m.value.toFixed(2) : 'N/A'}
+                                                    </p>
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
+                                    )}
+
+                                    <div className="rounded-xl border border-border bg-card p-4">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Performance & Cost</h4>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <p className="text-[10px] font-bold text-muted-foreground uppercase">Avg Latency</p>
+                                                <p className="text-xl font-bold">
+                                                    {evaluation.data.performance_metrics?.avg_latency_seconds?.toFixed(2) || '0.00'}s
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-bold text-muted-foreground uppercase">Total Cost</p>
+                                                <p className="text-xl font-bold">
+                                                    ${evaluation.data.cost_metrics?.total_cost_usd?.toFixed(4) || '0.0000'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
+
+                                {/* Right Column: Difficulty Breakdown */}
+                                <div className="rounded-xl border border-border bg-card p-4">
+                                    <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">Scores by Difficulty</h4>
+                                    <DifficultyChart results={items} />
+                                </div>
+                            </div>
                         </div>
                     )}
 
