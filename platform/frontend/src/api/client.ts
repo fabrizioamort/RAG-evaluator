@@ -92,7 +92,7 @@ export interface KnowledgeBase {
   project_id: string
   name: string
   description: string | null
-  metadata: Record<string, any>
+  metadata: Record<string, unknown>
   status: 'pending' | 'ready' | 'indexing' | 'error'
   current_version: number
   storage_path: string
@@ -105,13 +105,13 @@ export interface KnowledgeBase {
 export interface KnowledgeBaseCreate {
   name: string
   description?: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export interface KnowledgeBaseUpdate {
   name?: string
   description?: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export interface DocumentUploadResponse {
@@ -168,7 +168,7 @@ export interface RAGConfig {
   project_id: string
   name: string
   rag_type: string
-  parameters: Record<string, any>
+  parameters: Record<string, unknown>
   llm_provider: string
   llm_model: string
   llm_base_url: string | null
@@ -178,7 +178,7 @@ export interface RAGConfig {
 export interface RAGConfigCreate {
   name: string
   rag_type: string
-  parameters?: Record<string, any>
+  parameters?: Record<string, unknown>
   llm_provider?: string
   llm_model?: string
   llm_base_url?: string
@@ -189,7 +189,7 @@ export interface RAGTypeParameter {
   type: 'string' | 'integer' | 'float' | 'boolean'
   description: string
   required: boolean
-  default: any
+  default: unknown
   min_value?: number
   max_value?: number
   choices?: string[]
@@ -272,6 +272,32 @@ export interface EvaluationResult {
   category?: string
 }
 
+export interface RetrievalTraceStep {
+  type: string
+  input: unknown
+  output_refs?: string[]
+  duration_ms?: number
+  metadata?: Record<string, unknown>
+}
+
+export interface RetrievalTraceChunk {
+  content: string
+  document_id: string
+  chunk_id: string
+  score: number
+  rank: number
+  source: string
+  metadata: Record<string, unknown>
+}
+
+export interface RetrievalTrace {
+  strategy: string
+  steps: RetrievalTraceStep[]
+  retrieved_chunks: RetrievalTraceChunk[]
+  fusion_details?: Record<string, unknown>
+  total_duration_ms: number
+}
+
 export interface ProgressEvent {
   event_type: 'started' | 'progress' | 'completed' | 'error' | 'paused' | 'resumed'
   evaluation_id: string
@@ -317,7 +343,7 @@ export interface TestGenerationJob {
   test_set_id: string
   knowledge_base_id: string | null
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-  config: Record<string, any>
+  config: Record<string, unknown>
   questions_generated: number
   questions_total: number
   questions_rejected: number
@@ -388,7 +414,7 @@ export const api = {
     update: (id: string, data: Partial<TestSetCreate>) =>
       apiClient.put<TestSet>(`/test-sets/${id}`, data),
     delete: (id: string) => apiClient.delete(`/test-sets/${id}`),
-    import: (id: string, data: any) => apiClient.post(`/test-sets/${id}/import`, data),
+    import: (id: string, data: unknown) => apiClient.post(`/test-sets/${id}/import`, data),
     export: (id: string) => apiClient.get(`/test-sets/${id}/export`, { responseType: 'blob' }),
     addCase: (testSetId: string, data: TestCaseCreate) =>
       apiClient.post<TestCase>(`/test-sets/${testSetId}/cases`, data),
@@ -443,6 +469,8 @@ export const api = {
     pause: (id: string) => apiClient.post(`/evaluations/${id}/pause`),
     resume: (id: string) => apiClient.post(`/evaluations/${id}/resume`),
     retry: (id: string) => apiClient.post<Evaluation>(`/evaluations/${id}/retry`),
+    getTrace: (evaluationId: string, resultId: string) =>
+      apiClient.get<RetrievalTrace>(`/evaluations/${evaluationId}/trace/${resultId}`),
     getStreamUrl: (id: string) => `${API_BASE_URL}/api/v1/evaluations/${id}/stream`,
   },
 }

@@ -109,7 +109,7 @@ export function TestCaseDialog({ isOpen, onClose, onSubmit, testCase }: TestCase
                             <label className="text-sm font-semibold text-foreground">Difficulty</label>
                             <select
                                 value={formData.difficulty}
-                                onChange={(e) => setFormData({ ...formData, difficulty: e.target.value as any })}
+                                onChange={(e) => setFormData({ ...formData, difficulty: e.target.value as TestCaseCreate['difficulty'] })}
                                 className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                             >
                                 <option value="easy">Easy</option>
@@ -122,7 +122,7 @@ export function TestCaseDialog({ isOpen, onClose, onSubmit, testCase }: TestCase
                             <label className="text-sm font-semibold text-foreground">Question Type</label>
                             <select
                                 value={formData.question_type}
-                                onChange={(e) => setFormData({ ...formData, question_type: e.target.value as any })}
+                                onChange={(e) => setFormData({ ...formData, question_type: e.target.value as TestCaseCreate['question_type'] })}
                                 className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                             >
                                 <option value="factual">Factual</option>

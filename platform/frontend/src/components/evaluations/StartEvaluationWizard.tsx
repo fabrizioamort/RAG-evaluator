@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { X, Play, Loader2, Database, FileText, Cpu, ChevronRight, ChevronLeft } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { X, Play, Loader2, Database, FileText, Cpu, ChevronRight, ChevronLeft, LucideIcon } from 'lucide-react'
 import { api, KnowledgeBase, TestSet, RAGConfig, EvaluationCreate } from '@/api/client'
 import { cn } from '@/lib/utils'
 
@@ -25,13 +25,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
     const [isLoading, setIsLoading] = useState(false)
     const [isStarting, setIsStarting] = useState(false)
 
-    useEffect(() => {
-        if (isOpen && projectId) {
-            loadData()
-        }
-    }, [isOpen, projectId])
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setIsLoading(true)
         try {
             const [kbRes, tsRes, rcRes] = await Promise.all([
@@ -47,7 +41,13 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
         } finally {
             setIsLoading(false)
         }
-    }
+    }, [projectId])
+
+    useEffect(() => {
+        if (isOpen && projectId) {
+            loadData()
+        }
+    }, [isOpen, projectId, loadData])
 
     const handleStart = async () => {
         setIsStarting(true)
@@ -69,7 +69,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
 
     if (!isOpen) return null
 
-    const steps: { id: Step; label: string; icon: any }[] = [
+    const steps: { id: Step; label: string; icon: LucideIcon }[] = [
         { id: 'kb', label: 'Knowledge Base', icon: Database },
         { id: 'testset', label: 'Test Set', icon: FileText },
         { id: 'rag', label: 'RAG Config', icon: Cpu },

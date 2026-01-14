@@ -5,7 +5,6 @@ import {
     XCircle,
     Loader2,
     Search,
-    Filter,
     ChevronDown,
     ChevronUp,
     Edit2,
@@ -33,8 +32,8 @@ export function TestCaseReview({ testSetId, testCases, onClose }: TestCaseReview
     // Filter and sort state
     const [searchQuery, setSearchQuery] = useState('')
     const [filter, setFilter] = useState<FilterType>('all')
-    const [sortField, setSortField] = useState<SortField>('created_at')
-    const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+    const [sortField] = useState<SortField>('created_at')
+    const [sortOrder] = useState<SortOrder>('desc')
 
     // Selection state
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -76,10 +75,11 @@ export function TestCaseReview({ testSetId, testCases, onClose }: TestCaseReview
                 case 'created_at':
                     comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
                     break
-                case 'difficulty':
+                case 'difficulty': {
                     const difficultyOrder = { easy: 0, medium: 1, hard: 2 }
-                    comparison = difficultyOrder[a.difficulty] - difficultyOrder[b.difficulty]
+                    comparison = difficultyOrder[a.difficulty as keyof typeof difficultyOrder] - difficultyOrder[b.difficulty as keyof typeof difficultyOrder]
                     break
+                }
                 case 'quality_score':
                     comparison = (a.quality_score || 0) - (b.quality_score || 0)
                     break
@@ -343,8 +343,8 @@ export function TestCaseReview({ testSetId, testCases, onClose }: TestCaseReview
                                                         <span className={cn(
                                                             'rounded-full px-2.5 py-0.5 text-[10px] font-bold',
                                                             tc.quality_score >= 0.8 ? 'bg-green-100 text-green-700' :
-                                                            tc.quality_score >= 0.5 ? 'bg-amber-100 text-amber-700' :
-                                                            'bg-red-100 text-red-700'
+                                                                tc.quality_score >= 0.5 ? 'bg-amber-100 text-amber-700' :
+                                                                    'bg-red-100 text-red-700'
                                                         )}>
                                                             {Math.round(tc.quality_score * 100)}%
                                                         </span>

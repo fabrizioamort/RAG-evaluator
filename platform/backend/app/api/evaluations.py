@@ -29,6 +29,7 @@ from app.schemas.evaluation import (
     SetBaselineRequest,
     SummaryMetrics,
 )
+from app.services.artifact_store import get_artifact_store
 from app.services.evaluation_runner import EvaluationRunner, get_evaluation_runner
 from app.services.job_event_log import get_job_event_log
 from app.utils.logging_config import get_logger
@@ -277,6 +278,48 @@ async def get_evaluation_results(
         offset=pagination.offset,
         limit=pagination.limit,
     )
+
+
+@router.get(
+    "/evaluations/{evaluation_id}/trace/{result_id}",
+    summary="Get retrieval trace for a result",
+)
+async def get_evaluation_result_trace(
+    db: DbSession,
+    evaluation_id: UUID,
+    result_id: UUID,
+) -> Any:
+    """Get the retrieval trace artifact for a specific result."""
+    # 1. Get the result
+    query = select(EvaluationResult).where(
+        EvaluationResult.id == result_id, EvaluationResult.evaluation_id == evaluation_id
+    )
+    result_set = await db.execute(query)
+    eval_result = result_set.scalar_one_or_none()
+
+    if not eval_result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Result {result_id} not found in evaluation {evaluation_id}",
+        )
+
+    if not eval_result.retrieval_trace_artifact_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No retrieval trace artifact associated with result {result_id}",
+        )
+
+    # 2. Get the artifact content
+    store = get_artifact_store()
+    trace = await store.retrieve_json_by_id(db, eval_result.retrieval_trace_artifact_id)
+
+    if trace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Retrieval trace artifact content not found on disk",
+        )
+
+    return trace
 
 
 @router.get(

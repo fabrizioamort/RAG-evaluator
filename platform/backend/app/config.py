@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # Evaluation settings
     EVAL_CHECKPOINT_INTERVAL: int = 5  # Checkpoint every N test cases
     EVAL_MAX_CONCURRENT: int = 1  # Max concurrent evaluations (OSS: 1)
+    EVAL_INCLUDE_REASON: bool = True  # Whether to include reasoning in metrics
 
     # Webhook settings
     WEBHOOK_MAX_PER_PROJECT: int = 3

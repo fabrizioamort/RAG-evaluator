@@ -15,7 +15,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
     const [ragType, setRagType] = useState('vector_semantic')
     const [provider, setProvider] = useState('openai')
     const [model, setModel] = useState('')
-    const [parameters, setParameters] = useState<Record<string, any>>({})
+    const [parameters, setParameters] = useState<Record<string, unknown>>({})
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     // Fetch available types and providers
@@ -57,18 +57,18 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
         if (!config && selectedProviderInfo && selectedProviderInfo.models.length > 0) {
             setModel(selectedProviderInfo.models[0])
         }
-    }, [provider, providers])
+    }, [provider, providersResponse, config, selectedProviderInfo])
 
     // Initialize default parameters when ragType changes
     useEffect(() => {
         if (!config && selectedTypeInfo) {
-            const defaults: Record<string, any> = {}
+            const defaults: Record<string, unknown> = {}
             selectedTypeInfo.parameters.forEach(p => {
                 if (p.default !== undefined) defaults[p.name] = p.default
             })
             setParameters(defaults)
         }
-    }, [ragType, types])
+    }, [ragType, typesResponse, config, selectedTypeInfo])
 
     if (!isOpen) return null
 
@@ -93,7 +93,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
         }
     }
 
-    const handleParamChange = (name: string, value: any) => {
+    const handleParamChange = (name: string, value: unknown) => {
         setParameters(prev => ({ ...prev, [name]: value }))
     }
 
@@ -201,7 +201,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
 
                                         {param.type === 'string' && param.choices ? (
                                             <select
-                                                value={parameters[param.name] ?? param.default}
+                                                value={(parameters[param.name] as string) ?? param.default}
                                                 onChange={(e) => handleParamChange(param.name, e.target.value)}
                                                 className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
                                             >
@@ -211,7 +211,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                                             <div className="flex items-center gap-2">
                                                 <input
                                                     type="checkbox"
-                                                    checked={!!(parameters[param.name] ?? param.default)}
+                                                    checked={!!((parameters[param.name] as boolean) ?? param.default)}
                                                     onChange={(e) => handleParamChange(param.name, e.target.checked)}
                                                     className="h-4 w-4 rounded border-input text-primary focus:ring-primary/50"
                                                 />
@@ -220,7 +220,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                                         ) : (
                                             <input
                                                 type={param.type === 'integer' || param.type === 'float' ? 'number' : 'text'}
-                                                value={parameters[param.name] ?? param.default ?? ''}
+                                                value={(parameters[param.name] as string | number) ?? param.default ?? ''}
                                                 onChange={(e) => handleParamChange(param.name, param.type === 'integer' || param.type === 'float' ? Number(e.target.value) : e.target.value)}
                                                 step={param.type === 'float' ? '0.1' : '1'}
                                                 min={param.min_value}

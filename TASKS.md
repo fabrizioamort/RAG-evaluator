@@ -740,23 +740,23 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 5.1 Metric Explainability
 
-- [ ] **P5.1.1** Store judge reasoning per metric
+- [x] **P5.1.1** Store judge reasoning per metric
   - Modify DeepEval calls to capture reasoning
   - Store in evaluation_result
   **Acceptance:** Reasoning captured
 
-- [ ] **P5.1.2** Create MetricExplainability component
+- [x] **P5.1.2** Create MetricExplainability component
   - Show score with expandable reasoning
   - Color coding by score
   **Acceptance:** Explanations visible
 
 ### 5.2 Retrieval Trace Viewer
 
-- [ ] **P5.2.1** Add GET /evaluations/{id}/trace/{resultId}
+- [x] **P5.2.1** Add GET /evaluations/{id}/trace/{resultId}
   - Return trace artifact content
   **Acceptance:** Trace retrievable
 
-- [ ] **P5.2.2** Create RetrievalTraceViewer component
+- [x] **P5.2.2** Create RetrievalTraceViewer component
   - Step-by-step visualization
   - Chunk details
   - Timing breakdown

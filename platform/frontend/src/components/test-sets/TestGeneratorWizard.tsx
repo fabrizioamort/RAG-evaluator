@@ -11,7 +11,7 @@ import {
     AlertCircle,
     CheckCircle2,
 } from 'lucide-react'
-import { api, KnowledgeBase, TestTemplate, TestGenerationConfig } from '@/api/client'
+import { api, TestGenerationConfig } from '@/api/client'
 import { cn } from '@/lib/utils'
 
 interface TestGeneratorWizardProps {
@@ -113,7 +113,7 @@ export function TestGeneratorWizard({
                 newDistribution[l] = (difficultyDistribution[l] / currentOtherSum) * remaining
             })
         } else {
-            otherLevels.forEach((l, i) => {
+            otherLevels.forEach((l) => {
                 newDistribution[l] = remaining / otherLevels.length
             })
         }

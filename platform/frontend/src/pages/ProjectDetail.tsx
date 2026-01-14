@@ -16,7 +16,7 @@ import {
     ChevronRight
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { api, KnowledgeBaseCreate, Evaluation } from '@/api/client'
+import { api, KnowledgeBaseCreate, Evaluation, RAGConfig } from '@/api/client'
 import { TestSetList } from '@/components/test-sets/TestSetList'
 import { TestSetDetail } from '@/components/test-sets/TestSetDetail'
 import { CreateTestSetDialog } from '@/components/test-sets/CreateTestSetDialog'
@@ -99,7 +99,7 @@ function TestSetsTab({ projectId }: { projectId: string }) {
     })
 
     const createMutation = useMutation({
-        mutationFn: (data: any) => api.testSets.create(projectId, data),
+        mutationFn: (data: unknown) => api.testSets.create(projectId, data as Parameters<typeof api.testSets.create>[1]),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['test-sets', projectId] })
         },
@@ -167,7 +167,7 @@ function TestSetsTab({ projectId }: { projectId: string }) {
 
 function RAGConfigsTab({ projectId }: { projectId: string }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false)
-    const [editingConfig, setEditingConfig] = useState<any>(undefined)
+    const [editingConfig, setEditingConfig] = useState<RAGConfig | undefined>(undefined)
     const queryClient = useQueryClient()
 
     const { data, isLoading } = useQuery({
@@ -177,14 +177,14 @@ function RAGConfigsTab({ projectId }: { projectId: string }) {
     })
 
     const createMutation = useMutation({
-        mutationFn: (data: any) => api.ragConfigs.create(projectId, data),
+        mutationFn: (data: Parameters<typeof api.ragConfigs.create>[1]) => api.ragConfigs.create(projectId, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['rag-configs', projectId] })
         },
     })
 
     const updateMutation = useMutation({
-        mutationFn: ({ id, data }: { id: string, data: any }) => api.ragConfigs.update(id, data),
+        mutationFn: ({ id, data }: { id: string, data: Parameters<typeof api.ragConfigs.update>[1] }) => api.ragConfigs.update(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['rag-configs', projectId] })
         },

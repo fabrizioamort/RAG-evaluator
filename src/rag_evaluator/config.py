@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     eval_contextual_recall_threshold: float = Field(
         default=0.7, description="Minimum threshold for contextual recall metric"
     )
+    eval_include_reason: bool = Field(
+        default=True, description="Whether to include reasoning in DeepEval metrics"
+    )
 
     # Data directories
     raw_data_dir: str = Field(default="data/raw", description="Raw documents directory")

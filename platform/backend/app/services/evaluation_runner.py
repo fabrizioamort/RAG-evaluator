@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.models.evaluation import Evaluation
 from app.models.evaluation_result import EvaluationResult
 from app.models.test_case import TestCase
@@ -93,11 +94,14 @@ class EvaluationRunner:
         """Initialize DeepEval metrics."""
         # Note: We use the same model for all metrics as specified in the evaluation config
         # In a real scenario, we might want to use different models or settings
+        include_reason = settings.EVAL_INCLUDE_REASON
         return [
-            FaithfulnessMetric(threshold=0.7, model=llm_model, include_reason=True),
-            AnswerRelevancyMetric(threshold=0.7, model=llm_model, include_reason=True),
-            ContextualPrecisionMetric(threshold=0.7, model=llm_model, include_reason=True),
-            ContextualRecallMetric(threshold=0.7, model=llm_model, include_reason=True),
+            FaithfulnessMetric(threshold=0.7, model=llm_model, include_reason=include_reason),
+            AnswerRelevancyMetric(threshold=0.7, model=llm_model, include_reason=include_reason),
+            ContextualPrecisionMetric(
+                threshold=0.7, model=llm_model, include_reason=include_reason
+            ),
+            ContextualRecallMetric(threshold=0.7, model=llm_model, include_reason=include_reason),
         ]
 
     async def run(self) -> None:

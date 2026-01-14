@@ -163,7 +163,9 @@ def setup_common_mocks(
 
 
 @pytest.mark.asyncio
-async def test_evaluation_full_lifecycle(db_session: AsyncSession, caplog: LogCaptureFixture) -> None:
+async def test_evaluation_full_lifecycle(
+    db_session: AsyncSession, caplog: LogCaptureFixture
+) -> None:
     """Test that the evaluation runner completes successfully for a full set."""
     evaluation, artifact_ids = await create_setup_data(db_session, case_count=3)
 
@@ -209,7 +211,9 @@ async def test_evaluation_full_lifecycle(db_session: AsyncSession, caplog: LogCa
 
 
 @pytest.mark.asyncio
-async def test_evaluation_cancel_lifecycle(db_session: AsyncSession, caplog: LogCaptureFixture) -> None:
+async def test_evaluation_cancel_lifecycle(
+    db_session: AsyncSession, caplog: LogCaptureFixture
+) -> None:
     """Test cancellation mid-run."""
     evaluation, artifact_ids = await create_setup_data(db_session, case_count=4)
 
@@ -263,7 +267,9 @@ async def test_evaluation_cancel_lifecycle(db_session: AsyncSession, caplog: Log
 
 
 @pytest.mark.asyncio
-async def test_evaluation_pause_resume_lifecycle(db_session: AsyncSession, caplog: LogCaptureFixture) -> None:
+async def test_evaluation_pause_resume_lifecycle(
+    db_session: AsyncSession, caplog: LogCaptureFixture
+) -> None:
     """Test pause and resume cycle."""
     evaluation, artifact_ids = await create_setup_data(db_session, case_count=4)
 

@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import { api, EvaluationResult } from '../../api/client'
 import { cn } from '@/lib/utils'
+import { MetricExplainability } from './MetricExplainability'
+import { RetrievalTraceViewer } from './RetrievalTraceViewer'
 
 interface EvaluationResultsProps {
     evaluationId: string
@@ -20,9 +22,10 @@ interface EvaluationResultsProps {
 }
 
 export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsProps) {
-    const [page, setPage] = useState(1)
+    const [page] = useState(1)
     const [search, setSearch] = useState('')
     const [expandedResultId, setExpandedResultId] = useState<string | null>(null)
+    const [activeDetailTab, setActiveDetailTab] = useState<'overview' | 'trace'>('overview')
 
     const { data: evaluation } = useQuery({
         queryKey: ['evaluation', evaluationId],
@@ -73,7 +76,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                     ].map((m) => (
                         <div key={m.label} className={cn("rounded-xl border p-4", m.bg, m.border)}>
                             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
-                            <p className={`text-2xl font-black mt-1 ${m.color}`}>
+                            <p className={`text - 2xl font - black mt - 1 ${m.color} `}>
                                 {m.value?.toFixed(2) || 'N/A'}
                             </p>
                         </div>
@@ -105,7 +108,10 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                         {/* Result Header Row */}
                         <div
                             className="flex items-center gap-4 p-4 hover:bg-accent/50 cursor-pointer"
-                            onClick={() => setExpandedResultId(expandedResultId === result.id ? null : result.id)}
+                            onClick={() => {
+                                setExpandedResultId(expandedResultId === result.id ? null : result.id)
+                                setActiveDetailTab('overview')
+                            }}
                         >
                             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xs">
                                 #{result.test_case_id?.slice(0, 4)}
@@ -148,65 +154,91 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                         {/* Expanded Detail View */}
                         {expandedResultId === result.id && (
                             <div className="border-t border-border bg-muted/30 p-6 space-y-6 animate-in slide-in-from-top-2">
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    {/* Left Column: Q&A */}
-                                    <div className="space-y-4">
-                                        <div>
-                                            <h4 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
-                                                <Info className="h-4 w-4" />
-                                                Question
-                                            </h4>
-                                            <div className="rounded-lg bg-background p-3 border border-border text-sm">
-                                                {result.question}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <h4 className="flex items-center gap-2 text-sm font-semibold text-green-600 mb-2">
-                                                <CheckCircle2 className="h-4 w-4" />
-                                                Expected Answer
-                                            </h4>
-                                            <div className="rounded-lg bg-background p-3 border border-border text-sm">
-                                                {result.expected_answer || <span className="text-muted-foreground italic">Not specified</span>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <h4 className="flex items-center gap-2 text-sm font-semibold text-blue-600 mb-2">
-                                                <MessageSquare className="h-4 w-4" />
-                                                Generated Answer
-                                            </h4>
-                                            <div className="rounded-lg bg-background p-3 border border-border text-sm">
-                                                {result.generated_answer}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Right Column: Reasoning & Metrics */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-sm font-semibold mb-2">Metric Analysis</h4>
-                                        <div className="space-y-3">
-                                            <MetricDetail
-                                                label="Faithfulness"
-                                                score={result.faithfulness_score}
-                                                reason={result.faithfulness_reason}
-                                            />
-                                            <MetricDetail
-                                                label="Answer Relevancy"
-                                                score={result.relevancy_score}
-                                                reason={result.relevancy_reason}
-                                            />
-                                            <MetricDetail
-                                                label="Contextual Precision"
-                                                score={result.precision_score}
-                                                reason={result.precision_reason}
-                                            />
-                                            <MetricDetail
-                                                label="Contextual Recall"
-                                                score={result.recall_score}
-                                                reason={result.recall_reason}
-                                            />
-                                        </div>
-                                    </div>
+                                {/* Detail Tabs */}
+                                <div className="flex gap-6 border-b border-border/50 mb-4">
+                                    <button
+                                        onClick={() => setActiveDetailTab('overview')}
+                                        className={cn(
+                                            "pb-2 text-sm font-bold border-b-2 transition-all",
+                                            activeDetailTab === 'overview' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                                        )}
+                                    >
+                                        Overview & Metrics
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveDetailTab('trace')}
+                                        className={cn(
+                                            "pb-2 text-sm font-bold border-b-2 transition-all",
+                                            activeDetailTab === 'trace' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                                        )}
+                                    >
+                                        Retrieval Trace
+                                    </button>
                                 </div>
+
+                                {activeDetailTab === 'overview' ? (
+                                    <div className="grid md:grid-cols-2 gap-6">
+                                        {/* Left Column: Q&A */}
+                                        <div className="space-y-4">
+                                            <div>
+                                                <h4 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                                                    <Info className="h-4 w-4" />
+                                                    Question
+                                                </h4>
+                                                <div className="rounded-lg bg-background p-3 border border-border text-sm">
+                                                    {result.question}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <h4 className="flex items-center gap-2 text-sm font-semibold text-green-600 mb-2">
+                                                    <CheckCircle2 className="h-4 w-4" />
+                                                    Expected Answer
+                                                </h4>
+                                                <div className="rounded-lg bg-background p-3 border border-border text-sm">
+                                                    {result.expected_answer || <span className="text-muted-foreground italic">Not specified</span>}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <h4 className="flex items-center gap-2 text-sm font-semibold text-blue-600 mb-2">
+                                                    <MessageSquare className="h-4 w-4" />
+                                                    Generated Answer
+                                                </h4>
+                                                <div className="rounded-lg bg-background p-3 border border-border text-sm">
+                                                    {result.generated_answer}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Right Column: Reasoning & Metrics */}
+                                        <div className="space-y-4">
+                                            <h4 className="text-sm font-semibold mb-2">Metric Analysis</h4>
+                                            <div className="space-y-3">
+                                                <MetricExplainability
+                                                    label="Faithfulness"
+                                                    score={result.faithfulness_score}
+                                                    reason={result.faithfulness_reason}
+                                                />
+                                                <MetricExplainability
+                                                    label="Answer Relevancy"
+                                                    score={result.relevancy_score}
+                                                    reason={result.relevancy_reason}
+                                                />
+                                                <MetricExplainability
+                                                    label="Contextual Precision"
+                                                    score={result.precision_score}
+                                                    reason={result.precision_reason}
+                                                />
+                                                <MetricExplainability
+                                                    label="Contextual Recall"
+                                                    score={result.recall_score}
+                                                    reason={result.recall_reason}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <RetrievalTraceViewer evaluationId={evaluationId} resultId={result.id} />
+                                )}
                             </div>
                         )}
                     </div>
@@ -234,30 +266,6 @@ function ScoreBadge({ label, value }: { label: string, value: number | null }) {
         <div className={cn("flex items-center gap-1 rounded px-1.5 py-0.5 border text-[10px] font-bold", colorClass)}>
             <span>{label}</span>
             <span>{value.toFixed(2)}</span>
-        </div>
-    )
-}
-
-function MetricDetail({ label, score, reason }: { label: string, score: number | null, reason: string | null }) {
-    if (score === null) return null;
-
-    const barColor = score >= 0.7 ? "bg-green-500" : score >= 0.4 ? "bg-yellow-500" : "bg-red-500";
-
-    return (
-        <div className="rounded-lg bg-background border border-border p-3 text-sm">
-            <div className="flex items-center justify-between mb-2">
-                <span className="font-medium text-muted-foreground">{label}</span>
-                <span className="font-bold">{score.toFixed(2)}</span>
-            </div>
-            {/* Mini Bar */}
-            <div className="h-1.5 w-full bg-secondary/50 rounded-full overflow-hidden mb-2">
-                <div className={cn("h-full", barColor)} style={{ width: `${score * 100}%` }} />
-            </div>
-            {reason && (
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                    {reason}
-                </p>
-            )}
         </div>
     )
 }

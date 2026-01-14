@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
     Loader2,
@@ -7,9 +7,8 @@ import {
     AlertTriangle,
     Sparkles,
     Pause,
-    RefreshCw,
 } from 'lucide-react'
-import { api, TestGenerationStatus } from '@/api/client'
+import { api } from '@/api/client'
 import { cn } from '@/lib/utils'
 
 interface GenerationProgressProps {
@@ -23,7 +22,7 @@ export function GenerationProgress({ testSetId, onComplete, onClose }: Generatio
     const [pollInterval, setPollInterval] = useState<number | false>(2000)
 
     // Fetch generation status
-    const { data: statusData, isLoading, isError, error } = useQuery({
+    const { data: statusData, isLoading, isError } = useQuery({
         queryKey: ['generation-status', testSetId],
         queryFn: () => api.testSets.getGenerationStatus(testSetId),
         refetchInterval: pollInterval,

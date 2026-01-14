@@ -6,9 +6,9 @@ export interface EvaluationStreamState {
     total: number
     status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused'
     currentQuestion?: string
-    lastResult?: any
+    lastResult?: unknown
     error?: string
-    summaryMetrics?: any
+    summaryMetrics?: unknown
 }
 
 export function useEvaluationStream(evaluationId: string | null) {
