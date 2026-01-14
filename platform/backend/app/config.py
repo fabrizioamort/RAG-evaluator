@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     EVAL_MAX_CONCURRENT: int = 1  # Max concurrent evaluations (OSS: 1)
     EVAL_INCLUDE_REASON: bool = True  # Whether to include reasoning in metrics
 
+    # DeepEval Parallel Evaluation
+    DEEPEVAL_ASYNC_MODE: bool = False
+    DEEPEVAL_MAX_CONCURRENCY: int = 5
+
     # Webhook settings
     WEBHOOK_MAX_PER_PROJECT: int = 3
     WEBHOOK_TIMEOUT_SECONDS: int = 30

@@ -25,6 +25,12 @@ interface EvaluationResultsProps {
     onBack: () => void
 }
 
+const formatScore = (val: any, decimals: number = 2) => {
+    if (val === null || val === undefined) return 'N/A';
+    const num = typeof val === 'number' ? val : parseFloat(val);
+    return isNaN(num) ? 'N/A' : num.toFixed(decimals);
+};
+
 export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsProps) {
     const [page] = useState(1)
     const [search, setSearch] = useState('')
@@ -183,7 +189,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                                 <div key={m.label} className={cn("rounded-xl border p-4", m.bg, m.border)}>
                                                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
                                                     <p className={cn("text-2xl font-black mt-1", m.color)}>
-                                                        {m.value !== undefined && m.value !== null ? m.value.toFixed(2) : 'N/A'}
+                                                        {formatScore(m.value)}
                                                     </p>
                                                 </div>
                                             ))}
@@ -198,13 +204,13 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                             <div>
                                                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Avg Latency</p>
                                                 <p className="text-xl font-bold">
-                                                    {evaluation.data.performance_metrics?.avg_latency_seconds?.toFixed(2) || '0.00'}s
+                                                    {formatScore(evaluation.data.performance_metrics?.avg_latency_seconds)}s
                                                 </p>
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Total Cost</p>
                                                 <p className="text-xl font-bold">
-                                                    ${evaluation.data.cost_metrics?.total_cost_usd?.toFixed(4) || '0.0000'}
+                                                    ${formatScore(evaluation.data.cost_metrics?.total_cost_usd, 4)}
                                                 </p>
                                             </div>
                                         </div>
@@ -262,7 +268,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                             </span>
                                             <span className="flex items-center gap-1">
                                                 <Clock className="h-3 w-3" />
-                                                {result.latency_seconds?.toFixed(2)}s
+                                                {formatScore(result.latency_seconds)}s
                                             </span>
                                             <span className="flex items-center gap-1">
                                                 <Fingerprint className="h-3 w-3" />
@@ -405,7 +411,7 @@ function ScoreBadge({ label, value }: { label: string, value: number | null | un
     return (
         <div className={cn("flex items-center gap-1 rounded px-1.5 py-0.5 border text-[10px] font-bold", colorClass)}>
             <span>{label}</span>
-            <span>{value.toFixed(2)}</span>
+            <span>{formatScore(value)}</span>
         </div>
     )
 }

@@ -13,6 +13,7 @@ from typing import Any
 
 from openai import OpenAI
 
+from rag_evaluator.common.llm_utils import get_safe_llm_params
 from rag_evaluator.config import settings
 from rag_evaluator.rag_implementations.filesystem_rag.agent.cache import SessionCache
 from rag_evaluator.rag_implementations.filesystem_rag.agent.prompts import (
@@ -298,9 +299,8 @@ class FilesystemRAGAgent:
             "tool_choice": "auto",
         }
 
-        # Add temperature for non-reasoning models
-        if not any(x in self.llm_model.lower() for x in ["o1", "o3"]):
-            kwargs["temperature"] = 0
+        # Apply safe parameters (handles temperature for reasoning models)
+        kwargs = get_safe_llm_params(self.llm_model, **kwargs)
 
         return self.client.chat.completions.create(**kwargs)
 
@@ -363,11 +363,13 @@ class FilesystemRAGAgent:
         )
 
         # Get final response without tools
-        response = self.client.chat.completions.create(
-            model=self.llm_model,
-            messages=messages,  # type: ignore[arg-type]
-            temperature=0 if "o1" not in self.llm_model.lower() else None,
-        )
+        kwargs: dict[str, Any] = {
+            "model": self.llm_model,
+            "messages": messages,  # type: ignore[arg-type]
+        }
+        kwargs = get_safe_llm_params(self.llm_model, temperature=0.0, **kwargs)
+
+        response = self.client.chat.completions.create(**kwargs)
 
         answer = response.choices[0].message.content or ""
         query_time = time.time() - start_time

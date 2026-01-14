@@ -50,7 +50,7 @@ export function MetricExplainability({ label, score, reason }: MetricExplainabil
                     </div>
                     <div className="flex items-center gap-3">
                         <span className={cn("text-sm font-bold", textColor)}>
-                            {score.toFixed(2)}
+                            {Number(score).toFixed(2)}
                         </span>
                         <ChevronDown className={cn(
                             "h-4 w-4 text-muted-foreground transition-transform duration-200",

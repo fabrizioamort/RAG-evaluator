@@ -79,12 +79,21 @@ class LLMProviderService:
             full_model = f"{provider}/{model}"
 
         start_time = time.time()
+        
+        # Avoid temperature for reasoning models
+        model_name_lower = model.lower()
+        is_reasoning = any(x in model_name_lower for x in ["o1-", "o3-", "/o1", "/o3", "gpt-5"]) or model_name_lower in ["o1", "o3", "gpt-5"]
+        
+        actual_temp = temperature
+        if is_reasoning:
+            actual_temp = None
+
         try:
             response = await litellm.acompletion(
                 model=full_model,
                 messages=messages,
                 api_base=base_url,
-                temperature=temperature,
+                temperature=actual_temp,
                 max_tokens=max_tokens,
                 **kwargs,
             )
@@ -120,6 +129,47 @@ class LLMProviderService:
             )
 
         except Exception as e:
+            error_str = str(e).lower()
+            # If it's a temperature error, retry without temperature
+            if "temperature" in error_str and ("does not support" in error_str or "unsupported_value" in error_str) and actual_temp is not None:
+                logger.warning(
+                    "Temperature unsupported by model, retrying without it",
+                    model=full_model,
+                    error=str(e),
+                )
+                try:
+                    retry_response = await litellm.acompletion(
+                        model=full_model,
+                        messages=messages,
+                        api_base=base_url,
+                        temperature=None, # Explicitly remove temperature
+                        max_tokens=max_tokens,
+                        **kwargs,
+                    )
+                    latency = time.time() - start_time
+                    
+                    content = retry_response.choices[0].message.content or ""
+                    usage_data = retry_response.get("usage", {})
+                    cost = retry_response.get("_total_cost", 0.0)
+
+                    usage = TokenUsage(
+                        prompt_tokens=usage_data.get("prompt_tokens", 0),
+                        completion_tokens=usage_data.get("completion_tokens", 0),
+                        total_tokens=usage_data.get("total_tokens", 0),
+                        cost_usd=float(cost) if cost else 0.0,
+                    )
+
+                    return LLMCompletionResponse(
+                        content=content,
+                        usage=usage,
+                        model=model,
+                        provider=provider or "unknown",
+                        latency_seconds=latency,
+                    )
+                except Exception as retry_e:
+                    logger.error("LLM retry failed", error=str(retry_e), model=full_model)
+                    raise retry_e
+
             logger.error("LLM completion failed", error=str(e), model=full_model)
             raise
 

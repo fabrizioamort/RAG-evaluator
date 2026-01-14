@@ -41,7 +41,7 @@ export function BaselineComparison({ current, baseline }: BaselineComparisonProp
 
                     if (currVal === undefined || currVal === null || baseVal === undefined || baseVal === null) return null
 
-                    const delta = currVal - baseVal
+                    const delta = Number(currVal) - Number(baseVal)
                     const isPositive = delta > 0.005
                     const isNegative = delta < -0.005
                     const isNeutral = !isPositive && !isNegative
@@ -51,7 +51,7 @@ export function BaselineComparison({ current, baseline }: BaselineComparisonProp
                             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{m.label}</p>
                             <div className="flex items-end gap-2">
                                 <span className="text-xl font-black tabular-nums tracking-tighter">
-                                    {currVal.toFixed(2)}
+                                    {Number(currVal).toFixed(2)}
                                 </span>
                                 <div className={cn(
                                     "flex items-center gap-0.5 text-[10px] font-bold pb-1",

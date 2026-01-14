@@ -128,7 +128,12 @@ class JobCheckpointService:
         await self.db.commit()
 
     async def complete_job(
-        self, evaluation_id: uuid.UUID, summary_metrics: dict[str, Any], pass_rate: float
+        self,
+        evaluation_id: uuid.UUID,
+        summary_metrics: dict[str, Any],
+        pass_rate: float,
+        cost_metrics: dict[str, Any] | None = None,
+        performance_metrics: dict[str, Any] | None = None,
     ) -> None:
         """Mark a job and evaluation as completed.
 
@@ -136,19 +141,25 @@ class JobCheckpointService:
             evaluation_id: ID of the evaluation.
             summary_metrics: Calculated summary metrics.
             pass_rate: Calculated pass rate.
+            cost_metrics: Optional cost metrics.
+            performance_metrics: Optional performance metrics.
         """
         now = datetime.now(timezone.utc)
 
         # Update Evaluation
+        values = {
+            "status": "completed",
+            "completed_at": now,
+            "summary_metrics": summary_metrics,
+            "pass_rate": pass_rate,
+        }
+        if cost_metrics:
+            values["cost_metrics"] = cost_metrics
+        if performance_metrics:
+            values["performance_metrics"] = performance_metrics
+
         await self.db.execute(
-            update(Evaluation)
-            .where(Evaluation.id == evaluation_id)
-            .values(
-                status="completed",
-                completed_at=now,
-                summary_metrics=summary_metrics,
-                pass_rate=pass_rate,
-            )
+            update(Evaluation).where(Evaluation.id == evaluation_id).values(**values)
         )
 
         # Update Job

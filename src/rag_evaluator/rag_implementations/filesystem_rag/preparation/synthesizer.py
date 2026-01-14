@@ -14,6 +14,8 @@ from typing import Any
 
 from openai import OpenAI
 
+from rag_evaluator.common.llm_utils import get_safe_llm_params
+
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.index_builder import (
     DocumentInfo,
 )
@@ -155,11 +157,13 @@ def _generate_corpus_overview_llm(
     prompt = CORPUS_SYNTHESIS_PROMPT.format(documents_info=documents_info)
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-        )
+        kwargs: dict[str, Any] = {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        kwargs = get_safe_llm_params("gpt-4o-mini", temperature=0.3, **kwargs)
+
+        response = client.chat.completions.create(**kwargs)
 
         content = response.choices[0].message.content
         if content:
