@@ -229,6 +229,7 @@ export interface Evaluation {
   started_at: string | null
   completed_at: string | null
   summary_metrics: SummaryMetrics | null
+  pass_rate: number | null
   is_baseline: boolean
   baseline_reason: string | null
   error_message: string | null
@@ -309,6 +310,24 @@ export interface RunManifest {
   rag_evaluator_version: string | null
   platform_version: string | null
   created_at: string
+}
+
+export interface TrendDataPoint {
+  timestamp: string
+  evaluation_id: string
+  metrics: Record<string, number>
+  pass_rate: number | null
+}
+
+export interface RAGConfigTrend {
+  rag_config_id: string | null
+  rag_config_name: string | null
+  data_points: TrendDataPoint[]
+}
+
+export interface ProjectTrends {
+  project_id: string
+  trends: RAGConfigTrend[]
 }
 
 
@@ -491,5 +510,11 @@ export const api = {
     getStreamUrl: (id: string) => `${API_BASE_URL}/api/v1/evaluations/${id}/stream`,
     setBaseline: (id: string, reason: string) =>
       apiClient.post<Evaluation>(`/evaluations/${id}/set-baseline`, { reason }),
+  },
+  trends: {
+    getProjectTrends: (projectId: string) =>
+      apiClient.get<ProjectTrends>(`/projects/${projectId}/trends`),
+    getRagConfigTrends: (ragConfigId: string) =>
+      apiClient.get<RAGConfigTrend>(`/rag-configs/${ragConfigId}/trends`),
   },
 }

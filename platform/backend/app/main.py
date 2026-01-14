@@ -19,6 +19,7 @@ from app.api import (
     rag_configs,
     test_sets,
     test_templates,
+    trends,
 )
 from app.config import settings
 from app.database import engine, init_db
@@ -146,6 +147,7 @@ app.include_router(test_templates.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rag_configs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(evaluations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(comparisons.router, prefix=settings.API_V1_PREFIX)
+app.include_router(trends.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/")

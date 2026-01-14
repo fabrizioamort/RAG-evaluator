@@ -801,17 +801,17 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 5.6 Trend Analysis
 
-- [ ] **P5.6.1** Create `app/services/trend_analysis_service.py`
+- [x] **P5.6.1** Create `app/services/trend_analysis_service.py`
   - Aggregate metrics over time
   - Per RAG config trends
   **Acceptance:** Trends calculated
 
-- [ ] **P5.6.2** Create `app/api/trends.py`
+- [x] **P5.6.2** Create `app/api/trends.py`
   - GET /projects/{pid}/trends
   - GET /rag-configs/{id}/trends
   **Acceptance:** Trends retrievable
 
-- [ ] **P5.6.3** Create TrendChart component
+- [x] **P5.6.3** Create TrendChart component
   - Line chart with metrics over time
   - Configurable date range
   **Acceptance:** Charts render

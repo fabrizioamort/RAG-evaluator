@@ -13,7 +13,8 @@ import {
     AlertCircle,
     Plus,
     Play,
-    ChevronRight
+    ChevronRight,
+    TrendingUp
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, KnowledgeBaseCreate, Evaluation, RAGConfig } from '@/api/client'
@@ -27,6 +28,7 @@ import { CreateKBDialog } from '@/components/knowledge-bases/CreateKBDialog'
 import { StartEvaluationWizard } from '@/components/evaluations/StartEvaluationWizard'
 import { EvaluationProgress } from '@/components/evaluations/EvaluationProgress'
 import { EvaluationResults } from '@/components/evaluations/EvaluationResults'
+import { TrendChart } from '@/components/trends/TrendChart'
 
 function KnowledgeBasesTab({ projectId }: { projectId: string }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -432,11 +434,50 @@ function EvaluationsTab({ projectId }: { projectId: string }) {
     )
 }
 
+function TrendsTab({ projectId }: { projectId: string }) {
+    const { data, isLoading, isError } = useQuery({
+        queryKey: ['project-trends', projectId],
+        queryFn: () => api.trends.getProjectTrends(projectId),
+        enabled: !!projectId,
+    })
+
+    if (isLoading) {
+        return (
+            <div className="flex justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+            </div>
+        )
+    }
+
+    if (isError || !data?.data) {
+        return (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 bg-card/50">
+                <AlertCircle className="h-10 w-10 text-destructive/50" />
+                <h3 className="mt-5 text-xl font-semibold">Trend Analysis Error</h3>
+                <p className="mt-2 text-center text-muted-foreground max-w-sm">
+                    Could not load trend data for this project.
+                </p>
+            </div>
+        )
+    }
+
+    return (
+        <div className="space-y-6">
+            <div>
+                <h2 className="text-xl font-semibold">Trend Analysis</h2>
+                <p className="text-sm text-muted-foreground">Visualize RAG performance improvements over time.</p>
+            </div>
+            <TrendChart trends={data.data} />
+        </div>
+    )
+}
+
 const tabs = [
     { id: 'kb', name: 'Knowledge Bases', icon: Database },
     { id: 'tests', name: 'Test Sets', icon: FileText },
     { id: 'rags', name: 'RAG Configs', icon: Settings2 },
     { id: 'evals', name: 'Evaluations', icon: FlaskConical },
+    { id: 'trends', name: 'Trends', icon: TrendingUp },
 ]
 
 export function ProjectDetail() {
@@ -543,6 +584,7 @@ export function ProjectDetail() {
                 {activeTab === 'tests' && <TestSetsTab projectId={p.id} />}
                 {activeTab === 'rags' && <RAGConfigsTab projectId={p.id} />}
                 {activeTab === 'evals' && <EvaluationsTab projectId={p.id} />}
+                {activeTab === 'trends' && <TrendsTab projectId={p.id} />}
             </div>
         </div>
     )
