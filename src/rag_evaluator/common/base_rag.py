@@ -254,9 +254,7 @@ class BaseRAG(ABC):
             Generated answer text
         """
         # Default: not implemented, subclasses should override
-        raise NotImplementedError(
-            "Subclass must implement _generate_only() or override generate()"
-        )
+        raise NotImplementedError("Subclass must implement _generate_only() or override generate()")
 
     def _get_strategy_name(self) -> str:
         """Get the retrieval strategy name for tracing.

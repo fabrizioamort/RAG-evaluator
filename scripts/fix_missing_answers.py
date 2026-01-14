@@ -3,6 +3,7 @@ import json
 import os
 import sys
 from pathlib import Path
+
 from sqlalchemy import select
 
 # Ensure we are in the project root
@@ -16,6 +17,7 @@ os.chdir(str(root_path))
 
 # Load environment variables for the backend BEFORE importing app modules
 from dotenv import load_dotenv
+
 env_path = root_path / "platform" / "backend" / ".env"
 load_dotenv(env_path)
 
@@ -32,7 +34,8 @@ backend_path = root_path / "platform" / "backend"
 sys.path.append(str(backend_path))
 
 from app.database import async_session_maker
-from app.models import Evaluation, TestCase, EvaluationResult
+from app.models import Evaluation, EvaluationResult, TestCase
+
 
 async def main():
     async with async_session_maker() as session:
@@ -43,12 +46,14 @@ async def main():
 
         json_files = list(reports_dir.glob("*.json"))
         # Filter out comparison files if they exist
-        report_files = [f for f in json_files if f.name.startswith("eval_") and not "comparison" in f.name]
+        report_files = [
+            f for f in json_files if f.name.startswith("eval_") and "comparison" not in f.name
+        ]
 
         total_updates = 0
         for report_file in report_files:
             print(f"Processing {report_file.name}...")
-            with open(report_file, "r", encoding="utf-8") as f:
+            with open(report_file, encoding="utf-8") as f:
                 try:
                     data = json.load(f)
                 except Exception as e:
@@ -65,49 +70,49 @@ async def main():
             if not evaluation:
                 print(f"Evaluation for {report_file.name} not found in DB.")
                 continue
-            
+
             detailed_results = data.get("detailed_results", [])
             updates_count = 0
-            
+
             for res_data in detailed_results:
                 question = res_data.get("question")
                 answer = res_data.get("answer", "")
-                
+
                 # Find matching test case
                 tc_query = select(TestCase).where(
-                    TestCase.test_set_id == evaluation.test_set_id,
-                    TestCase.question == question
+                    TestCase.test_set_id == evaluation.test_set_id, TestCase.question == question
                 )
                 tc_result = await session.execute(tc_query)
                 test_case = tc_result.scalar_one_or_none()
-                
+
                 if not test_case:
                     print(f"Warning: Test case not found for question: {question[:30]}...")
                     continue
-                
+
                 # Find the EvaluationResult
                 er_query = select(EvaluationResult).where(
                     EvaluationResult.evaluation_id == evaluation.id,
-                    EvaluationResult.test_case_id == test_case.id
+                    EvaluationResult.test_case_id == test_case.id,
                 )
                 er_result = await session.execute(er_query)
                 eval_result = er_result.scalar_one_or_none()
-                
+
                 if eval_result:
                     # Update if empty or different
                     # (We care mostly about empty, but might as well correct if different)
                     if not eval_result.generated_answer or eval_result.generated_answer == "":
-                         eval_result.generated_answer = answer
-                         session.add(eval_result)
-                         updates_count += 1
+                        eval_result.generated_answer = answer
+                        session.add(eval_result)
+                        updates_count += 1
                 else:
                     print(f"Warning: EvaluationResult not found for TC {test_case.id}")
 
             print(f"Updated {updates_count} answers for {report_file.name}")
             total_updates += updates_count
-        
+
         await session.commit()
         print(f"Done fixing answers. Total updates: {total_updates}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

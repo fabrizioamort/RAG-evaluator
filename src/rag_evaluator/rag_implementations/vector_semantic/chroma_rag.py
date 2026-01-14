@@ -299,9 +299,7 @@ class ChromaSemanticRAG(BaseRAG):
             Generated answer text
         """
         # Generate answer using LLM with retrieved context
-        context_text = "\n\n".join(
-            [f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)]
-        )
+        context_text = "\n\n".join([f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)])
 
         prompt = f"""Answer the following question based only on the provided context. If the answer cannot be found in the context, say "I cannot answer this question based on the provided context."
 

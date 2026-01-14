@@ -6,8 +6,10 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.knowledge_base import KnowledgeBase
 from app.models.project import Project
 from app.models.test_case import TestCase
+from app.models.test_generation_job import TestGenerationJob
 from app.models.test_set import TestSet
 
 
@@ -314,3 +316,223 @@ class TestImportExport:
         assert data["name"] == sample_test_set.name
         assert len(data["test_cases"]) == 1
         assert data["test_cases"][0]["question"] == sample_test_case.question
+
+
+# =============================================================================
+# Test Generation API Tests
+# =============================================================================
+
+
+@pytest.fixture
+async def sample_knowledge_base(db_session: AsyncSession, sample_project: Project) -> KnowledgeBase:
+    """Create a sample knowledge base for testing."""
+    kb = KnowledgeBase(
+        project_id=sample_project.id,
+        name="Test KB",
+        description="A test knowledge base",
+        status="ready",
+    )
+    db_session.add(kb)
+    await db_session.commit()
+    await db_session.refresh(kb)
+    return kb
+
+
+@pytest.fixture
+async def sample_generation_job(
+    db_session: AsyncSession, sample_test_set: TestSet, sample_knowledge_base: KnowledgeBase
+) -> TestGenerationJob:
+    """Create a sample generation job for testing."""
+    job = TestGenerationJob(
+        test_set_id=sample_test_set.id,
+        knowledge_base_id=sample_knowledge_base.id,
+        status="completed",
+        config={"target_count": 10},
+        questions_generated=8,
+        questions_total=10,
+        questions_rejected=2,
+    )
+    db_session.add(job)
+    await db_session.commit()
+    await db_session.refresh(job)
+    return job
+
+
+class TestGenerationAPI:
+    """Tests for test generation API endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_start_generation_success(
+        self,
+        client: AsyncClient,
+        sample_test_set: TestSet,
+        sample_knowledge_base: KnowledgeBase,
+    ) -> None:
+        """Test starting a generation job."""
+        payload = {
+            "knowledge_base_id": str(sample_knowledge_base.id),
+            "target_count": 10,
+            "questions_per_chunk": 2,
+            "llm_model": "gpt-4o-mini",
+        }
+        response = await client.post(
+            f"/api/v1/test-sets/{sample_test_set.id}/generate", json=payload
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["test_set_id"] == str(sample_test_set.id)
+        assert data["knowledge_base_id"] == str(sample_knowledge_base.id)
+        assert data["status"] == "pending"
+        assert data["questions_total"] == 10
+
+    @pytest.mark.asyncio
+    async def test_start_generation_kb_not_found(
+        self, client: AsyncClient, sample_test_set: TestSet
+    ) -> None:
+        """Test starting generation with non-existent KB."""
+        payload = {
+            "knowledge_base_id": str(uuid4()),
+            "target_count": 10,
+        }
+        response = await client.post(
+            f"/api/v1/test-sets/{sample_test_set.id}/generate", json=payload
+        )
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_start_generation_test_set_not_found(
+        self, client: AsyncClient, sample_knowledge_base: KnowledgeBase
+    ) -> None:
+        """Test starting generation with non-existent test set."""
+        payload = {
+            "knowledge_base_id": str(sample_knowledge_base.id),
+            "target_count": 10,
+        }
+        response = await client.post(f"/api/v1/test-sets/{uuid4()}/generate", json=payload)
+
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_start_generation_conflict(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        sample_test_set: TestSet,
+        sample_knowledge_base: KnowledgeBase,
+    ) -> None:
+        """Test starting generation when one is already running."""
+        # Create a running job
+        running_job = TestGenerationJob(
+            test_set_id=sample_test_set.id,
+            knowledge_base_id=sample_knowledge_base.id,
+            status="running",
+            config={},
+        )
+        db_session.add(running_job)
+        await db_session.commit()
+
+        payload = {
+            "knowledge_base_id": str(sample_knowledge_base.id),
+            "target_count": 10,
+        }
+        response = await client.post(
+            f"/api/v1/test-sets/{sample_test_set.id}/generate", json=payload
+        )
+
+        assert response.status_code == 409
+        assert "already running" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_get_generation_status_success(
+        self,
+        client: AsyncClient,
+        sample_test_set: TestSet,
+        sample_generation_job: TestGenerationJob,
+    ) -> None:
+        """Test getting generation status."""
+        response = await client.get(f"/api/v1/test-sets/{sample_test_set.id}/generation-status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == str(sample_generation_job.id)
+        assert data["status"] == "completed"
+        assert data["questions_generated"] == 8
+        assert data["questions_rejected"] == 2
+        assert data["progress"] == 1.0  # Completed job has progress 1.0
+
+    @pytest.mark.asyncio
+    async def test_get_generation_status_not_found(
+        self, client: AsyncClient, sample_test_set: TestSet
+    ) -> None:
+        """Test getting status when no job exists."""
+        response = await client.get(f"/api/v1/test-sets/{sample_test_set.id}/generation-status")
+
+        assert response.status_code == 404
+        assert "no generation job" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_cancel_generation_success(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        sample_test_set: TestSet,
+        sample_knowledge_base: KnowledgeBase,
+    ) -> None:
+        """Test cancelling a running generation job."""
+        # Create a running job
+        running_job = TestGenerationJob(
+            test_set_id=sample_test_set.id,
+            knowledge_base_id=sample_knowledge_base.id,
+            status="running",
+            config={},
+        )
+        db_session.add(running_job)
+        await db_session.commit()
+
+        response = await client.delete(f"/api/v1/test-sets/{sample_test_set.id}/generation")
+
+        assert response.status_code == 204
+
+        # Verify job is cancelled
+        await db_session.refresh(running_job)
+        assert running_job.status == "cancelled"
+
+    @pytest.mark.asyncio
+    async def test_cancel_generation_no_active_job(
+        self, client: AsyncClient, sample_test_set: TestSet
+    ) -> None:
+        """Test cancelling when no active job exists."""
+        response = await client.delete(f"/api/v1/test-sets/{sample_test_set.id}/generation")
+
+        assert response.status_code == 404
+        assert "no active" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_list_generation_jobs_success(
+        self,
+        client: AsyncClient,
+        sample_test_set: TestSet,
+        sample_generation_job: TestGenerationJob,
+    ) -> None:
+        """Test listing generation jobs."""
+        response = await client.get(f"/api/v1/test-sets/{sample_test_set.id}/generation-jobs")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["id"] == str(sample_generation_job.id)
+        assert data[0]["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_list_generation_jobs_empty(
+        self, client: AsyncClient, sample_test_set: TestSet
+    ) -> None:
+        """Test listing generation jobs when none exist."""
+        response = await client.get(f"/api/v1/test-sets/{sample_test_set.id}/generation-jobs")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 0

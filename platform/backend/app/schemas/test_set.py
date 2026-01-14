@@ -159,3 +159,58 @@ class TestSetExport(BaseSchema):
     created_at: datetime
     test_cases: list[dict[str, Any]] = Field(description="Exported test cases")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Export metadata")
+
+
+# =============================================================================
+# Test Generation Schemas
+# =============================================================================
+
+
+class TestGenerationConfig(BaseSchema):
+    """Configuration for test case generation."""
+
+    knowledge_base_id: UUID = Field(description="Knowledge base to generate from")
+    target_count: int = Field(
+        default=20, ge=1, le=500, description="Number of test cases to generate"
+    )
+    questions_per_chunk: int = Field(
+        default=2, ge=1, le=10, description="Questions per document chunk"
+    )
+    difficulty_distribution: dict[str, float] | None = Field(
+        default=None,
+        description="Difficulty distribution (e.g., {'easy': 0.3, 'medium': 0.5, 'hard': 0.2})",
+    )
+    template_ids: list[UUID] | None = Field(
+        default=None, description="Template IDs to use for generation"
+    )
+    llm_model: str = Field(default="gpt-4o-mini", description="LLM model for generation")
+    skip_semantic_check: bool = Field(default=False, description="Skip semantic duplicate checking")
+
+
+class TestGenerationJobResponse(BaseResponseSchema):
+    """Response for test generation job."""
+
+    test_set_id: UUID = Field(description="Test set being populated")
+    knowledge_base_id: UUID | None = Field(description="Source knowledge base")
+    status: str = Field(description="Job status (pending, running, completed, failed, cancelled)")
+    config: dict[str, Any] = Field(default_factory=dict, description="Generation configuration")
+    questions_generated: int = Field(default=0, description="Questions generated so far")
+    questions_total: int = Field(default=0, description="Target question count")
+    questions_rejected: int = Field(default=0, description="Questions rejected by quality gates")
+    started_at: datetime | None = Field(default=None, description="When generation started")
+    completed_at: datetime | None = Field(default=None, description="When generation completed")
+    error_message: str | None = Field(default=None, description="Error message if failed")
+
+
+class TestGenerationStatusResponse(BaseSchema):
+    """Response for generation status query."""
+
+    job_id: UUID = Field(description="Generation job ID")
+    status: str = Field(description="Job status")
+    progress: float = Field(ge=0, le=1, description="Progress (0-1)")
+    questions_generated: int = Field(description="Questions generated")
+    questions_total: int = Field(description="Target question count")
+    questions_rejected: int = Field(description="Questions rejected")
+    started_at: datetime | None = Field(description="Start time")
+    completed_at: datetime | None = Field(description="Completion time")
+    error_message: str | None = Field(description="Error if failed")

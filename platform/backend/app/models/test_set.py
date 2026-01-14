@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 class TestSet(BaseModelNoUpdate):
     """Collection of test cases for evaluation."""
 
+    __test__ = False  # Prevent pytest collection
     __tablename__ = "test_sets"
 
     project_id: Mapped[uuid.UUID] = mapped_column(

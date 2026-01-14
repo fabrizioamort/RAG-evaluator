@@ -2,13 +2,15 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession, Pagination
+from app.models.knowledge_base import KnowledgeBase
 from app.models.project import Project
 from app.models.test_case import TestCase
+from app.models.test_generation_job import TestGenerationJob
 from app.models.test_set import TestSet
 from app.schemas.test_set import (
     TestCaseBulkCreate,
@@ -16,6 +18,9 @@ from app.schemas.test_set import (
     TestCaseCreate,
     TestCaseResponse,
     TestCaseUpdate,
+    TestGenerationConfig,
+    TestGenerationJobResponse,
+    TestGenerationStatusResponse,
     TestSetCreate,
     TestSetExport,
     TestSetImport,
@@ -23,6 +28,10 @@ from app.schemas.test_set import (
     TestSetResponse,
     TestSetUpdate,
     TestSetWithCases,
+)
+from app.services.test_generator_service import (
+    GenerationConfig,
+    get_test_generator_service,
 )
 from app.utils.logging_config import get_logger
 
@@ -534,3 +543,251 @@ async def export_test_set(
             "export_version": "1.0",
         },
     )
+
+
+# =============================================================================
+# Test Generation Endpoints
+# =============================================================================
+
+
+def _generation_job_to_response(job: TestGenerationJob) -> TestGenerationJobResponse:
+    """Convert TestGenerationJob model to response schema."""
+    return TestGenerationJobResponse(
+        id=job.id,
+        test_set_id=job.test_set_id,
+        knowledge_base_id=job.knowledge_base_id,
+        status=job.status,
+        config=job.config if isinstance(job.config, dict) else {},
+        questions_generated=job.questions_generated,
+        questions_total=job.questions_total,
+        questions_rejected=job.questions_rejected,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        error_message=job.error_message,
+        created_at=job.created_at,
+    )
+
+
+async def _run_generation_task(
+    job_id: UUID,
+    config: GenerationConfig,
+    db_url: str,
+) -> None:
+    """Background task to run test generation.
+
+    Creates a new database session for the background task.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+    engine = create_async_engine(db_url)
+    async with AsyncSession(engine) as session:
+        try:
+            service = get_test_generator_service(db=session)
+            await service.generate_and_save(job_id, config)
+        except Exception as e:
+            logger.error("Generation task failed", job_id=str(job_id), error=str(e))
+            # Update job status to failed
+            query = select(TestGenerationJob).where(TestGenerationJob.id == job_id)
+            result = await session.execute(query)
+            job = result.scalar_one_or_none()
+            if job:
+                job.status = "failed"
+                job.error_message = str(e)
+                await session.commit()
+        finally:
+            await engine.dispose()
+
+
+@router.post(
+    "/test-sets/{test_set_id}/generate",
+    response_model=TestGenerationJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Start test generation",
+    description="Start generating test cases from a knowledge base using LLM.",
+)
+async def start_generation(
+    db: DbSession,
+    test_set_id: UUID,
+    generation_config: TestGenerationConfig,
+    background_tasks: BackgroundTasks,
+) -> TestGenerationJobResponse:
+    """Start test case generation for a test set."""
+    # Verify test set exists
+    await _get_test_set_or_404(db, test_set_id)
+
+    # Verify knowledge base exists
+    kb_query = select(KnowledgeBase).where(KnowledgeBase.id == generation_config.knowledge_base_id)
+    kb_result = await db.execute(kb_query)
+    kb = kb_result.scalar_one_or_none()
+    if not kb:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Knowledge base {generation_config.knowledge_base_id} not found",
+        )
+
+    # Check if there's already a running generation job
+    running_query = (
+        select(TestGenerationJob)
+        .where(TestGenerationJob.test_set_id == test_set_id)
+        .where(TestGenerationJob.status.in_(["pending", "running"]))
+    )
+    running_result = await db.execute(running_query)
+    existing_job = running_result.scalar_one_or_none()
+    if existing_job:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A generation job is already running for this test set",
+        )
+
+    # Create generation job
+    job = TestGenerationJob(
+        test_set_id=test_set_id,
+        knowledge_base_id=generation_config.knowledge_base_id,
+        status="pending",
+        config=generation_config.model_dump(mode="json"),
+        questions_total=generation_config.target_count,
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+
+    # Convert to service config
+    service_config = GenerationConfig(
+        target_count=generation_config.target_count,
+        questions_per_chunk=generation_config.questions_per_chunk,
+        difficulty_distribution=generation_config.difficulty_distribution,
+        template_ids=generation_config.template_ids,
+        llm_model=generation_config.llm_model,
+        skip_semantic_check=generation_config.skip_semantic_check,
+    )
+
+    # Get database URL for background task
+    from app.config import settings
+
+    # Schedule background generation
+    background_tasks.add_task(
+        _run_generation_task,
+        job.id,
+        service_config,
+        settings.DATABASE_URL,
+    )
+
+    logger.info(
+        "Started generation job",
+        job_id=str(job.id),
+        test_set_id=str(test_set_id),
+        target_count=generation_config.target_count,
+    )
+
+    return _generation_job_to_response(job)
+
+
+@router.get(
+    "/test-sets/{test_set_id}/generation-status",
+    response_model=TestGenerationStatusResponse,
+    summary="Get generation status",
+    description="Get the status of the current or most recent generation job.",
+)
+async def get_generation_status(
+    db: DbSession,
+    test_set_id: UUID,
+) -> TestGenerationStatusResponse:
+    """Get the status of test generation for a test set."""
+    # Verify test set exists
+    await _get_test_set_or_404(db, test_set_id)
+
+    # Get the most recent generation job
+    query = (
+        select(TestGenerationJob)
+        .where(TestGenerationJob.test_set_id == test_set_id)
+        .order_by(TestGenerationJob.created_at.desc())
+        .limit(1)
+    )
+    result = await db.execute(query)
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No generation job found for this test set",
+        )
+
+    # Calculate progress
+    progress = 0.0
+    if job.questions_total > 0:
+        progress = min(1.0, job.questions_generated / job.questions_total)
+    if job.status == "completed":
+        progress = 1.0
+
+    return TestGenerationStatusResponse(
+        job_id=job.id,
+        status=job.status,
+        progress=progress,
+        questions_generated=job.questions_generated,
+        questions_total=job.questions_total,
+        questions_rejected=job.questions_rejected,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        error_message=job.error_message,
+    )
+
+
+@router.delete(
+    "/test-sets/{test_set_id}/generation",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Cancel generation",
+    description="Cancel an ongoing test generation job.",
+)
+async def cancel_generation(
+    db: DbSession,
+    test_set_id: UUID,
+) -> None:
+    """Cancel an ongoing generation job."""
+    # Verify test set exists
+    await _get_test_set_or_404(db, test_set_id)
+
+    # Find running job
+    query = (
+        select(TestGenerationJob)
+        .where(TestGenerationJob.test_set_id == test_set_id)
+        .where(TestGenerationJob.status.in_(["pending", "running"]))
+    )
+    result = await db.execute(query)
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active generation job to cancel",
+        )
+
+    # Mark as cancelled
+    job.status = "cancelled"
+    await db.commit()
+
+    logger.info("Cancelled generation job", job_id=str(job.id), test_set_id=str(test_set_id))
+
+
+@router.get(
+    "/test-sets/{test_set_id}/generation-jobs",
+    response_model=list[TestGenerationJobResponse],
+    summary="List generation jobs",
+    description="List all generation jobs for a test set.",
+)
+async def list_generation_jobs(
+    db: DbSession,
+    test_set_id: UUID,
+) -> list[TestGenerationJobResponse]:
+    """List all generation jobs for a test set."""
+    # Verify test set exists
+    await _get_test_set_or_404(db, test_set_id)
+
+    query = (
+        select(TestGenerationJob)
+        .where(TestGenerationJob.test_set_id == test_set_id)
+        .order_by(TestGenerationJob.created_at.desc())
+    )
+    result = await db.execute(query)
+    jobs = result.scalars().all()
+
+    return [_generation_job_to_response(job) for job in jobs]

@@ -113,7 +113,7 @@ function TestSetsTab({ projectId }: { projectId: string }) {
     })
 
     if (selectedTestSetId) {
-        return <TestSetDetail testSetId={selectedTestSetId} onBack={() => setSelectedTestSetId(null)} />
+        return <TestSetDetail testSetId={selectedTestSetId} projectId={projectId} onBack={() => setSelectedTestSetId(null)} />
     }
 
     if (isLoading) {

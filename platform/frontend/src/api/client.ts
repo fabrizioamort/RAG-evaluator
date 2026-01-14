@@ -287,6 +287,63 @@ export interface ProgressEvent {
   resuming_from?: number
 }
 
+// Test Template types
+export interface TestTemplate {
+  id: string
+  name: string
+  description: string | null
+  category: string
+  question_template: string
+  answer_template: string | null
+  entity_types: string[]
+  complexity_level: 'easy' | 'medium' | 'hard'
+  is_builtin: boolean
+  created_at: string
+}
+
+// Test Generation types
+export interface TestGenerationConfig {
+  knowledge_base_id: string
+  target_count: number
+  questions_per_chunk?: number
+  difficulty_distribution?: Record<string, number>
+  template_ids?: string[]
+  llm_model?: string
+  skip_semantic_check?: boolean
+}
+
+export interface TestGenerationJob {
+  id: string
+  test_set_id: string
+  knowledge_base_id: string | null
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  config: Record<string, any>
+  questions_generated: number
+  questions_total: number
+  questions_rejected: number
+  started_at: string | null
+  completed_at: string | null
+  error_message: string | null
+  created_at: string
+}
+
+export interface TestGenerationStatus {
+  job_id: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  progress: number
+  questions_generated: number
+  questions_total: number
+  questions_rejected: number
+  started_at: string | null
+  completed_at: string | null
+  error_message: string | null
+}
+
+export interface BulkReviewRequest {
+  test_case_ids: string[]
+  action: 'approve' | 'reject'
+}
+
 // API functions
 export const api = {
   health: {
@@ -339,6 +396,28 @@ export const api = {
       apiClient.put<TestCase>(`/test-sets/${testSetId}/cases/${caseId}`, data),
     deleteCase: (testSetId: string, caseId: string) =>
       apiClient.delete(`/test-sets/${testSetId}/cases/${caseId}`),
+    // Test Generation
+    generate: (testSetId: string, config: TestGenerationConfig) =>
+      apiClient.post<TestGenerationJob>(`/test-sets/${testSetId}/generate`, config),
+    getGenerationStatus: (testSetId: string) =>
+      apiClient.get<TestGenerationStatus>(`/test-sets/${testSetId}/generation-status`),
+    cancelGeneration: (testSetId: string) =>
+      apiClient.delete(`/test-sets/${testSetId}/generation`),
+    listGenerationJobs: (testSetId: string) =>
+      apiClient.get<TestGenerationJob[]>(`/test-sets/${testSetId}/generation-jobs`),
+    // Bulk review
+    bulkReview: (testSetId: string, data: BulkReviewRequest) =>
+      apiClient.post(`/test-sets/${testSetId}/cases/bulk-review`, data),
+  },
+  testTemplates: {
+    list: (params?: { limit?: number; offset?: number }) =>
+      apiClient.get<PaginatedList<TestTemplate>>('/test-templates', { params }),
+    get: (id: string) => apiClient.get<TestTemplate>(`/test-templates/${id}`),
+    create: (data: { name: string; description?: string; category: string; question_template: string; answer_template?: string; entity_types?: string[]; complexity_level?: string }) =>
+      apiClient.post<TestTemplate>('/test-templates', data),
+    update: (id: string, data: Partial<{ name: string; description: string; category: string; question_template: string; answer_template: string; entity_types: string[]; complexity_level: string }>) =>
+      apiClient.put<TestTemplate>(`/test-templates/${id}`, data),
+    delete: (id: string) => apiClient.delete(`/test-templates/${id}`),
   },
   ragConfigs: {
     list: (projectId: string, params?: { limit?: number; offset?: number }) =>

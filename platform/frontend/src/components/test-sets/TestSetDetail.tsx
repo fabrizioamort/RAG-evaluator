@@ -10,21 +10,32 @@ import {
     Loader2,
     AlertTriangle,
     CheckCircle2,
+    Sparkles,
+    ClipboardCheck,
 } from 'lucide-react'
 import { api, TestCase, TestCaseCreate } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { TestCaseDialog } from './TestCaseDialog'
+import { TestGeneratorWizard } from './TestGeneratorWizard'
+import { GenerationProgress } from './GenerationProgress'
+import { TestCaseReview } from './TestCaseReview'
 
 interface TestSetDetailProps {
     testSetId: string
+    projectId: string
     onBack: () => void
 }
 
-export function TestSetDetail({ testSetId, onBack }: TestSetDetailProps) {
+export function TestSetDetail({ testSetId, projectId, onBack }: TestSetDetailProps) {
     const queryClient = useQueryClient()
     const [searchQuery, setSearchQuery] = useState('')
     const [isCaseDialogOpen, setIsCaseDialogOpen] = useState(false)
     const [editingCase, setEditingCase] = useState<TestCase | undefined>(undefined)
+
+    // Test generation state
+    const [isGeneratorOpen, setIsGeneratorOpen] = useState(false)
+    const [isProgressOpen, setIsProgressOpen] = useState(false)
+    const [isReviewOpen, setIsReviewOpen] = useState(false)
 
     const { data: testSet, isLoading, isError } = useQuery({
         queryKey: ['test-set', testSetId],
@@ -95,6 +106,10 @@ export function TestSetDetail({ testSetId, onBack }: TestSetDetailProps) {
         c.expected_answer.toLowerCase().includes(searchQuery.toLowerCase())
     )
 
+    // Count generated and pending review cases
+    const generatedCount = cases.filter(c => c.is_generated).length
+    const pendingReviewCount = cases.filter(c => c.is_generated && !c.is_reviewed).length
+
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-4">
@@ -116,6 +131,27 @@ export function TestSetDetail({ testSetId, onBack }: TestSetDetailProps) {
                         <Download className="h-4 w-4" />
                         Export
                     </button>
+                    {generatedCount > 0 && (
+                        <button
+                            onClick={() => setIsReviewOpen(true)}
+                            className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold hover:bg-muted transition-colors"
+                        >
+                            <ClipboardCheck className="h-4 w-4" />
+                            Review
+                            {pendingReviewCount > 0 && (
+                                <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                                    {pendingReviewCount}
+                                </span>
+                            )}
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setIsGeneratorOpen(true)}
+                        className="flex items-center gap-2 rounded-lg border border-primary bg-primary/10 text-primary px-4 py-2 text-sm font-semibold hover:bg-primary/20 transition-colors"
+                    >
+                        <Sparkles className="h-4 w-4" />
+                        Generate
+                    </button>
                     <button
                         onClick={() => {
                             setEditingCase(undefined)
@@ -136,6 +172,21 @@ export function TestSetDetail({ testSetId, onBack }: TestSetDetailProps) {
                         <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Total Cases</span>
                         <span className="text-lg font-bold">{cases.length}</span>
                     </div>
+                    {generatedCount > 0 && (
+                        <>
+                            <div className="flex flex-col">
+                                <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Generated</span>
+                                <span className="text-lg font-bold text-primary">{generatedCount}</span>
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Pending Review</span>
+                                <span className={cn(
+                                    "text-lg font-bold",
+                                    pendingReviewCount > 0 ? "text-amber-500" : "text-green-500"
+                                )}>{pendingReviewCount}</span>
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 <div className="relative flex-1 max-w-md">
@@ -254,6 +305,45 @@ export function TestSetDetail({ testSetId, onBack }: TestSetDetailProps) {
                     }
                 }}
             />
+
+            {/* Test Generation Wizard */}
+            <TestGeneratorWizard
+                testSetId={testSetId}
+                projectId={projectId}
+                isOpen={isGeneratorOpen}
+                onClose={() => setIsGeneratorOpen(false)}
+                onStarted={() => {
+                    setIsGeneratorOpen(false)
+                    setIsProgressOpen(true)
+                }}
+            />
+
+            {/* Generation Progress */}
+            {isProgressOpen && (
+                <GenerationProgress
+                    testSetId={testSetId}
+                    onComplete={() => {
+                        setIsProgressOpen(false)
+                        queryClient.invalidateQueries({ queryKey: ['test-set', testSetId] })
+                    }}
+                    onClose={() => {
+                        setIsProgressOpen(false)
+                        queryClient.invalidateQueries({ queryKey: ['test-set', testSetId] })
+                    }}
+                />
+            )}
+
+            {/* Review Interface */}
+            {isReviewOpen && (
+                <TestCaseReview
+                    testSetId={testSetId}
+                    testCases={cases}
+                    onClose={() => {
+                        setIsReviewOpen(false)
+                        queryClient.invalidateQueries({ queryKey: ['test-set', testSetId] })
+                    }}
+                />
+            )}
         </div>
     )
 }

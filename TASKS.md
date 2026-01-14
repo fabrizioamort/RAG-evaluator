@@ -666,59 +666,59 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 4.1 Test Generator Service
 
-- [ ] **P4.1.1** Create `app/services/test_generator_service.py`
+- [x] **P4.1.1** Create `app/services/test_generator_service.py`
   - Generate questions from KB chunks
   - Use templates for structure
   - Progress tracking
   **Acceptance:** Generates test cases
 
-- [ ] **P4.1.2** Implement generation prompts
+- [x] **P4.1.2** Implement generation prompts
   - System prompt for question generation
   - Template-guided generation
   **Acceptance:** Quality questions generated
 
 ### 4.2 Quality Gate Service
 
-- [ ] **P4.2.1** Create `app/services/test_quality_gate.py`
+- [x] **P4.2.1** Create `app/services/test_quality_gate.py`
   - Exact duplicate detection
   - Semantic duplicate detection
   - Answerability validation
   - Length checks
   **Acceptance:** Low-quality rejected
 
-- [ ] **P4.2.2** Implement provenance tracking
+- [x] **P4.2.2** Implement provenance tracking
   - Store which chunks generated each question
   **Acceptance:** Provenance stored
 
 ### 4.3 Generation API
 
-- [ ] **P4.3.1** Add POST /test-sets/{id}/generate
+- [x] **P4.3.1** Add POST /test-sets/{id}/generate
   - Config: count, templates, difficulty distribution
   - Returns job ID
   **Acceptance:** Generation starts
 
-- [ ] **P4.3.2** Add GET /test-sets/{id}/generation-status
+- [x] **P4.3.2** Add GET /test-sets/{id}/generation-status
   - Progress, rejected count
   **Acceptance:** Status retrievable
 
-- [ ] **P4.3.3** Add POST /test-sets/{id}/cases/bulk-review
+- [x] **P4.3.3** Add POST /test-sets/{id}/cases/bulk-review
   - Approve/reject multiple cases
   **Acceptance:** Bulk operations work
 
 ### 4.4 Frontend - Test Generation
 
-- [ ] **P4.4.1** Create TestGeneratorWizard component
+- [x] **P4.4.1** Create TestGeneratorWizard component
   - Select KB
   - Configure count, difficulty
   - Select templates
   **Acceptance:** Can configure generation
 
-- [ ] **P4.4.2** Create generation progress view
+- [x] **P4.4.2** Create generation progress view
   - Progress bar
   - Generated/rejected counters
   **Acceptance:** Shows progress
 
-- [ ] **P4.4.3** Create review interface
+- [x] **P4.4.3** Create review interface
   - List generated cases
   - Approve/reject/edit buttons
   - Bulk actions
@@ -726,10 +726,10 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 4.5 Tests
 
-- [ ] **P4.5.1** Test generation with mocked LLM
+- [x] **P4.5.1** Test generation with mocked LLM
   **Acceptance:** Generation tested
 
-- [ ] **P4.5.2** Test quality gates
+- [x] **P4.5.2** Test quality gates
   **Acceptance:** Gates working
 
 ---

@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+
 from sqlalchemy import select
 
 # Ensure we are in the project root
@@ -15,6 +16,7 @@ os.chdir(str(root_path))
 
 # Load environment variables for the backend BEFORE importing app modules
 from dotenv import load_dotenv
+
 env_path = root_path / "platform" / "backend" / ".env"
 load_dotenv(env_path)
 
@@ -33,6 +35,7 @@ sys.path.append(str(backend_path))
 from app.database import async_session_maker
 from app.models import Evaluation
 
+
 async def main():
     async with async_session_maker() as session:
         # Find all evaluations with pass_rate > 1.0
@@ -45,7 +48,7 @@ async def main():
             return
 
         print(f"Found {len(evaluations)} evaluations with invalid pass_rate.")
-        
+
         count = 0
         for evaluation in evaluations:
             old_rate = evaluation.pass_rate
@@ -53,9 +56,10 @@ async def main():
             evaluation.pass_rate = new_rate
             print(f"Fixing Evaluation {evaluation.id}: {old_rate} -> {new_rate}")
             count += 1
-        
+
         await session.commit()
         print(f"Successfully fixed {count} evaluations.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -257,9 +257,9 @@ class FilesystemRAG(BaseRAG):
             "context": context.chunks,
             "metadata": {
                 "sources": [c.source for c in context.chunk_details],
-                "search_mode": context.trace.steps[0].get("metadata", {}).get(
-                    "search_mode", "unknown"
-                )
+                "search_mode": context.trace.steps[0]
+                .get("metadata", {})
+                .get("search_mode", "unknown")
                 if context.trace.steps
                 else "unknown",
             },
@@ -285,9 +285,7 @@ class FilesystemRAG(BaseRAG):
             raise ValueError("Agent not initialized")
 
         # Build context prompt and call agent's LLM
-        context_text = "\n\n".join(
-            [f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)]
-        )
+        context_text = "\n\n".join([f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)])
 
         prompt = f"""Based on the following context gathered from the filesystem, answer the question.
 

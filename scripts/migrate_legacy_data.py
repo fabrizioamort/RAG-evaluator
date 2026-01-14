@@ -5,7 +5,6 @@ import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
 
 # Ensure we are in the project root
 root_path = Path(__file__).parent.parent
@@ -18,6 +17,7 @@ os.chdir(str(root_path))
 
 # Load environment variables for the backend BEFORE importing app modules
 from dotenv import load_dotenv
+
 env_path = root_path / "platform" / "backend" / ".env"
 load_dotenv(env_path)
 
@@ -34,15 +34,27 @@ backend_path = root_path / "platform" / "backend"
 sys.path.append(str(backend_path))
 
 from app.database import async_session_maker
-from app.models import Project, TestSet, TestCase, Evaluation, EvaluationResult, KnowledgeBase, Document, KnowledgeBaseVersion, RAGConfig
+from app.models import (
+    Document,
+    Evaluation,
+    EvaluationResult,
+    KnowledgeBase,
+    KnowledgeBaseVersion,
+    Project,
+    RAGConfig,
+    TestCase,
+    TestSet,
+)
 from sqlalchemy import select
-from app.api.deps import get_db
+
 
 async def migrate_knowledge_base(session, project_id: uuid.UUID):
     kb_name = "Legacy Knowledge Base"
-    
+
     # Check if exists
-    query = select(KnowledgeBase).where(KnowledgeBase.project_id == project_id, KnowledgeBase.name == kb_name)
+    query = select(KnowledgeBase).where(
+        KnowledgeBase.project_id == project_id, KnowledgeBase.name == kb_name
+    )
     result = await session.execute(query)
     kb = result.scalar_one_or_none()
 
@@ -58,7 +70,7 @@ async def migrate_knowledge_base(session, project_id: uuid.UUID):
             description="Knowledge base imported from data/raw PDFs.",
             status="ready",
             current_version=1,
-            storage_path=str(storage_path)
+            storage_path=str(storage_path),
         )
         session.add(kb)
         await session.flush()
@@ -69,11 +81,13 @@ async def migrate_knowledge_base(session, project_id: uuid.UUID):
     # Process files
     pdf_files = list(raw_data_path.glob("*.pdf"))
     docs_to_add = []
-    
+
     for pdf_file in pdf_files:
         # Check if doc exists
         # Simplified check: just by filename in this KB
-        doc_query = select(Document).where(Document.knowledge_base_id == kb.id, Document.filename == pdf_file.name)
+        doc_query = select(Document).where(
+            Document.knowledge_base_id == kb.id, Document.filename == pdf_file.name
+        )
         doc_res = await session.execute(doc_query)
         if doc_res.scalar_one_or_none():
             continue
@@ -82,10 +96,11 @@ async def migrate_knowledge_base(session, project_id: uuid.UUID):
         dest_path = storage_path / pdf_file.name
         if not dest_path.exists():
             import shutil
+
             shutil.copy2(pdf_file, dest_path)
-        
+
         file_stats = dest_path.stat()
-        
+
         doc = Document(
             id=uuid.uuid4(),
             knowledge_base_id=kb.id,
@@ -93,36 +108,39 @@ async def migrate_knowledge_base(session, project_id: uuid.UUID):
             file_path=str(dest_path),
             content_type="application/pdf",
             size_bytes=file_stats.st_size,
-            status="indexed"
+            status="indexed",
         )
         session.add(doc)
         docs_to_add.append(doc)
-    
+
     await session.flush()
     if docs_to_add:
         print(f"Imported {len(docs_to_add)} documents.")
-        
+
         # Create Version 1 if it doesn't exist
-        v_query = select(KnowledgeBaseVersion).where(KnowledgeBaseVersion.knowledge_base_id == kb.id, KnowledgeBaseVersion.version_number == 1)
+        v_query = select(KnowledgeBaseVersion).where(
+            KnowledgeBaseVersion.knowledge_base_id == kb.id,
+            KnowledgeBaseVersion.version_number == 1,
+        )
         v_res = await session.execute(v_query)
         if not v_res.scalar_one_or_none():
-             # Create snapshot
-             snapshot = [
-                 {"id": str(d.id), "filename": d.filename, "size": d.size_bytes} 
-                 for d in docs_to_add
-             ]
-             kb_version = KnowledgeBaseVersion(
-                 id=uuid.uuid4(),
-                 knowledge_base_id=kb.id,
-                 version_number=1,
-                 change_type="initial_import",
-                 change_description="Imported from legacy data directory",
-                 document_snapshot=snapshot
-             )
-             session.add(kb_version)
-             print("Created KnowledgeBaseVersion 1")
+            # Create snapshot
+            snapshot = [
+                {"id": str(d.id), "filename": d.filename, "size": d.size_bytes} for d in docs_to_add
+            ]
+            kb_version = KnowledgeBaseVersion(
+                id=uuid.uuid4(),
+                knowledge_base_id=kb.id,
+                version_number=1,
+                change_type="initial_import",
+                change_description="Imported from legacy data directory",
+                document_snapshot=snapshot,
+            )
+            session.add(kb_version)
+            print("Created KnowledgeBaseVersion 1")
 
     return kb.id
+
 
 async def migrate_test_sets(session, project_id: uuid.UUID):
     test_set_path = Path("data/test_set.json")
@@ -130,7 +148,7 @@ async def migrate_test_sets(session, project_id: uuid.UUID):
         print(f"Test set file {test_set_path} not found.")
         return None
 
-    with open(test_set_path, "r", encoding="utf-8") as f:
+    with open(test_set_path, encoding="utf-8") as f:
         data = json.load(f)
 
     test_set_name = "Legacy CLI Test Set"
@@ -146,7 +164,7 @@ async def migrate_test_sets(session, project_id: uuid.UUID):
             project_id=project_id,
             name=test_set_name,
             description="Imported from data/test_set.json",
-            tags=["legacy", "cli"]
+            tags=["legacy", "cli"],
         )
         session.add(test_set)
         await session.flush()
@@ -163,7 +181,7 @@ async def migrate_test_sets(session, project_id: uuid.UUID):
                 difficulty=tc_data.get("difficulty", "medium"),
                 category=tc_data.get("category", "general"),
                 is_generated=False,
-                is_reviewed=True
+                is_reviewed=True,
             )
             session.add(test_case)
         print(f"Imported {len(test_cases)} test cases.")
@@ -172,6 +190,7 @@ async def migrate_test_sets(session, project_id: uuid.UUID):
 
     return test_set.id
 
+
 async def migrate_reports(session, project_id: uuid.UUID, test_set_id: uuid.UUID):
     reports_dir = Path("reports")
     if not reports_dir.exists():
@@ -179,10 +198,12 @@ async def migrate_reports(session, project_id: uuid.UUID, test_set_id: uuid.UUID
         return
 
     json_files = list(reports_dir.glob("*.json"))
-    report_files = [f for f in json_files if f.name.startswith("eval_") and not "comparison" in f.name]
+    report_files = [
+        f for f in json_files if f.name.startswith("eval_") and "comparison" not in f.name
+    ]
 
     for report_file in report_files:
-        with open(report_file, "r", encoding="utf-8") as f:
+        with open(report_file, encoding="utf-8") as f:
             try:
                 data = json.load(f)
             except Exception as e:
@@ -190,11 +211,11 @@ async def migrate_reports(session, project_id: uuid.UUID, test_set_id: uuid.UUID
                 continue
 
         impl_name = data.get("rag_implementation", "Unknown Implementation")
-        
+
         # Check if evaluation already exists
         query = select(Evaluation).where(
             Evaluation.project_id == project_id,
-            Evaluation.notes == f"Imported from {report_file.name}"
+            Evaluation.notes == f"Imported from {report_file.name}",
         )
         result = await session.execute(query)
         if result.scalar_one_or_none():
@@ -224,7 +245,7 @@ async def migrate_reports(session, project_id: uuid.UUID, test_set_id: uuid.UUID
             performance_metrics=data.get("performance_metrics", {}),
             pass_rate=pass_rate,
             notes=f"Imported from {report_file.name}",
-            tags=["legacy", "cli", impl_name.lower().replace(" ", "-")]
+            tags=["legacy", "cli", impl_name.lower().replace(" ", "-")],
         )
         session.add(eval_run)
         await session.flush()
@@ -233,8 +254,7 @@ async def migrate_reports(session, project_id: uuid.UUID, test_set_id: uuid.UUID
         for res_data in detailed_results:
             # Try to find matching test case by question
             tc_query = select(TestCase).where(
-                TestCase.test_set_id == test_set_id,
-                TestCase.question == res_data.get("question")
+                TestCase.test_set_id == test_set_id, TestCase.question == res_data.get("question")
             )
             tc_result = await session.execute(tc_query)
             test_case = tc_result.scalar_one_or_none()
@@ -249,11 +269,12 @@ async def migrate_reports(session, project_id: uuid.UUID, test_set_id: uuid.UUID
                 relevancy_score=res_metrics.get("answer_relevancy"),
                 precision_score=res_metrics.get("contextual_precision"),
                 recall_score=res_metrics.get("contextual_recall"),
-                latency_seconds=res_data.get("retrieval_time", 0.0)
+                latency_seconds=res_data.get("retrieval_time", 0.0),
             )
             session.add(result_entry)
 
         print(f"Imported report: {report_file.name}")
+
 
 async def migrate_rag_configs(session, project_id: uuid.UUID):
     reports_dir = Path("reports")
@@ -261,25 +282,29 @@ async def migrate_rag_configs(session, project_id: uuid.UUID):
         return
 
     json_files = list(reports_dir.glob("*.json"))
-    report_files = [f for f in json_files if f.name.startswith("eval_") and not "comparison" in f.name]
-    
+    report_files = [
+        f for f in json_files if f.name.startswith("eval_") and "comparison" not in f.name
+    ]
+
     created_configs = 0
-    
+
     for report_file in report_files:
-        with open(report_file, "r", encoding="utf-8") as f:
+        with open(report_file, encoding="utf-8") as f:
             try:
                 data = json.load(f)
             except:
                 continue
-        
+
         impl_name = data.get("rag_implementation", "Unknown Implementation")
-        
+
         # Check if config exists
-        query = select(RAGConfig).where(RAGConfig.project_id == project_id, RAGConfig.name == impl_name)
+        query = select(RAGConfig).where(
+            RAGConfig.project_id == project_id, RAGConfig.name == impl_name
+        )
         result = await session.execute(query)
         if result.scalar_one_or_none():
             continue
-            
+
         # Infer type
         rag_type = "custom"
         if "chroma" in impl_name.lower():
@@ -289,7 +314,7 @@ async def migrate_rag_configs(session, project_id: uuid.UUID):
         elif "graph" in impl_name.lower() or "neo4j" in impl_name.lower():
             rag_type = "graph_rag"
         elif "files" in impl_name.lower():
-             rag_type = "filesystem_agent"
+            rag_type = "filesystem_agent"
 
         # Create Config
         config = RAGConfig(
@@ -299,13 +324,14 @@ async def migrate_rag_configs(session, project_id: uuid.UUID):
             rag_type=rag_type,
             parameters={"imported": True, "source": report_file.name},
             llm_provider="openai",
-            llm_model="gpt-4o"
+            llm_model="gpt-4o",
         )
         session.add(config)
         created_configs += 1
-    
+
     if created_configs > 0:
         print(f"Created {created_configs} RAG Configs based on reports.")
+
 
 async def main():
     async with async_session_maker() as session:
@@ -321,7 +347,7 @@ async def main():
                 name=project_name,
                 description="Project containing data imported from the CLI version.",
                 status="active",
-                tags=["migration", "legacy"]
+                tags=["migration", "legacy"],
             )
             session.add(project)
             await session.commit()
@@ -347,6 +373,7 @@ async def main():
             await session.commit()
 
     print("\nMigration completed successfully!")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

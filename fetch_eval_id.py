@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+
 from sqlalchemy import select
 
 # Ensure we are in the project root
@@ -10,6 +11,7 @@ sys.path.append(str(root_path / "platform" / "backend"))
 
 os.chdir(str(root_path))
 from dotenv import load_dotenv
+
 load_dotenv(root_path / "platform" / "backend" / ".env")
 
 # Fix DB URL if needed (same as other scripts)
@@ -22,11 +24,13 @@ if "sqlite" in db_url and "///./" in db_url:
 from app.database import async_session_maker
 from app.models import Evaluation
 
+
 async def main():
     async with async_session_maker() as session:
         result = await session.execute(select(Evaluation.id).limit(1))
         eval_id = result.scalar()
         print(eval_id)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
