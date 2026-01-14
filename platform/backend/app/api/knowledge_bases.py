@@ -674,6 +674,14 @@ async def index_knowledge_base(
             documents=list(kb.documents) if kb.documents else [],
         )
 
+        # Update document status to processed
+        from sqlalchemy import update
+        await db.execute(
+            update(Document)
+            .where(Document.knowledge_base_id == kb_id)
+            .values(status="processed")
+        )
+
         kb.status = "ready"
         await db.commit()
         await db.refresh(kb, ["documents"])

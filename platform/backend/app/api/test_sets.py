@@ -571,16 +571,14 @@ def _generation_job_to_response(job: TestGenerationJob) -> TestGenerationJobResp
 async def _run_generation_task(
     job_id: UUID,
     config: GenerationConfig,
-    db_url: str,
 ) -> None:
     """Background task to run test generation.
 
-    Creates a new database session for the background task.
+    Uses the application's database session context.
     """
-    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from app.database import get_db_context
 
-    engine = create_async_engine(db_url)
-    async with AsyncSession(engine) as session:
+    async with get_db_context() as session:
         try:
             service = get_test_generator_service(db=session)
             await service.generate_and_save(job_id, config)
@@ -594,8 +592,6 @@ async def _run_generation_task(
                 job.status = "failed"
                 job.error_message = str(e)
                 await session.commit()
-        finally:
-            await engine.dispose()
 
 
 @router.post(
@@ -669,7 +665,6 @@ async def start_generation(
         _run_generation_task,
         job.id,
         service_config,
-        settings.DATABASE_URL,
     )
 
     logger.info(

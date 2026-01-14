@@ -785,5 +785,12 @@ class TestKBIndexing:
             mock_adapter.get_or_create_rag.assert_called_once()
             args, _ = mock_adapter.get_or_create_rag.call_args
             assert args[0].id == sample_rag_config.id
+
+            # Verify documents are marked as processed
+            kb_response = await client.get(f"/api/v1/knowledge-bases/{sample_kb.id}")
+            data = kb_response.json()
+            assert len(data["documents"]) > 0
+            for doc in data["documents"]:
+                assert doc["status"] == "processed"
         finally:
             app.dependency_overrides.clear()

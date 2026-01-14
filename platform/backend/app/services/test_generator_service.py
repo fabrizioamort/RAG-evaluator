@@ -10,6 +10,7 @@ This service generates test cases by:
 
 import asyncio
 import json
+import sys
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -32,6 +33,13 @@ from app.services.test_quality_gate import (
     get_quality_gate_service,
 )
 from app.utils.logging_config import get_logger
+
+# Add src to path for importing rag_evaluator
+src_path = Path(__file__).parent.parent.parent.parent.parent / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
+from rag_evaluator.common.document_loaders import create_loader
 
 logger = get_logger(__name__)
 
@@ -407,7 +415,7 @@ class TestGeneratorService:
         query = (
             select(Document)
             .where(Document.knowledge_base_id == kb_id)
-            .where(Document.status == "processed")
+            .where(Document.status.in_(["processed", "uploaded"]))
         )
         result = await self.db.execute(query)
         documents = result.scalars().all()
@@ -415,17 +423,11 @@ class TestGeneratorService:
         loaded: list[tuple[str, str]] = []
         for doc in documents:
             try:
-                file_path = Path(doc.file_path)
-                if file_path.exists():
-                    async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
-                        content = await f.read()
-                    loaded.append((doc.filename, content))
-                else:
-                    logger.warning(
-                        "Document file not found",
-                        doc_id=str(doc.id),
-                        file_path=str(file_path),
-                    )
+                # Use DocumentLoader system for robust content extraction
+                loader = create_loader(doc.file_path)
+                loaded_doc = loader.load(doc.file_path)
+                if loaded_doc and loaded_doc.content:
+                    loaded.append((doc.filename, loaded_doc.content))
             except Exception as e:
                 logger.warning(
                     "Failed to load document",
