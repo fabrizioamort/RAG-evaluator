@@ -3,7 +3,7 @@
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -26,6 +26,7 @@ from app.schemas.knowledge_base import (
 )
 from app.services.rag_adapter import RAGAdapterService, get_rag_adapter_service
 from app.services.storage_service import StorageService, get_storage_service
+from app.utils.exceptions import BadRequestError, NotFoundError, ValidationError
 from app.utils.logging_config import get_logger
 
 router = APIRouter(tags=["Knowledge Bases"])
@@ -106,10 +107,7 @@ async def _get_project_or_404(db: DbSession, project_id: UUID) -> Project:
     result = await db.execute(query)
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with id {project_id} not found",
-        )
+        raise NotFoundError(detail=f"Project with id {project_id} not found")
     return project
 
 
@@ -123,10 +121,7 @@ async def _get_kb_or_404(db: DbSession, kb_id: UUID) -> KnowledgeBase:
     result = await db.execute(query)
     kb = result.scalar_one_or_none()
     if not kb:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Knowledge base with id {kb_id} not found",
-        )
+        raise NotFoundError(detail=f"Knowledge base with id {kb_id} not found")
     return kb
 
 
@@ -496,10 +491,7 @@ async def delete_document(
     doc = result.scalar_one_or_none()
 
     if not doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Document with id {doc_id} not found in knowledge base {kb_id}",
-        )
+        raise NotFoundError(detail=f"Document with id {doc_id} not found in knowledge base {kb_id}")
 
     # Delete file from storage
     await storage.delete_file(doc.file_path)
@@ -600,14 +592,18 @@ async def _perform_indexing_task(
 ) -> None:
     """Background task to perform indexing."""
     from app.database import get_db_context
-    
+
     async with get_db_context() as db:
         try:
             # Reload KB with documents
-            kb_query = select(KnowledgeBase).where(KnowledgeBase.id == kb_id).options(selectinload(KnowledgeBase.documents))
+            kb_query = (
+                select(KnowledgeBase)
+                .where(KnowledgeBase.id == kb_id)
+                .options(selectinload(KnowledgeBase.documents))
+            )
             kb_result = await db.execute(kb_query)
             kb = kb_result.scalar_one_or_none()
-            
+
             if not kb:
                 logger.error("KB not found in background task", kb_id=str(kb_id))
                 return
@@ -638,7 +634,7 @@ async def _perform_indexing_task(
                 )
 
             # Prepare documents
-            await rag_adapter.prepare_documents(rag, kb.storage_path)
+            await rag_adapter.prepare_documents(rag, str(kb.storage_path))
 
             # Create a new version
             await db.refresh(kb, ["documents"])
@@ -652,6 +648,7 @@ async def _perform_indexing_task(
 
             # Update document status to processed
             from sqlalchemy import update
+
             await db.execute(
                 update(Document)
                 .where(Document.knowledge_base_id == kb_id)
@@ -666,7 +663,7 @@ async def _perform_indexing_task(
             logger.exception("Failed to index knowledge base in background", kb_id=str(kb_id))
             # Critical: rollback before trying to update status to avoid PendingRollbackError
             await db.rollback()
-            
+
             # Re-fetch KB in new transaction or after rollback to set error status
             kb_query = select(KnowledgeBase).where(KnowledgeBase.id == kb_id)
             kb_result = await db.execute(kb_query)
@@ -695,21 +692,18 @@ async def index_knowledge_base(
     kb = await _get_kb_or_404(db, kb_id)
 
     if not kb.documents:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot index an empty knowledge base. Please upload documents first.",
+        raise BadRequestError(
+            detail="Cannot index an empty knowledge base. Please upload documents first."
         )
 
     if kb.status == "indexing":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Indexing is already in progress for this knowledge base.",
-        )
+        raise BadRequestError(detail="Indexing is already in progress for this knowledge base.")
 
     # Update status to indexing immediately
     kb.status = "indexing"
     await db.commit()
-    await db.refresh(kb)
+    # Re-fetch with documents to avoid lazy loading issues in _kb_to_response
+    kb = await _get_kb_or_404(db, kb.id)
 
     # Add task to background
     background_tasks.add_task(

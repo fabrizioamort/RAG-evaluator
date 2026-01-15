@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, KnowledgeBaseCreate, Evaluation, RAGConfig } from '@/api/client'
+import { useToast } from '@/components/ui/toast'
 import { TestSetList } from '@/components/test-sets/TestSetList'
 import { TestSetDetail } from '@/components/test-sets/TestSetDetail'
 import { CreateTestSetDialog } from '@/components/test-sets/CreateTestSetDialog'
@@ -33,6 +34,7 @@ import { TrendChart } from '@/components/trends/TrendChart'
 function KnowledgeBasesTab({ projectId }: { projectId: string }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const queryClient = useQueryClient()
+    const { success, error } = useToast()
 
     const { data, isLoading } = useQuery({
         queryKey: ['knowledge-bases', projectId],
@@ -42,8 +44,13 @@ function KnowledgeBasesTab({ projectId }: { projectId: string }) {
 
     const createMutation = useMutation({
         mutationFn: (newKB: KnowledgeBaseCreate) => api.knowledgeBases.create(projectId, newKB),
-        onSuccess: () => {
+        onSuccess: (response) => {
             queryClient.invalidateQueries({ queryKey: ['knowledge-bases', projectId] })
+            success('Knowledge Base created', `"${response.data.name}" is ready for documents.`)
+            setIsDialogOpen(false)
+        },
+        onError: () => {
+            error('Failed to create KB', 'Please try again.')
         },
     })
 
@@ -93,6 +100,7 @@ function TestSetsTab({ projectId }: { projectId: string }) {
     const [selectedTestSetId, setSelectedTestSetId] = useState<string | null>(null)
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
     const queryClient = useQueryClient()
+    const { success, error } = useToast()
 
     const { data, isLoading } = useQuery({
         queryKey: ['test-sets', projectId],
@@ -102,8 +110,13 @@ function TestSetsTab({ projectId }: { projectId: string }) {
 
     const createMutation = useMutation({
         mutationFn: (data: unknown) => api.testSets.create(projectId, data as Parameters<typeof api.testSets.create>[1]),
-        onSuccess: () => {
+        onSuccess: (response) => {
             queryClient.invalidateQueries({ queryKey: ['test-sets', projectId] })
+            success('Test Set created', `"${response.data.name}" is ready for test cases.`)
+            setIsCreateDialogOpen(false)
+        },
+        onError: () => {
+            error('Failed to create test set', 'Please try again.')
         },
     })
 
@@ -111,6 +124,10 @@ function TestSetsTab({ projectId }: { projectId: string }) {
         mutationFn: (id: string) => api.testSets.delete(id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['test-sets', projectId] })
+            success('Test Set deleted', 'The test set has been removed.')
+        },
+        onError: () => {
+            error('Failed to delete', 'Please try again.')
         },
     })
 
@@ -171,6 +188,7 @@ function RAGConfigsTab({ projectId }: { projectId: string }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [editingConfig, setEditingConfig] = useState<RAGConfig | undefined>(undefined)
     const queryClient = useQueryClient()
+    const { success, error } = useToast()
 
     const { data, isLoading } = useQuery({
         queryKey: ['rag-configs', projectId],
@@ -180,8 +198,13 @@ function RAGConfigsTab({ projectId }: { projectId: string }) {
 
     const createMutation = useMutation({
         mutationFn: (data: Parameters<typeof api.ragConfigs.create>[1]) => api.ragConfigs.create(projectId, data),
-        onSuccess: () => {
+        onSuccess: (response) => {
             queryClient.invalidateQueries({ queryKey: ['rag-configs', projectId] })
+            success('RAG Config created', `"${response.data.name}" configuration saved.`)
+            setIsDialogOpen(false)
+        },
+        onError: () => {
+            error('Failed to create config', 'Please try again.')
         },
     })
 
@@ -189,6 +212,11 @@ function RAGConfigsTab({ projectId }: { projectId: string }) {
         mutationFn: ({ id, data }: { id: string, data: Parameters<typeof api.ragConfigs.update>[1] }) => api.ragConfigs.update(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['rag-configs', projectId] })
+            success('Config updated', 'Configuration changes saved.')
+            setIsDialogOpen(false)
+        },
+        onError: () => {
+            error('Failed to update', 'Please try again.')
         },
     })
 
@@ -196,6 +224,10 @@ function RAGConfigsTab({ projectId }: { projectId: string }) {
         mutationFn: (id: string) => api.ragConfigs.delete(id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['rag-configs', projectId] })
+            success('Config deleted', 'The configuration has been removed.')
+        },
+        onError: () => {
+            error('Failed to delete', 'Please try again.')
         },
     })
 

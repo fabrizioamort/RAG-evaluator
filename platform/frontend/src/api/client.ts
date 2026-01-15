@@ -41,6 +41,28 @@ export interface HealthResponse {
   version: string
 }
 
+export interface DashboardStats {
+  projects: number
+  knowledge_bases: number
+  test_sets: number
+  evaluations: number
+  completed_evaluations: number
+  running_evaluations: number
+}
+
+export interface RecentActivityItem {
+  id: string
+  type: 'project' | 'evaluation' | 'knowledge_base' | 'test_set'
+  action: string
+  name: string
+  timestamp: string
+  metadata?: Record<string, unknown>
+}
+
+export interface RecentActivityResponse {
+  items: RecentActivityItem[]
+}
+
 export interface Project {
   id: string
   name: string
@@ -410,6 +432,10 @@ export const api = {
   health: {
     check: () => apiClient.get<HealthResponse>('/health'),
     detail: () => apiClient.get('/health/detail'),
+  },
+  stats: {
+    get: () => apiClient.get<DashboardStats>('/stats'),
+    recentActivity: (limit?: number) => apiClient.get<RecentActivityResponse>('/recent-activity', { params: { limit } }),
   },
   projects: {
     list: (params?: { limit?: number; offset?: number; status?: string }) =>

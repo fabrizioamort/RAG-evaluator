@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -15,6 +15,7 @@ from app.schemas.project import (
     ProjectResponse,
     ProjectUpdate,
 )
+from app.utils.exceptions import NotFoundError
 from app.utils.logging_config import get_logger
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -169,10 +170,7 @@ async def get_project(
 
     if not project:
         logger.warning("Project not found", project_id=str(project_id))
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with id {project_id} not found",
-        )
+        raise NotFoundError(detail=f"Project with id {project_id} not found")
 
     return _project_to_response(project)
 
@@ -199,10 +197,7 @@ async def update_project(
 
     if not project:
         logger.warning("Project not found for update", project_id=str(project_id))
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with id {project_id} not found",
-        )
+        raise NotFoundError(detail=f"Project with id {project_id} not found")
 
     # Update only provided fields
     update_data = project_data.model_dump(exclude_unset=True)
@@ -252,10 +247,7 @@ async def delete_project(
 
     if not project:
         logger.warning("Project not found for deletion", project_id=str(project_id))
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with id {project_id} not found",
-        )
+        raise NotFoundError(detail=f"Project with id {project_id} not found")
 
     await db.delete(project)
     await db.commit()
@@ -284,10 +276,7 @@ async def archive_project(
 
     if not project:
         logger.warning("Project not found for archiving", project_id=str(project_id))
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with id {project_id} not found",
-        )
+        raise NotFoundError(detail=f"Project with id {project_id} not found")
 
     project.status = "archived"
     await db.commit()
@@ -333,9 +322,6 @@ async def get_project_baseline(
     evaluation = result.scalar_one_or_none()
 
     if not evaluation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No baseline evaluation found for project {project_id}",
-        )
+        raise NotFoundError(detail=f"No baseline evaluation found for project {project_id}")
 
     return _evaluation_to_response(evaluation)

@@ -658,7 +658,6 @@ async def start_generation(
     )
 
     # Get database URL for background task
-    from app.config import settings
 
     # Schedule background generation
     background_tasks.add_task(

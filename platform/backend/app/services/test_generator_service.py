@@ -17,7 +17,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator, Callable
 
-import aiofiles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -38,8 +37,6 @@ from app.utils.logging_config import get_logger
 src_path = Path(__file__).parent.parent.parent.parent.parent / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
-
-from rag_evaluator.common.document_loaders import create_loader
 
 logger = get_logger(__name__)
 
@@ -334,14 +331,55 @@ class TestGeneratorService:
                 rejected=rejected_count,
             )
 
+            # Trigger webhook
+            try:
+                from app.services.webhook_service import get_webhook_service
+
+                await get_webhook_service().trigger_event(
+                    self.db,
+                    job.test_set.project_id,
+                    "generation.completed",
+                    {
+                        "test_set_id": str(job.test_set_id),
+                        "job_id": str(job_id),
+                        "status": job.status,
+                        "generated_count": len(generated_cases),
+                        "rejected_count": rejected_count,
+                    },
+                )
+            except Exception as webhook_err:
+                logger.error(
+                    "Failed to trigger generation completion webhook", error=str(webhook_err)
+                )
+
             return generated_cases
 
         except Exception as e:
-            job.status = "failed"
-            job.error_message = str(e)
             job.completed_at = datetime.utcnow()
             await self.db.commit()
             logger.error("Test generation failed", job_id=str(job_id), error=str(e))
+
+            # Trigger webhook
+            try:
+                # Ensure job is loaded with project info
+                job_with_rels = await self._load_job(job_id)
+                if job_with_rels:
+                    from app.services.webhook_service import get_webhook_service
+
+                    await get_webhook_service().trigger_event(
+                        self.db,
+                        job_with_rels.test_set.project_id,
+                        "generation.failed",
+                        {
+                            "test_set_id": str(job_with_rels.test_set_id),
+                            "job_id": str(job_id),
+                            "status": "failed",
+                            "error_message": str(e),
+                        },
+                    )
+            except Exception as webhook_err:
+                logger.error("Failed to trigger generation failure webhook", error=str(webhook_err))
+
             raise
 
     async def generate_and_save(
@@ -424,6 +462,8 @@ class TestGeneratorService:
         for doc in documents:
             try:
                 # Use DocumentLoader system for robust content extraction
+                from rag_evaluator.common.document_loaders import create_loader
+
                 loader = create_loader(doc.file_path)
                 loaded_doc = loader.load(doc.file_path)
                 if loaded_doc and loaded_doc.content:

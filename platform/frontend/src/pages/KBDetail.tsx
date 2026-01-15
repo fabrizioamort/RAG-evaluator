@@ -16,12 +16,14 @@ import {
 import { api } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { IndexKBDialog } from '@/components/knowledge-bases/IndexKBDialog'
+import { useToast } from '@/components/ui/toast'
 
 export function KBDetail() {
     const { id } = useParams<{ id: string }>()
     const navigate = useNavigate()
     const queryClient = useQueryClient()
     const [isUploading, setIsUploading] = useState(false)
+    const { success, error } = useToast()
 
     const { data: kb, isLoading, isError } = useQuery({
         queryKey: ['knowledge-base', id],
@@ -37,6 +39,10 @@ export function KBDetail() {
         mutationFn: (docId: string) => api.knowledgeBases.deleteDocument(id!, docId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['knowledge-base', id] })
+            success('Document deleted', 'The document has been removed.')
+        },
+        onError: () => {
+            error('Delete failed', 'Could not delete the document.')
         },
     })
 
@@ -47,6 +53,10 @@ export function KBDetail() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['knowledge-base', id] })
             setIsIndexDialogOpen(false)
+            success('Indexing started', 'The knowledge base is being indexed.')
+        },
+        onError: () => {
+            error('Indexing failed', 'Could not start indexing.')
         },
     })
 
@@ -56,10 +66,13 @@ export function KBDetail() {
 
         setIsUploading(true)
         try {
-            await api.knowledgeBases.uploadDocuments(id!, files)
+            const result = await api.knowledgeBases.uploadDocuments(id!, files)
             queryClient.invalidateQueries({ queryKey: ['knowledge-base', id] })
-        } catch (error) {
-            console.error('Upload failed:', error)
+            const uploadedCount = result.data.uploaded.length
+            success('Upload complete', `${uploadedCount} document${uploadedCount !== 1 ? 's' : ''} uploaded.`)
+        } catch (err) {
+            console.error('Upload failed:', err)
+            error('Upload failed', 'Could not upload documents.')
         } finally {
             setIsUploading(false)
             e.target.value = ''

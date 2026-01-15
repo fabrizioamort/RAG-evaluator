@@ -82,12 +82,14 @@ class LLMProviderService:
             full_model = f"{provider}/{model}"
 
         start_time = time.time()
-        
+
         # Avoid temperature for reasoning models
         model_name_lower = model.lower()
-        is_reasoning = any(x in model_name_lower for x in ["o1-", "o3-", "/o1", "/o3", "gpt-5"]) or model_name_lower in ["o1", "o3", "gpt-5"]
-        
-        actual_temp = temperature
+        is_reasoning = any(
+            x in model_name_lower for x in ["o1-", "o3-", "/o1", "/o3", "gpt-5"]
+        ) or model_name_lower in ["o1", "o3", "gpt-5"]
+
+        actual_temp: float | None = temperature
         if is_reasoning:
             actual_temp = None
 
@@ -134,7 +136,11 @@ class LLMProviderService:
         except Exception as e:
             error_str = str(e).lower()
             # If it's a temperature error, retry without temperature
-            if "temperature" in error_str and ("does not support" in error_str or "unsupported_value" in error_str) and actual_temp is not None:
+            if (
+                "temperature" in error_str
+                and ("does not support" in error_str or "unsupported_value" in error_str)
+                and actual_temp is not None
+            ):
                 logger.warning(
                     "Temperature unsupported by model, retrying without it",
                     model=full_model,
@@ -145,12 +151,12 @@ class LLMProviderService:
                         model=full_model,
                         messages=messages,
                         api_base=base_url,
-                        temperature=None, # Explicitly remove temperature
+                        temperature=None,  # Explicitly remove temperature
                         max_tokens=max_tokens,
                         **kwargs,
                     )
                     latency = time.time() - start_time
-                    
+
                     content = retry_response.choices[0].message.content or ""
                     usage_data = retry_response.get("usage", {})
                     cost = retry_response.get("_total_cost", 0.0)

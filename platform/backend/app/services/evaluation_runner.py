@@ -44,8 +44,8 @@ class SafeDeepEvalLLM(DeepEvalBaseLLM):
     def get_model_name(self) -> str:
         return self.model_name
 
-    def load_model(self) -> str:
-        return self.model_name
+    def load_model(self, *args: Any, **kwargs: Any) -> DeepEvalBaseLLM:
+        return self
 
     def generate(self, prompt: str, schema: Any = None) -> str:
         """Synchronous generate for DeepEval metrics."""
@@ -59,8 +59,12 @@ class SafeDeepEvalLLM(DeepEvalBaseLLM):
 
     async def a_generate(self, prompt: str, schema: Any = None) -> str:
         """Asynchronous generate for DeepEval metrics."""
-        logger.debug("SafeDeepEvalLLM.a_generate starting", model=self.model_name, has_schema=schema is not None)
-        
+        logger.debug(
+            "SafeDeepEvalLLM.a_generate starting",
+            model=self.model_name,
+            has_schema=schema is not None,
+        )
+
         # Build kwargs, pass response_format if prompt suggests JSON or schema is present
         completion_kwargs: dict[str, Any] = {"temperature": 0.0}
         if schema or "json" in prompt.lower():
@@ -73,23 +77,29 @@ class SafeDeepEvalLLM(DeepEvalBaseLLM):
                 **completion_kwargs,
             )
             content = response.content
-            
+
             # Patch JSON if needed (handle common model deviations)
             if completion_kwargs.get("response_format", {}).get("type") == "json_object":
                 try:
                     data = json.loads(content)
                     needs_patch = False
-                    
+
                     # Fix: 'verdicts' -> 'verdict' (common DeepEval metric target)
                     if "verdicts" in data and "verdict" not in data:
                         data["verdict"] = data["verdicts"]
                         needs_patch = True
-                    
+
                     if needs_patch:
                         content = json.dumps(data)
-                        logger.debug("SafeDeepEvalLLM.a_generate: Patched JSON model output", original_keys=list(data.keys()))
+                        logger.debug(
+                            "SafeDeepEvalLLM.a_generate: Patched JSON model output",
+                            original_keys=list(data.keys()),
+                        )
                 except json.JSONDecodeError:
-                    logger.warning("SafeDeepEvalLLM.a_generate: Model returned invalid JSON in JSON mode", content_preview=content[:100])
+                    logger.warning(
+                        "SafeDeepEvalLLM.a_generate: Model returned invalid JSON in JSON mode",
+                        content_preview=content[:100],
+                    )
 
             logger.debug("SafeDeepEvalLLM.a_generate successful", content_preview=content[:200])
             return content
@@ -226,11 +236,16 @@ class EvaluationRunner:
                 async def sem_process(idx: int, tc: TestCase) -> None:
                     async with semaphore:
                         # Check for cancellation/pause before starting
-                        if self.evaluation_id in self._cancelled_evaluations or self.evaluation_id in self._paused_evaluations:
+                        if (
+                            self.evaluation_id in self._cancelled_evaluations
+                            or self.evaluation_id in self._paused_evaluations
+                        ):
                             return
                         await self._process_test_case(idx, tc, rag, metrics, total)
 
-                tasks = [sem_process(start_index + i, tc) for i, tc in enumerate(remaining_test_cases)]
+                tasks = [
+                    sem_process(start_index + i, tc) for i, tc in enumerate(remaining_test_cases)
+                ]
                 await asyncio.gather(*tasks)
             else:
                 # Sequential execution
@@ -260,7 +275,9 @@ class EvaluationRunner:
                         await self.checkpoint_service.update_progress(
                             self.evaluation_id, i, state="paused"
                         )
-                        await self.event_log.log_event(self.evaluation_id, "paused", {"completed": i})
+                        await self.event_log.log_event(
+                            self.evaluation_id, "paused", {"completed": i}
+                        )
                         return
 
                     await self._process_test_case(i, self.test_cases[i], rag, metrics, total)
@@ -279,6 +296,24 @@ class EvaluationRunner:
             logger.exception("Evaluation runner failed", evaluation_id=str(self.evaluation_id))
             await self.checkpoint_service.fail_job(self.evaluation_id, str(e))
             await self.event_log.log_event(self.evaluation_id, "error", {"error_message": str(e)})
+
+            # Trigger webhook
+            try:
+                if self.evaluation:
+                    from app.services.webhook_service import get_webhook_service
+
+                    await get_webhook_service().trigger_event(
+                        self.db,
+                        self.evaluation.project_id,
+                        "evaluation.failed",
+                        {
+                            "evaluation_id": str(self.evaluation_id),
+                            "status": "failed",
+                            "error_message": str(e),
+                        },
+                    )
+            except Exception as webhook_err:
+                logger.error("Failed to trigger failure webhook", error=str(webhook_err))
 
     async def _process_test_case(
         self, i: int, test_case: TestCase, rag: Any, metrics: List[Any], total: int
@@ -322,22 +357,23 @@ class EvaluationRunner:
                 scores[f"{name}_reason"] = getattr(metric, "reason", None)
 
             # Token usage if available
-            prompt_tokens = (
-                response.get("metadata", {}).get("token_usage", {}).get("prompt_tokens")
-            )
+            prompt_tokens = response.get("metadata", {}).get("token_usage", {}).get("prompt_tokens")
             completion_tokens = (
                 response.get("metadata", {}).get("token_usage", {}).get("completion_tokens")
             )
 
             # Calculate cost
             from decimal import Decimal
+
             from app.services.cost_tracker import get_cost_tracker
+
             cost_tracker = get_cost_tracker()
 
             cost_usd = Decimal("0")
-            if prompt_tokens is not None and completion_tokens is not None:
+            eval_model = self.evaluation
+            if eval_model and eval_model.rag_config and prompt_tokens is not None and completion_tokens is not None:
                 cost_usd = cost_tracker.calculate_cost(
-                    self.evaluation.rag_config.llm_model, prompt_tokens, completion_tokens
+                    eval_model.rag_config.llm_model, prompt_tokens, completion_tokens
                 )
             else:
                 cost_usd = Decimal(str(response.get("metadata", {}).get("cost", 0.0)))
@@ -432,7 +468,9 @@ class EvaluationRunner:
     async def _get_completed_count(self) -> int:
         """Get the number of completed results for this evaluation."""
         from sqlalchemy import func
+
         from app.models.evaluation_result import EvaluationResult
+
         result = await self.db.execute(
             select(func.count(EvaluationResult.id)).where(
                 EvaluationResult.evaluation_id == self.evaluation_id
@@ -528,6 +566,26 @@ class EvaluationRunner:
                 "duration_seconds": 0.0,  # Placeholder
             },
         )
+
+        # Trigger webhook
+        try:
+            from app.services.webhook_service import get_webhook_service
+
+            eval_model = self.evaluation
+            if eval_model:
+                await get_webhook_service().trigger_event(
+                    self.db,
+                    eval_model.project_id,
+                    "evaluation.completed",
+                    {
+                        "evaluation_id": str(self.evaluation_id),
+                        "status": "completed",
+                        "pass_rate": pass_rate,
+                        "summary_metrics": summary_metrics,
+                    },
+                )
+        except Exception as webhook_err:
+            logger.error("Failed to trigger completion webhook", error=str(webhook_err))
 
 
 def get_evaluation_runner(db_session: AsyncSession, evaluation_id: uuid.UUID) -> EvaluationRunner:

@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     hybrid_fusion_alpha: float = Field(
         default=0.5, description="Weight for dense vs sparse (0=sparse only, 1=dense only)"
     )
+    hybrid_indexing_batch_size: int = Field(
+        default=16, description="Batch size for hybrid indexing to avoid OOM"
+    )
     sparse_model_name: str = Field(
         default="prithivida/Splade_PP_en_v1",
         description="FastEmbed sparse model for keyword search",

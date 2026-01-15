@@ -257,8 +257,15 @@ class RAGAdapterService:
 
         elif config_model.rag_type == "filesystem_rag":
             kwargs["llm_model"] = config_model.llm_model
-            kwargs["prepared_path"] = str(Path(index_path) / "filesystem_rag") if index_path else str(
-                Path(settings.STORAGE_PATH) / "indexes" / f"{config_model.id}" / "filesystem_rag"
+            kwargs["prepared_path"] = (
+                str(Path(index_path) / "filesystem_rag")
+                if index_path
+                else str(
+                    Path(settings.STORAGE_PATH)
+                    / "indexes"
+                    / f"{config_model.id}"
+                    / "filesystem_rag"
+                )
             )
             kwargs["word_threshold"] = config_model.parameters.get("word_threshold", 1000)
             kwargs["max_iterations"] = config_model.parameters.get("max_iterations", 10)

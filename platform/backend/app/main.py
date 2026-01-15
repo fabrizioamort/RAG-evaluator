@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -20,9 +21,12 @@ from app.api import (
     test_sets,
     test_templates,
     trends,
+    webhooks,
 )
 from app.config import settings
 from app.database import engine, init_db
+from app.schemas.errors import ErrorResponse
+from app.utils.exceptions import AppException
 from app.utils.logging_config import get_logger, request_id_var, setup_logging
 
 logger = get_logger(__name__)
@@ -62,8 +66,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.info("Shutting down application")
     from app.services.rag_adapter import get_rag_adapter_service
+    from app.services.webhook_service import get_webhook_service
 
     get_rag_adapter_service().clear_cache()
+    await get_webhook_service().close()
     await engine.dispose()
 
 
@@ -123,6 +129,34 @@ async def log_requests_middleware(
 
 
 # Exception handlers
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
+    """Handle application-specific exceptions."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(
+            detail=exc.detail,
+            request_id=request_id_var.get(),
+            errors=exc.errors,
+        ).model_dump(exclude_none=True),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Handle FastAPI validation errors."""
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=ErrorResponse(
+            detail="Validation failed",
+            request_id=request_id_var.get(),
+            errors=list(exc.errors()),
+        ).model_dump(exclude_none=True),
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle uncaught exceptions."""
@@ -134,10 +168,11 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "detail": "Internal server error",
-            "request_id": request_id_var.get(),
-        },
+        content=ErrorResponse(
+            detail="Internal server error",
+            request_id=request_id_var.get(),
+            errors=None,
+        ).model_dump(exclude_none=True),
     )
 
 
@@ -151,6 +186,7 @@ app.include_router(rag_configs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(evaluations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(comparisons.router, prefix=settings.API_V1_PREFIX)
 app.include_router(trends.router, prefix=settings.API_V1_PREFIX)
+app.include_router(webhooks.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/")

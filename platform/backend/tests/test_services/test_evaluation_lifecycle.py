@@ -122,6 +122,7 @@ def setup_common_mocks(
         inst = MagicMock()
         inst.__class__.__name__ = name
         inst.score = 0.8
+        inst.a_measure = AsyncMock()
         inst.measure = MagicMock()
         inst.reason = "Mock Reason"  # Explicit string
         m_class.return_value = inst

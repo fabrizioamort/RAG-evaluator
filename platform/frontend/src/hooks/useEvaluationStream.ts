@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ProgressEvent, api } from '../api/client'
+import { ProgressEvent, SummaryMetrics, api } from '../api/client'
 
 export interface EvaluationStreamState {
     completed: number
@@ -8,7 +8,7 @@ export interface EvaluationStreamState {
     currentQuestion?: string
     lastResult?: unknown
     error?: string
-    summaryMetrics?: unknown
+    summaryMetrics?: SummaryMetrics
 }
 
 export function useEvaluationStream(evaluationId: string | null) {

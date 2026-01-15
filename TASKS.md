@@ -847,18 +847,18 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 6.1 Webhook System
 
-- [ ] **P6.1.1** Create `app/services/webhook_service.py`
+- [x] **P6.1.1** Create `app/services/webhook_service.py`
   - HMAC-SHA256 signatures
   - Retry logic
   - Failure tracking
   **Acceptance:** Webhooks delivered
 
-- [ ] **P6.1.2** Create `app/api/webhooks.py`
+- [x] **P6.1.2** Create `app/api/webhooks.py`
   - CRUD (max 3 per project)
   - POST /webhooks/{id}/test
   **Acceptance:** API works
 
-- [ ] **P6.1.3** Trigger webhooks on events
+- [x] **P6.1.3** Trigger webhooks on events
   - evaluation.completed
   - evaluation.failed
   - generation.completed
@@ -866,31 +866,31 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 6.2 Error Handling
 
-- [ ] **P6.2.1** Create exception hierarchy
+- [x] **P6.2.1** Create exception hierarchy
   - NotFoundError, ValidationError, ConflictError
   **Acceptance:** Exceptions defined
 
-- [ ] **P6.2.2** Create error response schemas
+- [x] **P6.2.2** Create error response schemas
   - Consistent error format
   **Acceptance:** Errors formatted
 
-- [ ] **P6.2.3** Add exception handlers to FastAPI
+- [x] **P6.2.3** Add exception handlers to FastAPI
   **Acceptance:** Errors return correct status codes
 
 ### 6.3 Frontend Polish
 
-- [ ] **P6.3.1** Add loading states to all pages
+- [x] **P6.3.1** Add loading states to all pages
   **Acceptance:** Loading indicators show
 
-- [ ] **P6.3.2** Add empty states
+- [x] **P6.3.2** Add empty states
   - "No projects yet" etc.
   **Acceptance:** Empty states helpful
 
-- [ ] **P6.3.3** Add toast notifications
+- [x] **P6.3.3** Add toast notifications
   - Success/error feedback
   **Acceptance:** Toasts work
 
-- [ ] **P6.3.4** Dashboard implementation
+- [x] **P6.3.4** Dashboard implementation
   - Quick stats
   - Recent activity
   - Quick actions
@@ -898,23 +898,23 @@ Dependencies are noted as `[Depends: TASK_ID]`
 
 ### 6.4 Documentation
 
-- [ ] **P6.4.1** Create `docs/api.md`
+- [x] **P6.4.1** Create `docs/api.md`
   - Full API reference
   - Authentication (none for OSS)
   - Examples
-  **Acceptance:** API documented
+   **Acceptance:** API documented
 
-- [ ] **P6.4.2** Create deployment guide
+- [x] **P6.4.2** Create deployment guide
   - Docker deployment
   - Environment configuration
   - Backup/restore
-  **Acceptance:** Deployment documented
+   **Acceptance:** Deployment documented
 
-- [ ] **P6.4.3** Update main README.md
+- [x] **P6.4.3** Update main README.md
   - Feature overview
   - Quick start
   - Screenshots
-  **Acceptance:** README comprehensive
+   **Acceptance:** README comprehensive
 
 ### 6.5 Production Build
 

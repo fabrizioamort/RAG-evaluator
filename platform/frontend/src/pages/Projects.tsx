@@ -4,10 +4,12 @@ import { Plus, Loader2, RefreshCcw } from 'lucide-react'
 import { api, ProjectCreate } from '@/api/client'
 import { ProjectList } from '@/components/projects/ProjectList'
 import { CreateProjectDialog } from '@/components/projects/CreateProjectDialog'
+import { useToast } from '@/components/ui/toast'
 
 export function Projects() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const queryClient = useQueryClient()
+  const { success, error } = useToast()
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['projects'],
@@ -16,8 +18,13 @@ export function Projects() {
 
   const createMutation = useMutation({
     mutationFn: (newProject: ProjectCreate) => api.projects.create(newProject),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      success('Project created', `"${response.data.name}" has been created successfully.`)
+      setIsDialogOpen(false)
+    },
+    onError: () => {
+      error('Failed to create project', 'Please try again or check your connection.')
     },
   })
 

@@ -98,6 +98,7 @@ async def test_evaluation_runner_success(db_session: AsyncSession, setup_data: E
             inst.__class__.__name__ = name
             inst.score = 0.9
             inst.reason = "Good"
+            inst.a_measure = AsyncMock()
             inst.measure = MagicMock()
             m_class.return_value = inst
 

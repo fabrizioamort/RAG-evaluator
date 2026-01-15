@@ -137,7 +137,7 @@ The UI automatically loads the most recent evaluation report from the `reports/`
 
 The Hybrid Search RAG implementation combines **dense vectors** (semantic similarity via OpenAI embeddings) with **sparse vectors** (keyword matching via SPLADE) using Qdrant's native hybrid search with RRF (Reciprocal Rank Fusion).
 
-### Prerequisites
+### Hybrid Search Prerequisites
 
 1. **Qdrant Database**: Start Qdrant using Docker Compose:
 
@@ -208,7 +208,7 @@ uv run rag-eval ui
 
 The Graph RAG implementation uses **neo4j-graphrag**, the official Neo4j GraphRAG package for Python, to build knowledge graphs from documents and perform hybrid retrieval combining vector search with graph traversal.
 
-### Prerequisites
+### Graph RAG Prerequisites
 
 1. **Neo4j Database**: You need a running Neo4j instance (version 5.x or later)
    - **Local Installation**: Download from [neo4j.com/download](https://neo4j.com/download/)
@@ -332,7 +332,7 @@ Example test case:
 }
 ```
 
-### Evaluation Metrics
+### Detailed Metrics Breakdown
 
 The framework evaluates RAG implementations across four key metrics:
 
@@ -395,33 +395,51 @@ This generates a comparison report highlighting strengths and weaknesses of each
 
 ## RAG Evaluation Platform (Web UI)
 
-A comprehensive web-based platform to manage RAG projects, knowledge bases, and evaluations.
+The RAG Evaluation Platform is a comprehensive, web-based solution for managing RAG lifecycles. It extends the core evaluation framework with multi-project support, real-time tracking, and rich visualization.
 
-### Quick Start (Web UI)
+### Key Platform Features
 
-#### Backend Setup
+- **Multi-Project Management**: Organize evaluations by project, knowledge base, and test set.
+- **Automatic Test Generation**: Use LLMs to generate high-quality test cases directly from your documents.
+- **Real-time Evaluation Tracking**: Monitor long-running evaluations with live progress bars and SSE updates.
+- **Metric Explainability**: Don't just see the scores; read the judge's reasoning for every metric.
+- **Retrieval Traces**: Visualize the step-by-step retrieval process for every query.
+- **Trend Analysis**: Track performance improvements or regressions over time with built-in charts.
+- **Baseline Comparison**: Set "golden" evaluations and compare new runs against them.
+- **Webhooks**: Integrate with CI/CD pipelines via event-driven webhooks.
+
+### Screenshots
+
+![Platform Dashboard](/placeholder_dashboard.png)
+*Figure 1: Platform Dashboard showing recent activity and project status.*
+
+![Evaluation Detail](/placeholder_evaluation_detail.png)
+*Figure 2: Detailed evaluation results with metric explainability.*
+
+![Retrieval Trace](/placeholder_retrieval_trace.png)
+*Figure 3: Step-by-step retrieval trace visualization.*
+
+### Platform Quick Start
+
+The easiest way to run the platform is using Docker Compose:
 
 ```bash
-cd platform/backend
-cp .env.example .env  # Edit .env with your keys
-uv sync --all-extras
-uv run alembic upgrade head
-uv run uvicorn app.main:app --reload --port 8000
+docker-compose up -d
 ```
 
-#### Frontend Setup
+Visit `http://localhost:3000` to access the dashboard.
 
-```bash
-cd platform/frontend
-npm install
-npm run dev
-```
+### Documentation
 
-The UI will be available at `http://localhost:3000`.
+For detailed information, see our documentation:
+
+- [API Reference](docs/api.md)
+- [Deployment Guide](docs/deployment.md)
+- [Documentation Home](docs/README.md)
 
 ## Project Structure
 
-```
+```text
 RAG-evaluator/
 ├── src/rag_evaluator/
 │   ├── rag_implementations/     # RAG implementation modules

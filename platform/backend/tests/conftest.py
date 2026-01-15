@@ -1,8 +1,6 @@
 """Pytest configuration and fixtures for backend tests."""
 
-import asyncio
 from collections.abc import AsyncGenerator
-from typing import Generator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -30,9 +28,6 @@ def test_settings() -> Settings:
         LOG_FORMAT="console",
         DEBUG=True,
     )
-
-
-
 
 
 @pytest.fixture(scope="session")

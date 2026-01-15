@@ -177,7 +177,7 @@ class HybridSearchRAG(BaseRAG):
 
         # Batch sparse embeddings (FastEmbed)
         # FastEmbed returns a generator, so we convert to list
-        sparse_embeddings = list(self.sparse_model.embed(texts))
+        sparse_embeddings = list(self.sparse_model.embed(texts, batch_size=len(texts)))
 
         points = []
         for i, (text, dense, sparse) in enumerate(zip(texts, dense_embeddings, sparse_embeddings)):
@@ -260,7 +260,7 @@ class HybridSearchRAG(BaseRAG):
             pass
 
         # Process in batches
-        batch_size = 100
+        batch_size = settings.hybrid_indexing_batch_size
         total_chunks = len(chunks)
 
         for i in range(0, total_chunks, batch_size):
