@@ -15,22 +15,32 @@ export function IndexKBDialog({ projectId, kbName, isOpen, onClose, onConfirm }:
     const [configs, setConfigs] = useState<RAGConfig[]>([])
     const [selectedId, setSelectedId] = useState<string>('')
     const [isLoading, setIsLoading] = useState(false)
+    const [isStarting, setIsStarting] = useState(false)
 
     useEffect(() => {
-        if (isOpen && projectId) {
-            setIsLoading(true)
-            api.ragConfigs.list(projectId)
-                .then(res => {
-                    setConfigs(res.data.items)
-                })
-                .catch(err => {
-                    console.error('Failed to load RAG configs:', err)
-                })
-                .finally(() => {
-                    setIsLoading(false)
-                })
+        if (isOpen) {
+            setIsStarting(false)
+            if (projectId) {
+                setIsLoading(true)
+                api.ragConfigs.list(projectId)
+                    .then(res => {
+                        setConfigs(res.data.items)
+                    })
+                    .catch(err => {
+                        console.error('Failed to load RAG configs:', err)
+                    })
+                    .finally(() => {
+                        setIsLoading(false)
+                    })
+            }
         }
     }, [isOpen, projectId])
+
+    const handleConfirm = () => {
+        if (!selectedId) return
+        setIsStarting(true)
+        onConfirm(selectedId)
+    }
 
     if (!isOpen) return null
 
@@ -52,7 +62,7 @@ export function IndexKBDialog({ projectId, kbName, isOpen, onClose, onConfirm }:
                             <p className="text-xs text-muted-foreground truncate max-w-[300px]">{kbName}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="rounded-md p-1 hover:bg-muted transition-colors">
+                    <button onClick={onClose} className="rounded-md p-1 hover:bg-muted transition-colors" disabled={isStarting}>
                         <X className="h-5 w-5" />
                     </button>
                 </div>
@@ -77,11 +87,13 @@ export function IndexKBDialog({ projectId, kbName, isOpen, onClose, onConfirm }:
                                 <button
                                     key={config.id}
                                     onClick={() => setSelectedId(config.id)}
+                                    disabled={isStarting}
                                     className={cn(
                                         "flex items-center justify-between rounded-xl border p-4 text-left transition-all",
                                         selectedId === config.id
                                             ? "border-primary bg-primary/5 ring-1 ring-primary"
-                                            : "border-border hover:border-primary/50 hover:bg-accent"
+                                            : "border-border hover:border-primary/50 hover:bg-accent",
+                                        isStarting && "opacity-50"
                                     )}
                                 >
                                     <div className="flex items-center gap-3">
@@ -102,17 +114,22 @@ export function IndexKBDialog({ projectId, kbName, isOpen, onClose, onConfirm }:
                 <div className="flex items-center justify-end gap-3 border-t border-border p-6 bg-muted/20 rounded-b-xl">
                     <button
                         onClick={onClose}
-                        className="px-6 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors"
+                        disabled={isStarting}
+                        className="px-6 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-50"
                     >
                         Cancel
                     </button>
                     <button
-                        onClick={() => onConfirm(selectedId)}
-                        disabled={!selectedId}
+                        onClick={handleConfirm}
+                        disabled={!selectedId || isStarting}
                         className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50"
                     >
-                        <Play className="h-4 w-4 fill-current" />
-                        Start Indexing
+                        {isStarting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <Play className="h-4 w-4 fill-current" />
+                        )}
+                        {isStarting ? 'Starting...' : 'Start Indexing'}
                     </button>
                 </div>
             </div>

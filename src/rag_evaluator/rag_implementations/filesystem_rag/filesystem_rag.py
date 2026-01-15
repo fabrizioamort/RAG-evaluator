@@ -71,7 +71,8 @@ class FilesystemRAG(BaseRAG):
 
         # Override llm_model from config if provided
         self.llm_model = self.config.llm_model if config else llm_model
-        self.prepared_path = prepared_path
+        # Resolve to absolute path to ensure robustness against CWD changes
+        self.prepared_path = str(Path(prepared_path).resolve())
         self.word_threshold = word_threshold
         self.max_iterations = max_iterations
         self.max_tool_calls = max_tool_calls
@@ -84,6 +85,11 @@ class FilesystemRAG(BaseRAG):
         # Query tracking
         self._query_metrics: list[dict[str, Any]] = []
         self._total_queries = 0
+
+    def close(self) -> None:
+        """Close agent and clear metrics."""
+        self._agent = None
+        self._query_metrics = []
 
     def prepare_documents(self, documents_path: str) -> None:
         """Prepare documents by converting to markdown and building indexes.
@@ -465,7 +471,7 @@ Answer:"""
         Returns:
             True if prepared filesystem exists
         """
-        return Path(self.prepared_path).exists()
+        return (Path(self.prepared_path) / "_meta" / "statistics.json").exists()
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Get agent cache statistics.

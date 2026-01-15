@@ -48,6 +48,9 @@ class LLMProviderService:
         # Configure litellm
         litellm.telemetry = False
         litellm.drop_params = True  # Drop unsupported params for different providers
+        litellm.success_callback = []
+        litellm.failure_callback = []
+        litellm.callbacks = []
 
     async def completion(
         self,

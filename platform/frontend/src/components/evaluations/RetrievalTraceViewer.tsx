@@ -8,6 +8,7 @@ import {
     AlertCircle
 } from 'lucide-react'
 import { api, RetrievalTrace, RetrievalTraceStep, RetrievalTraceChunk } from '../../api/client'
+import { cn } from '@/lib/utils'
 
 interface RetrievalTraceViewerProps {
     evaluationId: string
@@ -94,13 +95,26 @@ export function RetrievalTraceViewer({ evaluationId, resultId }: RetrievalTraceV
                                         </div>
                                     </div>
                                     {step.metadata && Object.keys(step.metadata).length > 0 && (
-                                        <div className="pt-2 border-t border-border/30 grid grid-cols-2 gap-x-4 gap-y-2">
-                                            {Object.entries(step.metadata).map(([key, value]) => (
-                                                <div key={key} className="space-y-0.5 min-w-0">
-                                                    <p className="text-[10px] uppercase font-bold text-muted-foreground truncate">{key}</p>
-                                                    <p className="text-foreground font-mono truncate">{String(value)}</p>
-                                                </div>
-                                            ))}
+                                        <div className="pt-2 border-t border-border/30 grid grid-cols-1 gap-y-3">
+                                            {Object.entries(step.metadata).map(([key, value]) => {
+                                                const isObject = value !== null && typeof value === 'object';
+
+                                                return (
+                                                    <div key={key} className="space-y-1 min-w-0">
+                                                        <p className="text-[10px] uppercase font-bold text-muted-foreground">{key}</p>
+                                                        <div className={cn(
+                                                            "text-foreground",
+                                                            isObject ? "bg-background/50 rounded-lg p-2 border border-border/50 font-mono text-[10px] whitespace-pre-wrap" : "font-mono truncate"
+                                                        )}>
+                                                            {isObject ? (
+                                                                JSON.stringify(value, null, 2)
+                                                            ) : (
+                                                                String(value)
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>

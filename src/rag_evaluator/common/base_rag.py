@@ -114,6 +114,14 @@ class BaseRAG(ABC):
         if self._progress_callback:
             self._progress_callback(current, total)
 
+    def close(self) -> None:
+        """Close any resources held by the RAG implementation.
+
+        Subclasses should override this to close database connections,
+        file handles, or other resources.
+        """
+        pass
+
     @abstractmethod
     def prepare_documents(self, documents_path: str) -> None:
         """Prepare and index documents for retrieval.

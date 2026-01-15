@@ -3,7 +3,7 @@
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -593,6 +593,90 @@ async def get_kb_status(
     }
 
 
+async def _perform_indexing_task(
+    kb_id: UUID,
+    rag_config_id: UUID | None,
+    rag_adapter: RAGAdapterService,
+) -> None:
+    """Background task to perform indexing."""
+    from app.database import get_db_context
+    
+    async with get_db_context() as db:
+        try:
+            # Reload KB with documents
+            kb_query = select(KnowledgeBase).where(KnowledgeBase.id == kb_id).options(selectinload(KnowledgeBase.documents))
+            kb_result = await db.execute(kb_query)
+            kb = kb_result.scalar_one_or_none()
+            
+            if not kb:
+                logger.error("KB not found in background task", kb_id=str(kb_id))
+                return
+
+            # Determine RAG configuration
+            rag_config_model: RAGConfig | None = None
+            if rag_config_id:
+                config_query = select(RAGConfig).where(RAGConfig.id == rag_config_id)
+                config_result = await db.execute(config_query)
+                rag_config_model = config_result.scalar_one_or_none()
+
+            if rag_config_model:
+                rag = rag_adapter.get_or_create_rag(
+                    rag_config_model, index_path=kb.index_path, force_new=True
+                )
+            else:
+                # Fallback to default
+                temp_config = RAGConfig(
+                    project_id=kb.project_id,
+                    name=f"Internal Indexing Config for {kb.name[:50]}",
+                    rag_type="vector_semantic",
+                    llm_provider="openai",
+                    llm_model="gpt-4o-mini",
+                    parameters={"collection_name": f"kb_{kb.id}"},
+                )
+                rag = rag_adapter.get_or_create_rag(
+                    temp_config, index_path=kb.index_path, force_new=True
+                )
+
+            # Prepare documents
+            await rag_adapter.prepare_documents(rag, kb.storage_path)
+
+            # Create a new version
+            await db.refresh(kb, ["documents"])
+            await _create_version(
+                db,
+                kb,
+                "reindexed",
+                "Knowledge base re-indexed",
+                documents=list(kb.documents) if kb.documents else [],
+            )
+
+            # Update document status to processed
+            from sqlalchemy import update
+            await db.execute(
+                update(Document)
+                .where(Document.knowledge_base_id == kb_id)
+                .values(status="processed")
+            )
+
+            kb.status = "ready"
+            await db.commit()
+            logger.info("Successfully indexed knowledge base in background", kb_id=str(kb_id))
+
+        except Exception as e:
+            logger.exception("Failed to index knowledge base in background", kb_id=str(kb_id))
+            # Critical: rollback before trying to update status to avoid PendingRollbackError
+            await db.rollback()
+            
+            # Re-fetch KB in new transaction or after rollback to set error status
+            kb_query = select(KnowledgeBase).where(KnowledgeBase.id == kb_id)
+            kb_result = await db.execute(kb_query)
+            kb = kb_result.scalar_one_or_none()
+            if kb:
+                kb.status = "error"
+                kb.metadata_["last_error"] = str(e)
+                await db.commit()
+
+
 @router.post(
     "/knowledge-bases/{kb_id}/index",
     response_model=KnowledgeBaseResponse,
@@ -603,6 +687,7 @@ async def get_kb_status(
 async def index_knowledge_base(
     db: DbSession,
     kb_id: UUID,
+    background_tasks: BackgroundTasks,
     request: KnowledgeBaseIndexRequest = KnowledgeBaseIndexRequest(),
     rag_adapter: RAGAdapterService = Depends(get_rag_adapter_service),
 ) -> KnowledgeBaseResponse:
@@ -615,87 +700,23 @@ async def index_knowledge_base(
             detail="Cannot index an empty knowledge base. Please upload documents first.",
         )
 
-    # Update status to indexing
+    if kb.status == "indexing":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Indexing is already in progress for this knowledge base.",
+        )
+
+    # Update status to indexing immediately
     kb.status = "indexing"
     await db.commit()
-    await db.refresh(kb, ["documents"])
+    await db.refresh(kb)
 
-    try:
-        # Determine RAG configuration to use
-        rag_config_model: RAGConfig | None = None
-        if request.rag_config_id:
-            # Load specific RAG config
-            config_query = select(RAGConfig).where(RAGConfig.id == request.rag_config_id)
-            config_result = await db.execute(config_query)
-            rag_config_model = config_result.scalar_one_or_none()
-
-            if not rag_config_model:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"RAG config with id {request.rag_config_id} not found",
-                )
-
-            # Ensure the config belongs to the same project (security check)
-            if rag_config_model.project_id != kb.project_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="RAG configuration must belong to the same project as the knowledge base",
-                )
-
-        if rag_config_model:
-            # Use the provided RAG configuration
-            rag = rag_adapter.get_or_create_rag(
-                rag_config_model, index_path=kb.index_path, force_new=True
-            )
-        else:
-            # Fallback to default vector_semantic RAG configuration
-            temp_config = RAGConfig(
-                project_id=kb.project_id,
-                name=f"Internal Indexing Config for {kb.name[:50]}",
-                rag_type="vector_semantic",
-                llm_provider="openai",
-                llm_model="gpt-4o-mini",
-                parameters={"collection_name": f"kb_{kb.id}"},
-            )
-            rag = rag_adapter.get_or_create_rag(
-                temp_config, index_path=kb.index_path, force_new=True
-            )
-
-        # Prepare documents (this is async and runs in executor)
-        await rag_adapter.prepare_documents(rag, kb.storage_path)
-
-        # Create a new version
-        await db.refresh(kb, ["documents"])
-        await _create_version(
-            db,
-            kb,
-            "reindexed",
-            "Knowledge base re-indexed",
-            documents=list(kb.documents) if kb.documents else [],
-        )
-
-        # Update document status to processed
-        from sqlalchemy import update
-        await db.execute(
-            update(Document)
-            .where(Document.knowledge_base_id == kb_id)
-            .values(status="processed")
-        )
-
-        kb.status = "ready"
-        await db.commit()
-        await db.refresh(kb, ["documents"])
-
-        logger.info("Successfully indexed knowledge base", kb_id=str(kb_id))
-
-    except Exception as e:
-        logger.exception("Failed to index knowledge base", kb_id=str(kb_id))
-        kb.status = "error"
-        kb.metadata_["last_error"] = str(e)
-        await db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Indexing failed: {str(e)}",
-        )
+    # Add task to background
+    background_tasks.add_task(
+        _perform_indexing_task,
+        kb_id=kb.id,
+        rag_config_id=request.rag_config_id,
+        rag_adapter=rag_adapter,
+    )
 
     return _kb_to_response(kb)

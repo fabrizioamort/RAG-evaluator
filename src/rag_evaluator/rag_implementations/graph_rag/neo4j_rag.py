@@ -94,10 +94,15 @@ class Neo4jGraphRAG(BaseRAG):
         self._retrieval_times: list[float] = []
         self._total_queries = 0
 
+    def close(self) -> None:
+        """Close Neo4j driver."""
+        if hasattr(self, "driver") and self.driver:
+            self.driver.close()
+            self.driver = None
+
     def __del__(self) -> None:
         """Close Neo4j driver on cleanup."""
-        if hasattr(self, "driver"):
-            self.driver.close()
+        self.close()
 
     @property
     def retriever(self) -> VectorCypherRetriever:

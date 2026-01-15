@@ -237,7 +237,7 @@ class RAGAdapterService:
             kwargs["collection_name"] = config_model.parameters.get(
                 "collection_name", f"kb_{config_model.project_id}"
             )
-            kwargs["persist_directory"] = index_path
+            kwargs["persist_directory"] = str(Path(index_path) / "chroma") if index_path else None
 
         elif config_model.rag_type == "vector_hybrid":
             kwargs["collection_name"] = config_model.parameters.get(
@@ -257,8 +257,8 @@ class RAGAdapterService:
 
         elif config_model.rag_type == "filesystem_rag":
             kwargs["llm_model"] = config_model.llm_model
-            kwargs["prepared_path"] = index_path or str(
-                Path(settings.STORAGE_PATH) / "indexes" / f"fs_{config_model.project_id}"
+            kwargs["prepared_path"] = str(Path(index_path) / "filesystem_rag") if index_path else str(
+                Path(settings.STORAGE_PATH) / "indexes" / f"{config_model.id}" / "filesystem_rag"
             )
             kwargs["word_threshold"] = config_model.parameters.get("word_threshold", 1000)
             kwargs["max_iterations"] = config_model.parameters.get("max_iterations", 10)
@@ -311,8 +311,12 @@ class RAGAdapterService:
             config_id: If provided, only clear that specific instance.
         """
         if config_id:
-            self._rag_instances.pop(config_id, None)
+            instance = self._rag_instances.pop(config_id, None)
+            if instance:
+                instance.close()
         else:
+            for instance in self._rag_instances.values():
+                instance.close()
             self._rag_instances.clear()
 
     async def prepare_documents(

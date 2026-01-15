@@ -61,6 +61,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down application")
+    from app.services.rag_adapter import get_rag_adapter_service
+
+    get_rag_adapter_service().clear_cache()
     await engine.dispose()
 
 

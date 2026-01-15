@@ -27,6 +27,10 @@ export function KBDetail() {
         queryKey: ['knowledge-base', id],
         queryFn: () => api.knowledgeBases.get(id!),
         enabled: !!id,
+        refetchInterval: (query) => {
+            const data = query.state.data as any
+            return data?.data?.status === 'indexing' ? 3000 : false
+        }
     })
 
     const deleteDocMutation = useMutation({

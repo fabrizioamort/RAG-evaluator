@@ -71,6 +71,18 @@ class HybridSearchRAG(BaseRAG):
         # Metrics tracking
         self._retrieval_times: list[float] = []
         self._total_chunks = 0
+        self._retrieval_times = []
+
+    def close(self) -> None:
+        """Close Qdrant and OpenAI clients."""
+        try:
+            if hasattr(self, "client") and self.client:
+                self.client.close()
+                self.client = None
+            if hasattr(self, "openai_client") and self.openai_client:
+                self.openai_client.close()
+        except Exception:
+            pass
 
     def _ensure_collection(self) -> None:
         """Create collection if it doesn't exist with both dense and sparse vectors."""

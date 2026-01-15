@@ -309,9 +309,7 @@ class EvaluationRunner:
             # Score metrics
             scores: Dict[str, Any] = {}
             for metric in metrics:
-                await asyncio.get_event_loop().run_in_executor(
-                    None, metric.measure, llm_test_case
-                )
+                await metric.a_measure(llm_test_case)
                 name = metric.__class__.__name__.replace("Metric", "").lower()
                 if name == "answerrelevancy":
                     name = "relevancy"

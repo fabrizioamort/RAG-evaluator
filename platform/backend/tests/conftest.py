@@ -32,13 +32,7 @@ def test_settings() -> Settings:
     )
 
 
-# Create test database engine
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+
 
 
 @pytest.fixture(scope="session")

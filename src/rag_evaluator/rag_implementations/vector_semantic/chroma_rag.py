@@ -70,6 +70,19 @@ class ChromaSemanticRAG(BaseRAG):
         # Track metrics
         self._retrieval_times: list[float] = []
         self._total_chunks = 0
+        self._retrieval_times = []
+
+    def close(self) -> None:
+        """Close ChromaDB and OpenAI clients."""
+        try:
+            # ChromaDB doesn't have a public close() for PersistentClient in all versions,
+            # but we can try to persistence if applicable or just nullify reference
+            # In newer versions, PersistentClient handles teardown better
+            self.client = None
+            if hasattr(self, "openai_client"):
+                self.openai_client.close()
+        except Exception:
+            pass
 
     def _get_embedding(self, text: str) -> list[float]:
         """Get embedding for text using OpenAI.
