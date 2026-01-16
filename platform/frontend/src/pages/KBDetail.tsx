@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,11 +11,13 @@ import {
     AlertCircle,
     Clock,
     CheckCircle2,
-    FileBox
+    FileBox,
+    Layers
 } from 'lucide-react'
-import { api } from '@/api/client'
+import { api, KnowledgeBaseIndex } from '@/api/client'
 import { cn } from '@/lib/utils'
-import { IndexKBDialog } from '@/components/knowledge-bases/IndexKBDialog'
+import { CreateIndexDialog } from '@/components/indexes/CreateIndexDialog'
+import { IndexCard } from '@/components/indexes/IndexCard'
 import { useToast } from '@/components/ui/toast'
 
 export function KBDetail() {
@@ -24,16 +26,28 @@ export function KBDetail() {
     const queryClient = useQueryClient()
     const [isUploading, setIsUploading] = useState(false)
     const { success, error } = useToast()
+    const [indexes, setIndexes] = useState<KnowledgeBaseIndex[]>([])
+    const [isIndexDialogOpen, setIsIndexDialogOpen] = useState(false)
 
     const { data: kb, isLoading, isError } = useQuery({
         queryKey: ['knowledge-base', id],
         queryFn: () => api.knowledgeBases.get(id!),
         enabled: !!id,
-        refetchInterval: (query) => {
-            const data = query.state.data as any
-            return data?.data?.status === 'indexing' ? 3000 : false
-        }
     })
+
+    const fetchIndexes = async () => {
+        if (!id) return
+        try {
+            const response = await api.indexes.list({ kb_id: id })
+            setIndexes(response.data.items)
+        } catch (e) {
+            console.error('Failed to fetch indexes', e)
+        }
+    }
+
+    useEffect(() => {
+        fetchIndexes()
+    }, [id])
 
     const deleteDocMutation = useMutation({
         mutationFn: (docId: string) => api.knowledgeBases.deleteDocument(id!, docId),
@@ -43,20 +57,6 @@ export function KBDetail() {
         },
         onError: () => {
             error('Delete failed', 'Could not delete the document.')
-        },
-    })
-
-    const [isIndexDialogOpen, setIsIndexDialogOpen] = useState(false)
-
-    const indexMutation = useMutation({
-        mutationFn: (ragConfigId: string) => api.knowledgeBases.index(id!, { rag_config_id: ragConfigId }),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['knowledge-base', id] })
-            setIsIndexDialogOpen(false)
-            success('Indexing started', 'The knowledge base is being indexed.')
-        },
-        onError: () => {
-            error('Indexing failed', 'Could not start indexing.')
         },
     })
 
@@ -231,22 +231,63 @@ export function KBDetail() {
                         <button
                             onClick={() => setIsIndexDialogOpen(true)}
                             className="w-full mt-6 flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-md disabled:opacity-50"
-                            disabled={k.status === 'indexing' || documents.length === 0 || indexMutation.isPending}
+                            disabled={documents.length === 0}
                         >
-                            {(k.status === 'indexing' || indexMutation.isPending) && <Loader2 className="h-4 w-4 animate-spin" />}
-                            Re-index Knowledge Base
+                            <Layers className="h-4 w-4" />
+                            Create Index
                         </button>
                     </div>
                 </div>
             </div>
 
-            <IndexKBDialog
-                projectId={k.project_id}
-                kbName={k.name}
-                isOpen={isIndexDialogOpen}
-                onClose={() => setIsIndexDialogOpen(false)}
-                onConfirm={(ragConfigId) => indexMutation.mutate(ragConfigId)}
-            />
+            {/* Indexes Section */}
+            <div className="space-y-4">
+                <div className="flex items-center justify-between border-b pb-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <Layers className="h-5 w-5 text-muted-foreground" />
+                        Indexes
+                    </h2>
+                    <span className="text-sm text-muted-foreground">
+                        {indexes.length} index{indexes.length !== 1 ? 'es' : ''} available
+                    </span>
+                </div>
+                
+                {indexes.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground bg-muted/20">
+                        <Layers className="h-12 w-12 mx-auto opacity-20 mb-3" />
+                        <p className="font-medium">No indexes yet</p>
+                        <p className="text-sm mt-1">Create an index to start running evaluations.</p>
+                        <button 
+                            onClick={() => setIsIndexDialogOpen(true)}
+                            className="mt-4 text-primary hover:underline text-sm"
+                            disabled={documents.length === 0}
+                        >
+                            Create your first index
+                        </button>
+                    </div>
+                ) : (
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {indexes.map(index => (
+                            <IndexCard 
+                                key={index.id} 
+                                index={index} 
+                                onDelete={fetchIndexes} 
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {isIndexDialogOpen && (
+                <CreateIndexDialog
+                    projectId={k.project_id}
+                    knowledgeBaseId={k.id}
+                    onClose={() => setIsIndexDialogOpen(false)}
+                    onCreated={() => {
+                        fetchIndexes()
+                    }}
+                />
+            )}
         </div>
     )
 }

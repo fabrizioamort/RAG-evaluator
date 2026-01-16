@@ -121,9 +121,9 @@ class EvaluationBase(BaseSchema):
 class EvaluationCreate(EvaluationBase):
     """Schema for creating an evaluation."""
 
-    knowledge_base_id: UUID = Field(description="Knowledge base to evaluate against")
     test_set_id: UUID = Field(description="Test set to use")
-    rag_config_id: UUID = Field(description="RAG configuration to use")
+    knowledge_base_index_id: UUID = Field(description="Knowledge Base Index to evaluate against")
+    # knowledge_base_id and rag_config_id are removed as they are derived from the index
 
 
 class EvaluationResponse(EvaluationBase, BaseResponseSchema):
@@ -131,9 +131,13 @@ class EvaluationResponse(EvaluationBase, BaseResponseSchema):
 
     project_id: UUID = Field(description="Parent project ID")
     knowledge_base_id: UUID | None = Field(default=None, description="Knowledge base ID")
+    knowledge_base_index_id: UUID | None = Field(
+        default=None, description="Knowledge base Index ID"
+    )
     kb_version_id: UUID | None = Field(default=None, description="KB version ID")
     test_set_id: UUID | None = Field(default=None, description="Test set ID")
-    rag_config_id: UUID | None = Field(default=None, description="RAG config ID")
+    # rag_config_id is deprecated/removed, but we might keep it for legacy if needed.
+    # We'll remove it to align with new plan.
     run_manifest_id: UUID | None = Field(default=None, description="Run manifest ID")
 
     status: str = Field(description="Evaluation status")
@@ -159,8 +163,9 @@ class EvaluationWithDetails(EvaluationResponse):
     """Evaluation with related entity names."""
 
     knowledge_base_name: str | None = Field(default=None, description="KB name")
+    index_name: str | None = Field(default=None, description="Index name")
     test_set_name: str | None = Field(default=None, description="Test set name")
-    rag_config_name: str | None = Field(default=None, description="RAG config name")
+    rag_config_name: str | None = Field(default=None, description="RAG config name (from index)")
 
 
 class EvaluationSummary(BaseSchema):

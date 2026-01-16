@@ -13,9 +13,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.api.deps import DbSession, Pagination
 from app.models.evaluation import Evaluation
 from app.models.evaluation_result import EvaluationResult
-from app.models.knowledge_base import KnowledgeBase
-from app.models.knowledge_base_version import KnowledgeBaseVersion
-from app.models.rag_config import RAGConfig
+from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.run_manifest import RunManifest
 from app.models.test_set import TestSet
 from app.schemas.evaluation import (
@@ -45,8 +43,8 @@ async def _get_evaluation_or_404(db: DbSession, evaluation_id: UUID) -> Evaluati
         select(Evaluation)
         .where(Evaluation.id == evaluation_id)
         .options(
-            selectinload(Evaluation.rag_config),
-            selectinload(Evaluation.knowledge_base),
+            # selectinload(Evaluation.rag_config), # Removed as relationship removed
+            selectinload(Evaluation.index),  # Load index
             selectinload(Evaluation.test_set),
         )
     )
@@ -65,10 +63,10 @@ def _evaluation_to_response(eval_model: Evaluation, result_count: int = 0) -> Ev
     return EvaluationResponse(
         id=eval_model.id,
         project_id=eval_model.project_id,
-        knowledge_base_id=eval_model.knowledge_base_id,
+        knowledge_base_id=eval_model.knowledge_base_id,  # Derived from Index or stored as legacy
+        knowledge_base_index_id=eval_model.knowledge_base_index_id,
         kb_version_id=eval_model.kb_version_id,
         test_set_id=eval_model.test_set_id,
-        rag_config_id=eval_model.rag_config_id,
         run_manifest_id=eval_model.run_manifest_id,
         status=eval_model.status,
         started_at=eval_model.started_at,
@@ -115,26 +113,27 @@ async def create_evaluation(
     evaluation_data: EvaluationCreate,
 ) -> EvaluationResponse:
     """Create and start a new evaluation."""
-    # 1. Get RAG Config and associated project
-    query = select(RAGConfig).where(RAGConfig.id == evaluation_data.rag_config_id)
-    result = await db.execute(query)
-    rag_config: RAGConfig | None = result.scalar_one_or_none()
-    if not rag_config:
-        raise HTTPException(status_code=404, detail="RAG Config not found")
-
-    project_id = rag_config.project_id
-
-    # 2. Get KB and check if it belongs to project
-    kb_query = select(KnowledgeBase).where(
-        KnowledgeBase.id == evaluation_data.knowledge_base_id,
-        KnowledgeBase.project_id == project_id,
+    # 1. Get Knowledge Base Index
+    query = (
+        select(KnowledgeBaseIndex)
+        .where(KnowledgeBaseIndex.id == evaluation_data.knowledge_base_index_id)
+        .options(selectinload(KnowledgeBaseIndex.knowledge_base))
     )
-    kb_result = await db.execute(kb_query)
-    kb: KnowledgeBase | None = kb_result.scalar_one_or_none()
-    if not kb:
-        raise HTTPException(status_code=404, detail="Knowledge Base not found in project")
+    result = await db.execute(query)
+    index: KnowledgeBaseIndex | None = result.scalar_one_or_none()
 
-    # 3. Get Test Set and check if it belongs to project
+    if not index:
+        raise HTTPException(status_code=404, detail="Knowledge Base Index not found")
+
+    if index.status != "ready":
+        raise HTTPException(
+            status_code=400, detail=f"Knowledge Base Index is not ready (status: {index.status})"
+        )
+
+    kb = index.knowledge_base
+    project_id = kb.project_id
+
+    # 2. Get Test Set and check if it belongs to project
     ts_query = select(TestSet).where(
         TestSet.id == evaluation_data.test_set_id, TestSet.project_id == project_id
     )
@@ -143,43 +142,39 @@ async def create_evaluation(
     if not test_set:
         raise HTTPException(status_code=404, detail="Test Set not found in project")
 
-    # 4. Create Run Manifest (Snapshot)
-    # Get current KB version
-    kb_v_query = select(KnowledgeBaseVersion).where(
-        KnowledgeBaseVersion.knowledge_base_id == kb.id,
-        KnowledgeBaseVersion.version_number == kb.current_version,
-    )
-    kb_v_result = await db.execute(kb_v_query)
-    kb_version: KnowledgeBaseVersion | None = kb_v_result.scalar_one_or_none()
+    # 3. Create Run Manifest (Snapshot)
+    # Get configuration from index snapshot
+    config_snapshot = index.config_snapshot
 
     manifest = RunManifest(
         rag_config_snapshot={
-            "id": str(rag_config.id),
-            "name": rag_config.name,
-            "rag_type": rag_config.rag_type,
-            "parameters": rag_config.parameters,
-            "llm_provider": rag_config.llm_provider,
-            "llm_model": rag_config.llm_model,
+            "id": str(index.rag_config_id),
+            "name": index.name,  # Using Index name as proxy for run config name context
+            "rag_type": config_snapshot.get("rag_type"),
+            "parameters": config_snapshot.get("parameters"),
+            "llm_provider": config_snapshot.get("llm_provider"),
+            "llm_model": config_snapshot.get("llm_model"),
         },
         kb_version_snapshot={
-            "version_number": kb_version.version_number if kb_version else 0,
-            "document_snapshot": kb_version.document_snapshot if kb_version else [],
+            "kb_version_id": str(index.kb_version_id) if index.kb_version_id else None,
+            "document_count": index.document_count,
+            # We assume KB snapshot at index build time is what matters
         },
-        generation_model=rag_config.llm_model,
-        eval_judge_model=rag_config.llm_model,  # Using same model as judge for now
+        generation_model=config_snapshot.get("llm_model"),
+        eval_judge_model=config_snapshot.get("llm_model"),  # Using same model as judge for now
         rag_evaluator_version="0.1.0",
         platform_version="0.1.0",
     )
     db.add(manifest)
     await db.flush()
 
-    # 5. Create Evaluation
+    # 4. Create Evaluation
     evaluation = Evaluation(
         project_id=project_id,
-        knowledge_base_id=kb.id,
-        kb_version_id=kb_version.id if kb_version else None,
+        knowledge_base_id=kb.id,  # Storing for backward compatibility/queries
+        knowledge_base_index_id=index.id,
+        kb_version_id=index.kb_version_id,
         test_set_id=test_set.id,
-        rag_config_id=rag_config.id,
         run_manifest_id=manifest.id,
         status="pending",
         notes=evaluation_data.notes,
@@ -189,14 +184,14 @@ async def create_evaluation(
     await db.commit()
     await db.refresh(evaluation)
 
-    # 6. Start background task
+    # 5. Start background task
     background_tasks.add_task(_run_evaluation_background, evaluation.id)
 
     logger.info(
         "Started evaluation",
         evaluation_id=str(evaluation.id),
         project_id=str(project_id),
-        rag_config=rag_config.name,
+        index_id=str(index.id),
     )
 
     return _evaluation_to_response(evaluation)

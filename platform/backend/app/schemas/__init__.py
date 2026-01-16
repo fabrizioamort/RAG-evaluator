@@ -58,6 +58,15 @@ from app.schemas.knowledge_base import (
     KnowledgeBaseVersionResponse,
     KnowledgeBaseWithDocuments,
 )
+from app.schemas.knowledge_base_index import (
+    IndexArchiveRequest,
+    IndexBuildProgress,
+    IndexRetryRequest,
+    KnowledgeBaseIndexCreate,
+    KnowledgeBaseIndexList,
+    KnowledgeBaseIndexResponse,
+    KnowledgeBaseIndexSummary,
+)
 from app.schemas.project import (
     ProjectCreate,
     ProjectList,
@@ -150,6 +159,14 @@ __all__ = [
     "KnowledgeBaseVersionResponse",
     "DocumentResponse",
     "DocumentUploadResponse",
+    # Knowledge Base Index
+    "KnowledgeBaseIndexCreate",
+    "KnowledgeBaseIndexResponse",
+    "KnowledgeBaseIndexSummary",
+    "KnowledgeBaseIndexList",
+    "IndexBuildProgress",
+    "IndexRetryRequest",
+    "IndexArchiveRequest",
     # Test Set
     "TestSetCreate",
     "TestSetUpdate",

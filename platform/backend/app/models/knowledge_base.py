@@ -1,9 +1,10 @@
 """Knowledge base model."""
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,6 +13,7 @@ from app.models.base import BaseModelNoUpdate, JSONType
 if TYPE_CHECKING:
     from app.models.document import Document
     from app.models.evaluation import Evaluation
+    from app.models.knowledge_base_index import KnowledgeBaseIndex
     from app.models.knowledge_base_version import KnowledgeBaseVersion
     from app.models.project import Project
 
@@ -36,6 +38,9 @@ class KnowledgeBase(BaseModelNoUpdate):
         "metadata", JSONType, default=dict, nullable=False
     )
 
+    # Soft delete support
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="knowledge_bases")
     documents: Mapped[list["Document"]] = relationship(
@@ -52,3 +57,13 @@ class KnowledgeBase(BaseModelNoUpdate):
         "Evaluation",
         back_populates="knowledge_base",
     )
+    indexes: Mapped[list["KnowledgeBaseIndex"]] = relationship(
+        "KnowledgeBaseIndex",
+        back_populates="knowledge_base",
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def is_archived(self) -> bool:
+        """Check if KB is archived (soft deleted)."""
+        return self.archived_at is not None

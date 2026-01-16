@@ -185,6 +185,52 @@ export interface TestCaseCreate {
   question_type?: 'factual' | 'reasoning' | 'comparison' | 'multi_hop'
 }
 
+export interface KnowledgeBaseIndex {
+  id: string
+  knowledge_base_id: string
+  kb_version_id: string | null
+  rag_config_id: string
+  name: string
+  description: string | null
+  status: 'pending' | 'building' | 'ready' | 'failed' | 'archived'
+  physical_id: string
+  storage_type: string
+  config_snapshot: Record<string, unknown>
+  document_count: number
+  chunk_count: number
+  embedding_model: string | null
+  build_started_at: string | null
+  build_completed_at: string | null
+  build_duration_seconds: number | null
+  error_message: string | null
+  created_at: string
+  // Denormalized
+  knowledge_base_name?: string
+  rag_config_name?: string
+  project_id?: string
+}
+
+export interface KnowledgeBaseIndexCreate {
+  rag_config_id: string
+  name?: string
+  description?: string
+}
+
+export interface KnowledgeBaseIndexList {
+  items: KnowledgeBaseIndex[]
+  total: number
+  offset: number
+  limit: number
+}
+
+export interface IndexArchiveRequest {
+  reason?: string
+}
+
+export interface IndexRetryRequest {
+  force?: boolean
+}
+
 export interface RAGConfig {
   id: string
   project_id: string
@@ -245,6 +291,7 @@ export interface Evaluation {
   id: string
   project_id: string
   knowledge_base_id: string | null
+  knowledge_base_index_id: string | null
   test_set_id: string | null
   rag_config_id: string | null
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused'
@@ -262,9 +309,8 @@ export interface Evaluation {
 }
 
 export interface EvaluationCreate {
-  knowledge_base_id: string
+  knowledge_base_index_id: string
   test_set_id: string
-  rag_config_id: string
   notes?: string
   tags?: string[]
 }
@@ -466,8 +512,20 @@ export const api = {
     deleteDocument: (kbId: string, docId: string) =>
       apiClient.delete(`/knowledge-bases/${kbId}/documents/${docId}`),
     getStatus: (id: string) => apiClient.get(`/knowledge-bases/${id}/status`),
-    index: (id: string, data: { rag_config_id?: string } = {}) =>
-      apiClient.post<KnowledgeBase>(`/knowledge-bases/${id}/index`, data),
+    // index method is deprecated/removed in favor of api.indexes.create
+  },
+  indexes: {
+    list: (params?: { kb_id?: string; project_id?: string; status?: string; limit?: number; offset?: number }) =>
+      apiClient.get<KnowledgeBaseIndexList>('/indexes', { params }),
+    get: (id: string) => apiClient.get<KnowledgeBaseIndex>(`/indexes/${id}`),
+    create: (kbId: string, data: KnowledgeBaseIndexCreate) =>
+      apiClient.post<KnowledgeBaseIndex>(`/knowledge-bases/${kbId}/indexes`, data),
+    delete: (id: string) => apiClient.delete(`/indexes/${id}`),
+    archive: (id: string, data?: IndexArchiveRequest) =>
+      apiClient.post<KnowledgeBaseIndex>(`/indexes/${id}/archive`, data),
+    retry: (id: string, data?: IndexRetryRequest) =>
+      apiClient.post(`/indexes/${id}/retry`, data),
+    getStreamUrl: (id: string) => `${API_BASE_URL}/api/v1/indexes/${id}/stream`,
   },
   testSets: {
     list: (projectId: string, params?: { limit?: number; offset?: number }) =>

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.evaluation_job import EvaluationJob
     from app.models.evaluation_result import EvaluationResult
     from app.models.knowledge_base import KnowledgeBase
+    from app.models.knowledge_base_index import KnowledgeBaseIndex
     from app.models.knowledge_base_version import KnowledgeBaseVersion
     from app.models.project import Project
     from app.models.rag_config import RAGConfig
@@ -56,6 +57,11 @@ class Evaluation(BaseModelNoUpdate):
         ForeignKey("run_manifests.id", ondelete="SET NULL"),
         nullable=True,
     )
+    knowledge_base_index_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("knowledge_base_indexes.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
 
     status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -81,6 +87,9 @@ class Evaluation(BaseModelNoUpdate):
     test_set: Mapped["TestSet | None"] = relationship("TestSet", back_populates="evaluations")
     rag_config: Mapped["RAGConfig | None"] = relationship("RAGConfig", back_populates="evaluations")
     run_manifest: Mapped["RunManifest | None"] = relationship("RunManifest")
+    index: Mapped["KnowledgeBaseIndex | None"] = relationship(
+        "KnowledgeBaseIndex", back_populates="evaluations"
+    )
     results: Mapped[list["EvaluationResult"]] = relationship(
         "EvaluationResult",
         back_populates="evaluation",

@@ -5,6 +5,7 @@
 This document provides a comprehensive plan to introduce `KnowledgeBaseIndex` as a first-class entity in the RAG Evaluator platform. This fixes the fundamental architectural issue where indexing was treated as a state of the Knowledge Base rather than an independent artifact.
 
 **Key Changes:**
+
 1. New `KnowledgeBaseIndex` model that captures KB + RAG Config = Index artifact
 2. Separate top-level "Indexes" section in UI (per user preference)
 3. Evaluation now references an Index, not KB + RAG Config separately
@@ -16,22 +17,27 @@ This document provides a comprehensive plan to introduce `KnowledgeBaseIndex` as
 ## 1. The Problem Restated
 
 ### Current Behavior
+
 ```
 KB.status = "indexing" → "indexed"
 KB.index_path = "/storage/indexes/{kb_id}"
 ```
 
 When you index the same KB with two different RAG configs:
+
 - **Hybrid_1 indexing** → writes to `/storage/indexes/{kb_id}/`
 - **Hybrid_2 indexing** → OVERWRITES the same location!
 
 The second indexing destroys the first. There's no way to:
+
 - Compare two different indexing strategies on the same KB
 - Know which index was used for which evaluation
 - Re-run an evaluation with the exact same index
 
 ### The Solution
+
 Treat the **output of indexing** as a first-class database object (`KnowledgeBaseIndex`) with:
+
 - Its own unique physical storage location
 - Immutable config snapshot (what was used to build it)
 - Independent lifecycle (create, use, delete)
@@ -1086,37 +1092,42 @@ async def migrate():
 ## 8. Implementation Phases
 
 ### Phase 1: Database & Models (Week 1)
-- [ ] Create `KnowledgeBaseIndex` model
-- [ ] Add `archived_at` to `KnowledgeBase`
-- [ ] Add `knowledge_base_index_id` to `Evaluation`
-- [ ] Write Alembic migration
-- [ ] Update model relationships
-- [ ] Add Pydantic schemas
+
+- [x] Create `KnowledgeBaseIndex` model
+- [x] Add `archived_at` to `KnowledgeBase`
+- [x] Add `knowledge_base_index_id` to `Evaluation`
+- [x] Write Alembic migration
+- [x] Update model relationships
+- [x] Add Pydantic schemas
 
 ### Phase 2: Services (Week 1-2)
-- [ ] Create `IndexBuildService`
-- [ ] Update `RAGAdapterService.create_rag_for_index()`
-- [ ] Update each RAG implementation to use explicit collection naming
-- [ ] Add storage cleanup utilities
-- [ ] Update `EvaluationRunner` to use indexes
+
+- [x] Create `IndexBuildService`
+- [x] Update `RAGAdapterService.create_rag_for_index()`
+- [x] Update each RAG implementation to use explicit collection naming
+- [x] Add storage cleanup utilities
+- [x] Update `EvaluationRunner` to use indexes
 
 ### Phase 3: API Endpoints (Week 2)
-- [ ] Create `/api/v1/indexes` CRUD endpoints
-- [ ] Create `/api/v1/indexes/{id}/stream` SSE endpoint
-- [ ] Update `/api/v1/evaluations` to accept `knowledge_base_index_id`
-- [ ] Update `/api/v1/knowledge-bases/{id}` for soft delete
-- [ ] Write API tests
+
+- [x] Create `/api/v1/indexes` CRUD endpoints
+- [x] Create `/api/v1/indexes/{id}/stream` SSE endpoint
+- [x] Update `/api/v1/evaluations` to accept `knowledge_base_index_id`
+- [x] Update `/api/v1/knowledge-bases/{id}` for soft delete
+- [x] Write API tests
 
 ### Phase 4: Frontend (Week 2-3)
-- [ ] Create `IndexList` page
-- [ ] Create `IndexDetail` page
-- [ ] Create `CreateIndexDialog` component
-- [ ] Create `IndexBuildProgress` component
-- [ ] Update `StartEvaluationWizard` to select Index
-- [ ] Update navigation sidebar
-- [ ] Add filtering/search for indexes
+
+- [x] Create `IndexList` page
+- [x] Create `IndexDetail` page
+- [x] Create `CreateIndexDialog` component
+- [x] Create `IndexBuildProgress` component
+- [x] Update `StartEvaluationWizard` to select Index
+- [x] Update navigation sidebar
+- [x] Add filtering/search for indexes
 
 ### Phase 5: Migration & Testing (Week 3)
+
 - [ ] Write data migration script for existing evaluations
 - [ ] Test migration on sample data
 - [ ] End-to-end testing of new flow

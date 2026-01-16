@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { X, Play, Loader2, Database, FileText, Cpu, ChevronRight, ChevronLeft, LucideIcon } from 'lucide-react'
-import { api, KnowledgeBase, TestSet, RAGConfig, EvaluationCreate } from '@/api/client'
+import { X, Play, Loader2, Database, FileText, ChevronRight, ChevronLeft, LucideIcon, Layers, Calendar } from 'lucide-react'
+import { api, KnowledgeBase, TestSet, KnowledgeBaseIndex, EvaluationCreate } from '@/api/client'
 import { cn } from '@/lib/utils'
 
 interface StartEvaluationWizardProps {
@@ -10,32 +10,45 @@ interface StartEvaluationWizardProps {
     onStarted: (evaluationId: string) => void
 }
 
-type Step = 'kb' | 'testset' | 'rag' | 'review'
+type Step = 'testset' | 'kb' | 'index' | 'review'
+
+function timeAgo(dateString: string) {
+    const date = new Date(dateString)
+    const now = new Date()
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+    
+    if (seconds < 60) return 'just now'
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    return `${days}d ago`
+  }
 
 export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }: StartEvaluationWizardProps) {
-    const [step, setStep] = useState<Step>('kb')
+    const [step, setStep] = useState<Step>('testset')
     const [kbs, setKbs] = useState<KnowledgeBase[]>([])
     const [testSets, setTestSets] = useState<TestSet[]>([])
-    const [ragConfigs, setRagConfigs] = useState<RAGConfig[]>([])
+    const [indexes, setIndexes] = useState<KnowledgeBaseIndex[]>([])
 
     const [selectedKb, setSelectedKb] = useState<string>('')
     const [selectedTestSet, setSelectedTestSet] = useState<string>('')
-    const [selectedRagConfig, setSelectedRagConfig] = useState<string>('')
+    const [selectedIndex, setSelectedIndex] = useState<string>('')
 
     const [isLoading, setIsLoading] = useState(false)
+    const [isLoadingIndexes, setIsLoadingIndexes] = useState(false)
     const [isStarting, setIsStarting] = useState(false)
 
     const loadData = useCallback(async () => {
         setIsLoading(true)
         try {
-            const [kbRes, tsRes, rcRes] = await Promise.all([
+            const [kbRes, tsRes] = await Promise.all([
                 api.knowledgeBases.list(projectId),
-                api.testSets.list(projectId),
-                api.ragConfigs.list(projectId)
+                api.testSets.list(projectId)
             ])
             setKbs(kbRes.data.items)
             setTestSets(tsRes.data.items)
-            setRagConfigs(rcRes.data.items)
         } catch (error) {
             console.error('Failed to load evaluation requirements:', error)
         } finally {
@@ -46,22 +59,47 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
     useEffect(() => {
         if (isOpen && projectId) {
             loadData()
+            setStep('testset') // Reset step
+            setSelectedKb('')
+            setSelectedTestSet('')
+            setSelectedIndex('')
+            setIndexes([])
         }
     }, [isOpen, projectId, loadData])
+
+    // Load indexes when KB is selected
+    useEffect(() => {
+        if (selectedKb) {
+            const loadIndexes = async () => {
+                setIsLoadingIndexes(true)
+                try {
+                    const res = await api.indexes.list({ kb_id: selectedKb, status: 'ready' })
+                    setIndexes(res.data.items)
+                } catch (e) {
+                    console.error('Failed to load indexes', e)
+                } finally {
+                    setIsLoadingIndexes(false)
+                }
+            }
+            loadIndexes()
+        } else {
+            setIndexes([])
+        }
+    }, [selectedKb])
 
     const handleStart = async () => {
         setIsStarting(true)
         try {
             const data: EvaluationCreate = {
-                knowledge_base_id: selectedKb,
                 test_set_id: selectedTestSet,
-                rag_config_id: selectedRagConfig
+                knowledge_base_index_id: selectedIndex
             }
             const res = await api.evaluations.create(data)
             onStarted(res.data.id)
             onClose()
         } catch (error) {
             console.error('Failed to start evaluation:', error)
+            alert('Failed to start evaluation: ' + (error as any).message)
         } finally {
             setIsStarting(false)
         }
@@ -70,9 +108,9 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
     if (!isOpen) return null
 
     const steps: { id: Step; label: string; icon: LucideIcon }[] = [
-        { id: 'kb', label: 'Knowledge Base', icon: Database },
         { id: 'testset', label: 'Test Set', icon: FileText },
-        { id: 'rag', label: 'RAG Config', icon: Cpu },
+        { id: 'kb', label: 'Knowledge Base', icon: Database },
+        { id: 'index', label: 'Index', icon: Layers },
         { id: 'review', label: 'Review', icon: Play }
     ]
 
@@ -126,35 +164,6 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                         </div>
                     ) : (
                         <>
-                            {step === 'kb' && (
-                                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                                    <div className="mb-4">
-                                        <h3 className="text-lg font-bold">Select Knowledge Base</h3>
-                                        <p className="text-sm text-muted-foreground">Choose the document index to evaluate.</p>
-                                    </div>
-                                    <div className="grid gap-3 max-h-[300px] overflow-y-auto pr-2">
-                                        {kbs.map(kb => (
-                                            <button
-                                                key={kb.id}
-                                                onClick={() => setSelectedKb(kb.id)}
-                                                className={cn(
-                                                    "flex items-center justify-between rounded-xl border p-4 text-left transition-all",
-                                                    selectedKb === kb.id
-                                                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                                                        : "border-border hover:border-primary/50 hover:bg-accent"
-                                                )}
-                                            >
-                                                <div>
-                                                    <p className="font-bold">{kb.name}</p>
-                                                    <p className="text-xs text-muted-foreground mt-1">Version {kb.current_version} • {kb.document_count} docs</p>
-                                                </div>
-                                                {selectedKb === kb.id && <div className="h-2 w-2 rounded-full bg-primary" />}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
                             {step === 'testset' && (
                                 <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                                     <div className="mb-4">
@@ -184,32 +193,81 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                                 </div>
                             )}
 
-                            {step === 'rag' && (
+                            {step === 'kb' && (
                                 <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                                     <div className="mb-4">
-                                        <h3 className="text-lg font-bold">Select RAG Configuration</h3>
-                                        <p className="text-sm text-muted-foreground">Choose the RAG methodology and model.</p>
+                                        <h3 className="text-lg font-bold">Select Knowledge Base</h3>
+                                        <p className="text-sm text-muted-foreground">Choose the knowledge base containing your documents.</p>
                                     </div>
                                     <div className="grid gap-3 max-h-[300px] overflow-y-auto pr-2">
-                                        {ragConfigs.map(rc => (
+                                        {kbs.map(kb => (
                                             <button
-                                                key={rc.id}
-                                                onClick={() => setSelectedRagConfig(rc.id)}
+                                                key={kb.id}
+                                                onClick={() => setSelectedKb(kb.id)}
                                                 className={cn(
                                                     "flex items-center justify-between rounded-xl border p-4 text-left transition-all",
-                                                    selectedRagConfig === rc.id
+                                                    selectedKb === kb.id
                                                         ? "border-primary bg-primary/5 ring-1 ring-primary"
                                                         : "border-border hover:border-primary/50 hover:bg-accent"
                                                 )}
                                             >
                                                 <div>
-                                                    <p className="font-bold">{rc.name}</p>
-                                                    <p className="text-xs text-muted-foreground mt-1 capitalize">{rc.rag_type.replace('_', ' ')} • {rc.llm_model}</p>
+                                                    <p className="font-bold">{kb.name}</p>
+                                                    <p className="text-xs text-muted-foreground mt-1">Version {kb.current_version} • {kb.document_count} docs</p>
                                                 </div>
-                                                {selectedRagConfig === rc.id && <div className="h-2 w-2 rounded-full bg-primary" />}
+                                                {selectedKb === kb.id && <div className="h-2 w-2 rounded-full bg-primary" />}
                                             </button>
                                         ))}
                                     </div>
+                                </div>
+                            )}
+
+                            {step === 'index' && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <div className="mb-4">
+                                        <h3 className="text-lg font-bold">Select Index</h3>
+                                        <p className="text-sm text-muted-foreground">Choose the specific index (RAG configuration) to evaluate.</p>
+                                    </div>
+                                    
+                                    {isLoadingIndexes ? (
+                                        <div className="flex justify-center py-8">
+                                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                        </div>
+                                    ) : indexes.length === 0 ? (
+                                        <div className="text-center py-8 border border-dashed rounded-lg bg-muted/20">
+                                            <p className="text-muted-foreground">No ready indexes found for this Knowledge Base.</p>
+                                            <p className="text-xs text-muted-foreground mt-1">Go to the Knowledge Base to create an index.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid gap-3 max-h-[300px] overflow-y-auto pr-2">
+                                            {indexes.map(idx => (
+                                                <button
+                                                    key={idx.id}
+                                                    onClick={() => setSelectedIndex(idx.id)}
+                                                    className={cn(
+                                                        "flex items-center justify-between rounded-xl border p-4 text-left transition-all",
+                                                        selectedIndex === idx.id
+                                                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                                                            : "border-border hover:border-primary/50 hover:bg-accent"
+                                                    )}
+                                                >
+                                                    <div>
+                                                        <p className="font-bold">{idx.name}</p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+                                                                {idx.storage_type}
+                                                            </span>
+                                                            <span className="text-xs text-muted-foreground flex items-center">
+                                                                <Calendar className="h-3 w-3 mr-1" />
+                                                                {timeAgo(idx.created_at)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    {selectedIndex === idx.id && <div className="h-2 w-2 rounded-full bg-primary" />}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -226,16 +284,16 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                                     <div className="rounded-xl bg-accent/30 border border-border overflow-hidden">
                                         <div className="grid gap-px bg-border sm:grid-cols-3">
                                             <div className="bg-card p-4">
-                                                <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Knowledge Base</p>
-                                                <p className="text-sm font-semibold truncate">{kbs.find(k => k.id === selectedKb)?.name}</p>
-                                            </div>
-                                            <div className="bg-card p-4">
                                                 <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Test Set</p>
                                                 <p className="text-sm font-semibold truncate">{testSets.find(t => t.id === selectedTestSet)?.name}</p>
                                             </div>
                                             <div className="bg-card p-4">
-                                                <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">RAG Config</p>
-                                                <p className="text-sm font-semibold truncate">{ragConfigs.find(r => r.id === selectedRagConfig)?.name}</p>
+                                                <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Knowledge Base</p>
+                                                <p className="text-sm font-semibold truncate">{kbs.find(k => k.id === selectedKb)?.name}</p>
+                                            </div>
+                                            <div className="bg-card p-4">
+                                                <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Index</p>
+                                                <p className="text-sm font-semibold truncate">{indexes.find(i => i.id === selectedIndex)?.name}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -249,11 +307,11 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                 <div className="flex items-center justify-between border-t border-border p-6 bg-muted/20 rounded-b-xl">
                     <button
                         onClick={() => {
-                            if (step === 'review') setStep('rag')
-                            else if (step === 'rag') setStep('testset')
-                            else if (step === 'testset') setStep('kb')
+                            if (step === 'review') setStep('index')
+                            else if (step === 'index') setStep('kb')
+                            else if (step === 'kb') setStep('testset')
                         }}
-                        disabled={step === 'kb' || isStarting}
+                        disabled={step === 'testset' || isStarting}
                         className="flex items-center gap-2 px-4 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-30"
                     >
                         <ChevronLeft className="h-4 w-4" /> Back
@@ -280,11 +338,15 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                         ) : (
                             <button
                                 onClick={() => {
-                                    if (step === 'kb') setStep('testset')
-                                    else if (step === 'testset') setStep('rag')
-                                    else if (step === 'rag') setStep('review')
+                                    if (step === 'testset') setStep('kb')
+                                    else if (step === 'kb') setStep('index')
+                                    else if (step === 'index') setStep('review')
                                 }}
-                                disabled={(step === 'kb' && !selectedKb) || (step === 'testset' && !selectedTestSet) || (step === 'rag' && !selectedRagConfig)}
+                                disabled={
+                                    (step === 'testset' && !selectedTestSet) || 
+                                    (step === 'kb' && !selectedKb) || 
+                                    (step === 'index' && !selectedIndex)
+                                }
                                 className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
                             >
                                 Continue <ChevronRight className="h-4 w-4" />

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.evaluation import Evaluation
 from app.models.knowledge_base import KnowledgeBase
+from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.project import Project
 from app.models.rag_config import RAGConfig
 from app.models.test_case import TestCase
@@ -66,11 +67,40 @@ async def sample_rag_config(db_session: AsyncSession, sample_project: Project) -
         rag_type="vector_semantic",
         llm_provider="openai",
         llm_model="gpt-4o-mini",
+        parameters={"collection_name": "test"}
     )
     db_session.add(config)
     await db_session.commit()
     await db_session.refresh(config)
     return config
+
+
+@pytest.fixture
+async def sample_index(
+    db_session: AsyncSession,
+    sample_kb: KnowledgeBase,
+    sample_rag_config: RAGConfig,
+) -> KnowledgeBaseIndex:
+    """Create a sample ready index."""
+    index = KnowledgeBaseIndex(
+        knowledge_base_id=sample_kb.id,
+        rag_config_id=sample_rag_config.id,
+        name="Test Index",
+        status="ready",
+        physical_id="idx_test_123",
+        storage_type="chroma",
+        config_snapshot={
+            "rag_type": sample_rag_config.rag_type,
+            "parameters": sample_rag_config.parameters,
+            "llm_provider": sample_rag_config.llm_provider,
+            "llm_model": sample_rag_config.llm_model,
+        },
+        document_count=1,
+    )
+    db_session.add(index)
+    await db_session.commit()
+    await db_session.refresh(index)
+    return index
 
 
 class TestCreateEvaluation:
@@ -83,12 +113,12 @@ class TestCreateEvaluation:
         sample_kb: KnowledgeBase,
         sample_test_set: TestSet,
         sample_rag_config: RAGConfig,
+        sample_index: KnowledgeBaseIndex,
     ) -> None:
         """Test starting a new evaluation."""
         payload = {
-            "knowledge_base_id": str(sample_kb.id),
+            "knowledge_base_index_id": str(sample_index.id),
             "test_set_id": str(sample_test_set.id),
-            "rag_config_id": str(sample_rag_config.id),
             "notes": "Test evaluation",
             "tags": ["test"],
         }
@@ -98,9 +128,9 @@ class TestCreateEvaluation:
         assert response.status_code == 201
         data = response.json()
         assert data["status"] == "pending"
-        assert data["knowledge_base_id"] == str(sample_kb.id)
+        assert data["knowledge_base_index_id"] == str(sample_index.id)
         assert data["test_set_id"] == str(sample_test_set.id)
-        assert data["rag_config_id"] == str(sample_rag_config.id)
+        # rag_config_id removed from response logic
         assert "run_manifest_id" in data
         assert data["notes"] == "Test evaluation"
         assert data["tags"] == ["test"]
@@ -109,9 +139,8 @@ class TestCreateEvaluation:
     async def test_create_evaluation_invalid_ids(self, client: AsyncClient) -> None:
         """Test with non-existent IDs."""
         payload = {
-            "knowledge_base_id": str(uuid4()),
+            "knowledge_base_index_id": str(uuid4()),
             "test_set_id": str(uuid4()),
-            "rag_config_id": str(uuid4()),
         }
 
         response = await client.post("/api/v1/evaluations", json=payload)
@@ -125,6 +154,7 @@ async def sample_evaluation(
     sample_kb: KnowledgeBase,
     sample_test_set: TestSet,
     sample_rag_config: RAGConfig,
+    sample_index: KnowledgeBaseIndex,
 ) -> Evaluation:
     """Create a sample evaluation."""
     evaluation = Evaluation(
@@ -132,6 +162,7 @@ async def sample_evaluation(
         knowledge_base_id=sample_kb.id,
         test_set_id=sample_test_set.id,
         rag_config_id=sample_rag_config.id,
+        knowledge_base_index_id=sample_index.id, # Added
         status="completed",
         pass_rate=0.8,
     )
@@ -181,6 +212,7 @@ class TestEvaluationControl:
         sample_kb: KnowledgeBase,
         sample_test_set: TestSet,
         sample_rag_config: RAGConfig,
+        sample_index: KnowledgeBaseIndex,
     ) -> Evaluation:
         """Create a running evaluation."""
         evaluation = Evaluation(
@@ -188,6 +220,7 @@ class TestEvaluationControl:
             knowledge_base_id=sample_kb.id,
             test_set_id=sample_test_set.id,
             rag_config_id=sample_rag_config.id,
+            knowledge_base_index_id=sample_index.id,
             status="running",
         )
         db_session.add(evaluation)
@@ -233,6 +266,7 @@ class TestSetBaseline:
         sample_kb: KnowledgeBase,
         sample_test_set: TestSet,
         sample_rag_config: RAGConfig,
+        sample_index: KnowledgeBaseIndex,
     ) -> None:
         """Test setting an evaluation as baseline."""
         # Create a completed evaluation
@@ -241,6 +275,7 @@ class TestSetBaseline:
             knowledge_base_id=sample_kb.id,
             test_set_id=sample_test_set.id,
             rag_config_id=sample_rag_config.id,
+            knowledge_base_index_id=sample_index.id,
             status="completed",
         )
         db_session.add(evaluation)

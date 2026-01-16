@@ -22,6 +22,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.models.evaluation import Evaluation
 from app.models.evaluation_result import EvaluationResult
+from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.test_case import TestCase
 from app.models.test_set import TestSet
 from app.services.artifact_store import ArtifactStore, get_artifact_store
@@ -158,6 +159,8 @@ class EvaluationRunner:
                 selectinload(Evaluation.rag_config),
                 selectinload(Evaluation.knowledge_base),
                 selectinload(Evaluation.test_set).selectinload(TestSet.test_cases),
+                selectinload(Evaluation.index).selectinload(KnowledgeBaseIndex.knowledge_base),
+                selectinload(Evaluation.index).selectinload(KnowledgeBaseIndex.rag_config),
             )
         )
         self.evaluation = result.scalars().first()
@@ -209,16 +212,27 @@ class EvaluationRunner:
 
             # 2. Get RAG instance
             assert self.evaluation is not None
-            assert self.evaluation.rag_config is not None
-            rag = self.rag_adapter.get_or_create_rag(
-                self.evaluation.rag_config,
-                index_path=self.evaluation.knowledge_base.index_path
-                if self.evaluation.knowledge_base
-                else None,
-            )
+
+            # Prefer using the index if available (new architecture)
+            if self.evaluation.index:
+                index = self.evaluation.index
+                if index.status != "ready":
+                    raise ValueError(f"Index is not ready: {index.status}")
+                rag = self.rag_adapter.create_rag_for_index(index)
+                llm_model = index.config_snapshot.get("llm_model", "gpt-4o-mini")
+            else:
+                # Fallback to legacy KB + RAG config approach
+                assert self.evaluation.rag_config is not None
+                rag = self.rag_adapter.get_or_create_rag(
+                    self.evaluation.rag_config,
+                    index_path=self.evaluation.knowledge_base.index_path
+                    if self.evaluation.knowledge_base
+                    else None,
+                )
+                llm_model = self.evaluation.rag_config.llm_model
 
             # 3. Initialize metrics
-            metrics = self._initialize_metrics(self.evaluation.rag_config.llm_model)
+            metrics = self._initialize_metrics(llm_model)
 
             # 4. Process test cases
             start_index = job.progress_current
@@ -371,9 +385,19 @@ class EvaluationRunner:
 
             cost_usd = Decimal("0")
             eval_model = self.evaluation
-            if eval_model and eval_model.rag_config and prompt_tokens is not None and completion_tokens is not None:
+            if eval_model and prompt_tokens is not None and completion_tokens is not None:
+                # Determine LLM model from index (preferred) or rag_config (legacy)
+                if eval_model.index:
+                    llm_model_for_cost = eval_model.index.config_snapshot.get(
+                        "llm_model", "gpt-4o-mini"
+                    )
+                elif eval_model.rag_config:
+                    llm_model_for_cost = eval_model.rag_config.llm_model
+                else:
+                    llm_model_for_cost = "gpt-4o-mini"
+
                 cost_usd = cost_tracker.calculate_cost(
-                    eval_model.rag_config.llm_model, prompt_tokens, completion_tokens
+                    llm_model_for_cost, prompt_tokens, completion_tokens
                 )
             else:
                 cost_usd = Decimal(str(response.get("metadata", {}).get("cost", 0.0)))

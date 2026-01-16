@@ -11,6 +11,7 @@ from app.models.base import BaseModelNoUpdate, JSONType
 
 if TYPE_CHECKING:
     from app.models.evaluation import Evaluation
+    from app.models.knowledge_base_index import KnowledgeBaseIndex
     from app.models.project import Project
 
 
@@ -35,5 +36,9 @@ class RAGConfig(BaseModelNoUpdate):
     project: Mapped["Project"] = relationship("Project", back_populates="rag_configs")
     evaluations: Mapped[list["Evaluation"]] = relationship(
         "Evaluation",
+        back_populates="rag_config",
+    )
+    indexes: Mapped[list["KnowledgeBaseIndex"]] = relationship(
+        "KnowledgeBaseIndex",
         back_populates="rag_config",
     )

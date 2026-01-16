@@ -18,7 +18,6 @@ class AppException(Exception):
         self.errors = errors
 
 
-
 class BadRequestError(AppException):
     """Exception raised for bad requests (400)."""
 

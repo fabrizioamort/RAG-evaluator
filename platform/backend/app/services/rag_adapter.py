@@ -7,11 +7,14 @@ supported RAG types.
 
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.models.rag_config import RAGConfig as RAGConfigModel
 from app.utils.logging_config import get_logger
+
+if TYPE_CHECKING:
+    from app.models.knowledge_base_index import KnowledgeBaseIndex
 
 # Add src to path for importing rag_evaluator
 src_path = Path(__file__).parent.parent.parent.parent.parent / "src"
@@ -325,6 +328,95 @@ class RAGAdapterService:
             for instance in self._rag_instances.values():
                 instance.close()
             self._rag_instances.clear()
+
+    def create_rag_for_index(self, index: "KnowledgeBaseIndex") -> BaseRAG:
+        """Create a RAG instance configured for a specific KnowledgeBaseIndex.
+
+        Uses the index's physical_id for storage isolation and the
+        config_snapshot for reproducibility.
+
+        Args:
+            index: The KnowledgeBaseIndex to create a RAG for.
+
+        Returns:
+            Configured RAG instance using the frozen config from the index.
+
+        Raises:
+            ValueError: If the RAG type is not supported.
+        """
+        # Build RAGConfig from the frozen snapshot
+        config_snapshot = index.config_snapshot
+        storage_path = self._get_index_storage_path(index)
+
+        rag_config = RAGConfig(
+            name=index.name,
+            parameters=config_snapshot.get("parameters", {}),
+            storage_path=str(storage_path),
+            llm_provider=config_snapshot.get("llm_provider", "openai"),
+            llm_model=config_snapshot.get("llm_model", "gpt-4o-mini"),
+            llm_base_url=config_snapshot.get("llm_base_url"),
+        )
+
+        rag_type = config_snapshot.get("rag_type", "")
+        if rag_type not in RAG_TYPE_REGISTRY:
+            raise ValueError(f"Unknown RAG type: {rag_type}")
+
+        # Get the RAG class
+        rag_class = self._get_rag_class(rag_type)
+
+        # Build constructor kwargs based on RAG type
+        # Use index.physical_id for collection/storage isolation
+        kwargs: dict[str, Any] = {"config": rag_config}
+
+        if rag_type == "vector_semantic":
+            kwargs["collection_name"] = index.physical_id  # Isolation key
+            kwargs["persist_directory"] = str(storage_path / "chroma")
+
+        elif rag_type == "vector_hybrid":
+            kwargs["collection_name"] = index.physical_id  # Isolation key
+            # Qdrant URL from parameters
+            kwargs["qdrant_url"] = config_snapshot.get("parameters", {}).get("qdrant_url")
+
+        elif rag_type == "graph_rag":
+            kwargs["vector_index_name"] = config_snapshot.get("parameters", {}).get(
+                "vector_index_name", "chunk_embeddings"
+            )
+            # Add label prefix for node isolation
+            kwargs["label_prefix"] = index.physical_id
+            # Neo4j connection from parameters
+            params = config_snapshot.get("parameters", {})
+            kwargs["neo4j_uri"] = params.get("neo4j_uri")
+            kwargs["neo4j_username"] = params.get("neo4j_username")
+            kwargs["neo4j_password"] = params.get("neo4j_password")
+
+        elif rag_type == "filesystem_rag":
+            kwargs["llm_model"] = rag_config.llm_model
+            kwargs["prepared_path"] = str(storage_path / "filesystem_rag")
+            params = config_snapshot.get("parameters", {})
+            kwargs["word_threshold"] = params.get("word_threshold", 1000)
+            kwargs["max_iterations"] = params.get("max_iterations", 10)
+            kwargs["max_tool_calls"] = params.get("max_tool_calls", 20)
+            kwargs["max_file_reads"] = params.get("max_file_reads", 10)
+
+        logger.info(
+            "Creating RAG instance for index",
+            rag_type=rag_type,
+            index_id=str(index.id),
+            physical_id=index.physical_id,
+        )
+
+        return rag_class(**kwargs)
+
+    def _get_index_storage_path(self, index: "KnowledgeBaseIndex") -> Path:
+        """Get the storage path for a KnowledgeBaseIndex.
+
+        Args:
+            index: The index to get storage path for.
+
+        Returns:
+            Path to the index's isolated storage directory.
+        """
+        return Path(settings.STORAGE_PATH) / "indexes" / index.physical_id
 
     async def prepare_documents(
         self,

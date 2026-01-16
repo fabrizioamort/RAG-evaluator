@@ -9,6 +9,7 @@ from app.models.evaluation import Evaluation
 from app.models.evaluation_job import EvaluationJob
 from app.models.evaluation_result import EvaluationResult
 from app.models.knowledge_base import KnowledgeBase
+from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.knowledge_base_version import KnowledgeBaseVersion
 from app.models.project import Project
 from app.models.rag_config import RAGConfig
@@ -25,6 +26,7 @@ __all__ = [
     "BaseModelNoUpdate",
     "Project",
     "KnowledgeBase",
+    "KnowledgeBaseIndex",
     "KnowledgeBaseVersion",
     "Document",
     "TestTemplate",

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import {
     Database,
     FileText,
@@ -9,11 +9,11 @@ import {
     CheckCircle2,
     AlertCircle,
     Loader2,
-    RefreshCw
+    Layers
 } from 'lucide-react'
-import { api, KnowledgeBase } from '@/api/client'
+import { KnowledgeBase } from '@/api/client'
 import { cn } from '@/lib/utils'
-import { IndexKBDialog } from './IndexKBDialog'
+import { CreateIndexDialog } from '@/components/indexes/CreateIndexDialog'
 
 interface KBCardProps {
     kb: KnowledgeBase
@@ -24,22 +24,9 @@ export function KBCard({ kb }: KBCardProps) {
     const queryClient = useQueryClient()
     const [isIndexDialogOpen, setIsIndexDialogOpen] = useState(false)
 
-    const indexMutation = useMutation({
-        mutationFn: (ragConfigId: string) => api.knowledgeBases.index(kb.id, { rag_config_id: ragConfigId }),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['knowledge-base', kb.id] })
-            queryClient.invalidateQueries({ queryKey: ['knowledge-bases', kb.project_id] })
-            setIsIndexDialogOpen(false)
-        },
-    })
-
     const handleIndex = (e: React.MouseEvent) => {
         e.stopPropagation()
         setIsIndexDialogOpen(true)
-    }
-
-    const onConfirmIndex = (ragConfigId: string) => {
-        indexMutation.mutate(ragConfigId)
     }
 
     const statusConfig = {
@@ -102,24 +89,24 @@ export function KBCard({ kb }: KBCardProps) {
                 <button
                     onClick={handleIndex}
                     className="flex-1 rounded-md bg-primary/10 text-primary px-3 py-1.5 text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                    disabled={kb.status === 'indexing' || kb.document_count === 0 || indexMutation.isPending}
+                    disabled={kb.document_count === 0}
                 >
-                    {kb.status === 'indexing' || indexMutation.isPending ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                        <RefreshCw className="h-3 w-3" />
-                    )}
-                    Index KB
+                    <Layers className="h-3 w-3" />
+                    Create Index
                 </button>
             </div>
 
-            <IndexKBDialog
-                projectId={kb.project_id}
-                kbName={kb.name}
-                isOpen={isIndexDialogOpen}
-                onClose={() => setIsIndexDialogOpen(false)}
-                onConfirm={onConfirmIndex}
-            />
+            {isIndexDialogOpen && (
+                <CreateIndexDialog
+                    projectId={kb.project_id}
+                    knowledgeBaseId={kb.id}
+                    onClose={() => setIsIndexDialogOpen(false)}
+                    onCreated={() => {
+                         // Optional: show toast
+                         queryClient.invalidateQueries({ queryKey: ['indexes'] })
+                    }}
+                />
+            )}
         </div>
     )
 }

@@ -1,16 +1,18 @@
-"""Tests for knowledge base indexing logic."""
+"""Tests for knowledge base indexing via IndexBuildService."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.knowledge_bases import _perform_indexing_task
 from app.models.document import Document
 from app.models.knowledge_base import KnowledgeBase
+from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.knowledge_base_version import KnowledgeBaseVersion
 from app.models.project import Project
 from app.models.rag_config import RAGConfig
+from app.services.index_build_service import IndexBuildService
+from app.services.job_event_log import JobEventLog
 
 
 @pytest.fixture
@@ -38,7 +40,6 @@ async def sample_kb(db_session: AsyncSession, sample_project: Project) -> Knowle
         status="pending",
         current_version=1,
         storage_path="./storage/documents",
-        index_path="./storage/indexes",
         metadata_={"source": "test"},
     )
     db_session.add(kb)
@@ -60,6 +61,24 @@ async def sample_kb(db_session: AsyncSession, sample_project: Project) -> Knowle
 
 
 @pytest.fixture
+async def sample_document(db_session: AsyncSession, sample_kb: KnowledgeBase) -> Document:
+    """Create a sample document for testing."""
+    doc = Document(
+        knowledge_base_id=sample_kb.id,
+        filename="test_doc.txt",
+        file_path="./storage/documents/test_doc.txt",
+        content_type="text/plain",
+        size_bytes=1024,
+        checksum="abc123def456",
+        status="uploaded",
+    )
+    db_session.add(doc)
+    await db_session.commit()
+    await db_session.refresh(doc)
+    return doc
+
+
+@pytest.fixture
 async def sample_rag_config(db_session: AsyncSession, sample_project: Project) -> RAGConfig:
     """Create a sample RAG configuration for testing."""
     config = RAGConfig(
@@ -76,58 +95,183 @@ async def sample_rag_config(db_session: AsyncSession, sample_project: Project) -
     return config
 
 
-@pytest.mark.asyncio
-async def test_perform_indexing_task_success(
-    sample_kb: KnowledgeBase,
-    db_session: AsyncSession,
-) -> None:
-    """Test successful execution of indexing task."""
-    mock_adapter = MagicMock()
-    mock_adapter.get_or_create_rag.return_value = MagicMock()
-    mock_adapter.prepare_documents = AsyncMock(return_value={"total_chunks": 10})
+@pytest.fixture
+def mock_event_log() -> JobEventLog:
+    """Create a mock event log."""
+    event_log = MagicMock(spec=JobEventLog)
+    event_log.log_event = AsyncMock()
+    return event_log
 
-    # Mock get_db_context to return our test session
-    with patch("app.database.get_db_context") as mock_ctx:
-        mock_ctx.return_value.__aenter__.return_value = db_session
-        
-        await _perform_indexing_task(
+
+@pytest.mark.asyncio
+async def test_create_index_success(
+    sample_kb: KnowledgeBase,
+    sample_document: Document,
+    sample_rag_config: RAGConfig,
+    db_session: AsyncSession,
+    mock_event_log: JobEventLog,
+) -> None:
+    """Test successful creation of an index record."""
+    service = IndexBuildService(db_session, mock_event_log)
+
+    index = await service.create_index(
+        kb_id=sample_kb.id,
+        rag_config_id=sample_rag_config.id,
+        name="Test Index",
+        description="A test index",
+    )
+
+    assert index is not None
+    assert index.status == "pending"
+    assert index.knowledge_base_id == sample_kb.id
+    assert index.rag_config_id == sample_rag_config.id
+    assert index.name == "Test Index"
+    assert index.document_count == 1
+    assert index.physical_id.startswith("idx_")
+    assert index.storage_type == "chroma"  # vector_semantic -> chroma
+    assert "rag_type" in index.config_snapshot
+
+
+@pytest.mark.asyncio
+async def test_create_index_empty_kb_fails(
+    sample_kb: KnowledgeBase,
+    sample_rag_config: RAGConfig,
+    db_session: AsyncSession,
+    mock_event_log: JobEventLog,
+) -> None:
+    """Test that creating index for empty KB fails."""
+    service = IndexBuildService(db_session, mock_event_log)
+
+    with pytest.raises(ValueError, match="Cannot index empty knowledge base"):
+        await service.create_index(
             kb_id=sample_kb.id,
-            rag_config_id=None,
-            rag_adapter=mock_adapter,
+            rag_config_id=sample_rag_config.id,
         )
 
-    # Verify KB status updated
-    await db_session.refresh(sample_kb)
-    assert sample_kb.status == "ready"
-    assert sample_kb.current_version == 2
-    
-    # Verify adapter calls
-    mock_adapter.get_or_create_rag.assert_called()
-    mock_adapter.prepare_documents.assert_called()
+
+@pytest.mark.asyncio
+async def test_create_index_kb_not_found(
+    sample_rag_config: RAGConfig,
+    db_session: AsyncSession,
+    mock_event_log: JobEventLog,
+) -> None:
+    """Test that creating index for non-existent KB fails."""
+    from uuid import uuid4
+
+    service = IndexBuildService(db_session, mock_event_log)
+
+    with pytest.raises(ValueError, match="not found"):
+        await service.create_index(
+            kb_id=uuid4(),
+            rag_config_id=sample_rag_config.id,
+        )
 
 
 @pytest.mark.asyncio
-async def test_perform_indexing_task_failure(
+async def test_build_index_success(
     sample_kb: KnowledgeBase,
+    sample_document: Document,
+    sample_rag_config: RAGConfig,
     db_session: AsyncSession,
+    mock_event_log: JobEventLog,
 ) -> None:
-    """Test indexing task failure handling."""
+    """Test successful build of an index."""
+    # Create the index record first
+    service = IndexBuildService(db_session, mock_event_log)
+    index = await service.create_index(
+        kb_id=sample_kb.id,
+        rag_config_id=sample_rag_config.id,
+    )
+
+    # Mock the RAG adapter
+    mock_rag = MagicMock()
     mock_adapter = MagicMock()
-    mock_adapter.get_or_create_rag.return_value = MagicMock()
+    mock_adapter.create_rag_for_index.return_value = mock_rag
+    mock_adapter.prepare_documents = AsyncMock(return_value={"chunk_count": 10})
+
+    with patch.object(service, "rag_adapter", mock_adapter):
+        await service.build_index(index.id)
+
+    # Refresh and verify
+    await db_session.refresh(index)
+    assert index.status == "ready"
+    assert index.chunk_count == 10
+    assert index.build_completed_at is not None
+    assert index.build_duration_seconds is not None
+
+    # Verify event log was called
+    mock_event_log.log_event.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_build_index_failure(
+    sample_kb: KnowledgeBase,
+    sample_document: Document,
+    sample_rag_config: RAGConfig,
+    db_session: AsyncSession,
+    mock_event_log: JobEventLog,
+) -> None:
+    """Test index build failure handling."""
+    service = IndexBuildService(db_session, mock_event_log)
+    index = await service.create_index(
+        kb_id=sample_kb.id,
+        rag_config_id=sample_rag_config.id,
+    )
+
+    # Mock the RAG adapter to fail
+    mock_rag = MagicMock()
+    mock_adapter = MagicMock()
+    mock_adapter.create_rag_for_index.return_value = mock_rag
     mock_adapter.prepare_documents = AsyncMock(side_effect=Exception("Indexing failed"))
 
-    # Mock get_db_context to return our test session
-    with patch("app.database.get_db_context") as mock_ctx:
-        mock_ctx.return_value.__aenter__.return_value = db_session
-        
-        await _perform_indexing_task(
-            kb_id=sample_kb.id,
-            rag_config_id=None,
-            rag_adapter=mock_adapter,
-        )
+    with patch.object(service, "rag_adapter", mock_adapter):
+        await service.build_index(index.id)
 
-    # Verify KB status updated to error
-    await db_session.refresh(sample_kb)
-    assert sample_kb.status == "error"
-    # Version should not increment on error
-    assert sample_kb.current_version == 1
+    # Refresh and verify failure state
+    await db_session.refresh(index)
+    assert index.status == "failed"
+    assert index.error_message == "Indexing failed"
+    assert index.build_completed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_archive_index(
+    sample_kb: KnowledgeBase,
+    sample_document: Document,
+    sample_rag_config: RAGConfig,
+    db_session: AsyncSession,
+    mock_event_log: JobEventLog,
+) -> None:
+    """Test archiving an index."""
+    service = IndexBuildService(db_session, mock_event_log)
+    index = await service.create_index(
+        kb_id=sample_kb.id,
+        rag_config_id=sample_rag_config.id,
+    )
+
+    archived = await service.archive_index(index.id)
+
+    assert archived.status == "archived"
+
+
+@pytest.mark.asyncio
+async def test_delete_index(
+    sample_kb: KnowledgeBase,
+    sample_document: Document,
+    sample_rag_config: RAGConfig,
+    db_session: AsyncSession,
+    mock_event_log: JobEventLog,
+) -> None:
+    """Test deleting an index."""
+    service = IndexBuildService(db_session, mock_event_log)
+    index = await service.create_index(
+        kb_id=sample_kb.id,
+        rag_config_id=sample_rag_config.id,
+    )
+    index_id = index.id
+
+    await service.delete_index(index_id)
+
+    # Verify deletion
+    result = await service.get_index(index_id)
+    assert result is None

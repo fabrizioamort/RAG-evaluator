@@ -34,7 +34,9 @@ async def test_fastapi_validation_error_handler(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_global_exception_handler(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_global_exception_handler(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Test that unhandled exceptions return 500 with standard format."""
 
     async def mock_list_projects(*args: Any, **kwargs: Any) -> None:

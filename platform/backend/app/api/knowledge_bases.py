@@ -1,5 +1,6 @@
 """Knowledge Bases API endpoints."""
 
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -12,32 +13,29 @@ from app.models.document import Document
 from app.models.knowledge_base import KnowledgeBase
 from app.models.knowledge_base_version import KnowledgeBaseVersion
 from app.models.project import Project
-from app.models.rag_config import RAGConfig
 from app.schemas.knowledge_base import (
     DocumentResponse,
     DocumentUploadResponse,
     KnowledgeBaseCreate,
-    KnowledgeBaseIndexRequest,
     KnowledgeBaseList,
     KnowledgeBaseResponse,
     KnowledgeBaseUpdate,
     KnowledgeBaseVersionResponse,
     KnowledgeBaseWithDocuments,
 )
-from app.services.rag_adapter import RAGAdapterService, get_rag_adapter_service
 from app.services.storage_service import StorageService, get_storage_service
-from app.utils.exceptions import BadRequestError, NotFoundError, ValidationError
+from app.utils.exceptions import BadRequestError, NotFoundError
 from app.utils.logging_config import get_logger
 
 router = APIRouter(tags=["Knowledge Bases"])
 logger = get_logger(__name__)
 
-# Type alias for storage service dependency
-StorageDep = StorageService
-
 
 def _kb_to_response(kb: KnowledgeBase) -> KnowledgeBaseResponse:
     """Convert KnowledgeBase model to KnowledgeBaseResponse schema."""
+    # Handle lazy loading safely or assume loaded
+    doc_count = len(kb.documents) if kb.documents else 0
+    
     return KnowledgeBaseResponse(
         id=kb.id,
         project_id=kb.project_id,
@@ -47,8 +45,8 @@ def _kb_to_response(kb: KnowledgeBase) -> KnowledgeBaseResponse:
         status=kb.status,
         current_version=kb.current_version,
         storage_path=kb.storage_path,
-        index_path=kb.index_path,
-        document_count=len(kb.documents) if kb.documents else 0,
+        index_path=None, # Deprecated
+        document_count=doc_count,
         created_at=kb.created_at,
     )
 
@@ -64,7 +62,7 @@ def _kb_to_response_with_documents(kb: KnowledgeBase) -> KnowledgeBaseWithDocume
         status=kb.status,
         current_version=kb.current_version,
         storage_path=kb.storage_path,
-        index_path=kb.index_path,
+        index_path=None, # Deprecated
         document_count=len(kb.documents) if kb.documents else 0,
         created_at=kb.created_at,
         documents=[
@@ -132,19 +130,7 @@ async def _create_version(
     change_description: str | None = None,
     documents: list[Document] | None = None,
 ) -> KnowledgeBaseVersion:
-    """Create a new KB version snapshot.
-
-    Args:
-        db: Database session.
-        kb: Knowledge base to version.
-        change_type: Type of change (initial, documents_added, documents_removed, reindexed).
-        change_description: Optional description of the change.
-        documents: Optional list of documents to snapshot. If None, assumes empty list
-                   (avoids lazy loading issues in async context).
-
-    Returns:
-        The created KnowledgeBaseVersion.
-    """
+    """Create a new KB version snapshot."""
     # Increment version number
     new_version_number = kb.current_version + 1
 
@@ -202,6 +188,7 @@ async def list_knowledge_bases(
     query = (
         select(KnowledgeBase)
         .where(KnowledgeBase.project_id == project_id)
+        .where(KnowledgeBase.archived_at.is_(None)) # Filter archived
         .options(selectinload(KnowledgeBase.documents))
     )
 
@@ -210,6 +197,7 @@ async def list_knowledge_bases(
         select(func.count())
         .select_from(KnowledgeBase)
         .where(KnowledgeBase.project_id == project_id)
+        .where(KnowledgeBase.archived_at.is_(None))
     )
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
@@ -221,13 +209,6 @@ async def list_knowledge_bases(
     # Execute query
     result = await db.execute(query)
     knowledge_bases = result.scalars().all()
-
-    logger.info(
-        "Listed knowledge bases",
-        project_id=str(project_id),
-        count=len(knowledge_bases),
-        total=total,
-    )
 
     return KnowledgeBaseList(
         items=[_kb_to_response(kb) for kb in knowledge_bases],
@@ -248,7 +229,7 @@ async def create_knowledge_base(
     db: DbSession,
     project_id: UUID,
     kb_data: KnowledgeBaseCreate,
-    storage: StorageDep = Depends(get_storage_service),
+    storage: StorageService = Depends(get_storage_service),
 ) -> KnowledgeBaseResponse:
     """Create a new knowledge base."""
     # Verify project exists
@@ -268,13 +249,16 @@ async def create_knowledge_base(
 
     # Set storage paths
     kb.storage_path = str(storage.get_documents_path(kb.id))
-    kb.index_path = str(storage.get_index_path(kb.id))
+    # kb.index_path = ... # Deprecated
 
     # Create initial version (no documents yet)
     await _create_version(db, kb, "initial", "Knowledge base created", documents=[])
 
     await db.commit()
-    await db.refresh(kb)
+    
+    # Reload with documents to ensure relationships are loaded for response
+    # This prevents MissingGreenlet error
+    kb = await _get_kb_or_404(db, kb.id)
 
     logger.info(
         "Created knowledge base",
@@ -283,19 +267,7 @@ async def create_knowledge_base(
         name=kb.name,
     )
 
-    return KnowledgeBaseResponse(
-        id=kb.id,
-        project_id=kb.project_id,
-        name=kb.name,
-        description=kb.description,
-        metadata=kb.metadata_ if isinstance(kb.metadata_, dict) else {},
-        status=kb.status,
-        current_version=kb.current_version,
-        storage_path=kb.storage_path,
-        index_path=kb.index_path,
-        document_count=0,
-        created_at=kb.created_at,
-    )
+    return _kb_to_response(kb)
 
 
 @router.get(
@@ -329,6 +301,9 @@ async def update_knowledge_base(
     """Update a knowledge base."""
     kb = await _get_kb_or_404(db, kb_id)
 
+    if kb.is_archived:
+         raise BadRequestError(detail="Cannot update archived knowledge base")
+
     # Update only provided fields
     update_data = kb_data.model_dump(exclude_unset=True, by_alias=False)
     for field, value in update_data.items():
@@ -339,12 +314,6 @@ async def update_knowledge_base(
     # Re-fetch with relationships
     kb = await _get_kb_or_404(db, kb_id)
 
-    logger.info(
-        "Updated knowledge base",
-        kb_id=str(kb_id),
-        updated_fields=list(update_data.keys()),
-    )
-
     return _kb_to_response(kb)
 
 
@@ -352,25 +321,75 @@ async def update_knowledge_base(
     "/knowledge-bases/{kb_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a knowledge base",
-    description="Delete a knowledge base and all its documents.",
+    description="Soft-delete if indexes exist, otherwise hard-delete.",
     responses={404: {"description": "Knowledge base not found"}},
 )
 async def delete_knowledge_base(
     db: DbSession,
     kb_id: UUID,
-    storage: StorageDep = Depends(get_storage_service),
+    storage: StorageService = Depends(get_storage_service),
 ) -> None:
-    """Delete a knowledge base and all its data."""
+    """Delete a knowledge base."""
     kb = await _get_kb_or_404(db, kb_id)
 
-    # Delete storage files
-    await storage.delete_kb_storage(kb_id)
+    # Check for indexes
+    await db.refresh(kb, ["indexes"])
+    if kb.indexes:
+        # Soft delete
+        kb.archived_at = datetime.now(timezone.utc)
+        await db.commit()
+        logger.info("Archived knowledge base (soft delete)", kb_id=str(kb_id))
+    else:
+        # Hard delete
+        # Delete storage files
+        await storage.delete_kb_storage(kb_id)
+        # Delete from database (cascade deletes documents and versions)
+        await db.delete(kb)
+        await db.commit()
+        logger.info("Deleted knowledge base (hard delete)", kb_id=str(kb_id))
 
-    # Delete from database (cascade deletes documents and versions)
-    await db.delete(kb)
+
+@router.post(
+    "/knowledge-bases/{kb_id}/archive",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Archive knowledge base",
+    description="Explicitly archive a knowledge base.",
+)
+async def archive_knowledge_base(
+    db: DbSession,
+    kb_id: UUID,
+) -> None:
+    """Archive a knowledge base."""
+    kb = await _get_kb_or_404(db, kb_id)
+    
+    if kb.is_archived:
+        return
+
+    kb.archived_at = datetime.now(timezone.utc)
     await db.commit()
+    logger.info("Archived knowledge base", kb_id=str(kb_id))
 
-    logger.info("Deleted knowledge base", kb_id=str(kb_id))
+
+@router.post(
+    "/knowledge-bases/{kb_id}/restore",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Restore knowledge base",
+    description="Restore an archived knowledge base.",
+)
+async def restore_knowledge_base(
+    db: DbSession,
+    kb_id: UUID,
+) -> None:
+    """Restore a knowledge base."""
+    # Need to fetch even if archived, _get_kb_or_404 does not filter archived
+    kb = await _get_kb_or_404(db, kb_id)
+    
+    if not kb.is_archived:
+        return
+
+    kb.archived_at = None
+    await db.commit()
+    logger.info("Restored knowledge base", kb_id=str(kb_id))
 
 
 # =============================================================================
@@ -390,10 +409,13 @@ async def upload_documents(
     db: DbSession,
     kb_id: UUID,
     files: list[UploadFile] = File(..., description="Documents to upload"),
-    storage: StorageDep = Depends(get_storage_service),
+    storage: StorageService = Depends(get_storage_service),
 ) -> DocumentUploadResponse:
     """Upload documents to a knowledge base."""
     kb = await _get_kb_or_404(db, kb_id)
+
+    if kb.is_archived:
+        raise BadRequestError(detail="Cannot add documents to archived knowledge base")
 
     uploaded: list[DocumentResponse] = []
     failed: list[dict[str, str]] = []
@@ -479,11 +501,14 @@ async def delete_document(
     db: DbSession,
     kb_id: UUID,
     doc_id: UUID,
-    storage: StorageDep = Depends(get_storage_service),
+    storage: StorageService = Depends(get_storage_service),
 ) -> None:
     """Delete a document from a knowledge base."""
     # Verify KB exists
     kb = await _get_kb_or_404(db, kb_id)
+
+    if kb.is_archived:
+        raise BadRequestError(detail="Cannot delete documents from archived knowledge base")
 
     # Find the document
     query = select(Document).where(Document.id == doc_id, Document.knowledge_base_id == kb_id)
@@ -581,136 +606,5 @@ async def get_kb_status(
         "document_count": len(kb.documents) if kb.documents else 0,
         "total_size_bytes": total_size,
         "storage_path": kb.storage_path,
-        "index_path": kb.index_path,
+        "is_archived": kb.is_archived, # Added
     }
-
-
-async def _perform_indexing_task(
-    kb_id: UUID,
-    rag_config_id: UUID | None,
-    rag_adapter: RAGAdapterService,
-) -> None:
-    """Background task to perform indexing."""
-    from app.database import get_db_context
-
-    async with get_db_context() as db:
-        try:
-            # Reload KB with documents
-            kb_query = (
-                select(KnowledgeBase)
-                .where(KnowledgeBase.id == kb_id)
-                .options(selectinload(KnowledgeBase.documents))
-            )
-            kb_result = await db.execute(kb_query)
-            kb = kb_result.scalar_one_or_none()
-
-            if not kb:
-                logger.error("KB not found in background task", kb_id=str(kb_id))
-                return
-
-            # Determine RAG configuration
-            rag_config_model: RAGConfig | None = None
-            if rag_config_id:
-                config_query = select(RAGConfig).where(RAGConfig.id == rag_config_id)
-                config_result = await db.execute(config_query)
-                rag_config_model = config_result.scalar_one_or_none()
-
-            if rag_config_model:
-                rag = rag_adapter.get_or_create_rag(
-                    rag_config_model, index_path=kb.index_path, force_new=True
-                )
-            else:
-                # Fallback to default
-                temp_config = RAGConfig(
-                    project_id=kb.project_id,
-                    name=f"Internal Indexing Config for {kb.name[:50]}",
-                    rag_type="vector_semantic",
-                    llm_provider="openai",
-                    llm_model="gpt-4o-mini",
-                    parameters={"collection_name": f"kb_{kb.id}"},
-                )
-                rag = rag_adapter.get_or_create_rag(
-                    temp_config, index_path=kb.index_path, force_new=True
-                )
-
-            # Prepare documents
-            await rag_adapter.prepare_documents(rag, str(kb.storage_path))
-
-            # Create a new version
-            await db.refresh(kb, ["documents"])
-            await _create_version(
-                db,
-                kb,
-                "reindexed",
-                "Knowledge base re-indexed",
-                documents=list(kb.documents) if kb.documents else [],
-            )
-
-            # Update document status to processed
-            from sqlalchemy import update
-
-            await db.execute(
-                update(Document)
-                .where(Document.knowledge_base_id == kb_id)
-                .values(status="processed")
-            )
-
-            kb.status = "ready"
-            await db.commit()
-            logger.info("Successfully indexed knowledge base in background", kb_id=str(kb_id))
-
-        except Exception as e:
-            logger.exception("Failed to index knowledge base in background", kb_id=str(kb_id))
-            # Critical: rollback before trying to update status to avoid PendingRollbackError
-            await db.rollback()
-
-            # Re-fetch KB in new transaction or after rollback to set error status
-            kb_query = select(KnowledgeBase).where(KnowledgeBase.id == kb_id)
-            kb_result = await db.execute(kb_query)
-            kb = kb_result.scalar_one_or_none()
-            if kb:
-                kb.status = "error"
-                kb.metadata_["last_error"] = str(e)
-                await db.commit()
-
-
-@router.post(
-    "/knowledge-bases/{kb_id}/index",
-    response_model=KnowledgeBaseResponse,
-    summary="Index a knowledge base",
-    description="Trigger the indexing/document preparation process for a knowledge base.",
-    responses={404: {"description": "Knowledge base not found"}},
-)
-async def index_knowledge_base(
-    db: DbSession,
-    kb_id: UUID,
-    background_tasks: BackgroundTasks,
-    request: KnowledgeBaseIndexRequest = KnowledgeBaseIndexRequest(),
-    rag_adapter: RAGAdapterService = Depends(get_rag_adapter_service),
-) -> KnowledgeBaseResponse:
-    """Trigger indexing for a knowledge base."""
-    kb = await _get_kb_or_404(db, kb_id)
-
-    if not kb.documents:
-        raise BadRequestError(
-            detail="Cannot index an empty knowledge base. Please upload documents first."
-        )
-
-    if kb.status == "indexing":
-        raise BadRequestError(detail="Indexing is already in progress for this knowledge base.")
-
-    # Update status to indexing immediately
-    kb.status = "indexing"
-    await db.commit()
-    # Re-fetch with documents to avoid lazy loading issues in _kb_to_response
-    kb = await _get_kb_or_404(db, kb.id)
-
-    # Add task to background
-    background_tasks.add_task(
-        _perform_indexing_task,
-        kb_id=kb.id,
-        rag_config_id=request.rag_config_id,
-        rag_adapter=rag_adapter,
-    )
-
-    return _kb_to_response(kb)
