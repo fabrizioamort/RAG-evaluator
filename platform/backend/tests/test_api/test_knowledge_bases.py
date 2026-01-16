@@ -703,7 +703,6 @@ class TestKBIndexing:
         """Test indexing a KB successfully enqueues the task."""
         from app.main import app
         from app.services.rag_adapter import get_rag_adapter_service
-        from starlette.background import BackgroundTasks
 
         mock_adapter = MagicMock()
         mock_adapter.get_or_create_rag.return_value = MagicMock()
@@ -711,29 +710,24 @@ class TestKBIndexing:
 
         app.dependency_overrides[get_rag_adapter_service] = lambda: mock_adapter
 
-        # Mock BackgroundTasks to capture the task
-        mock_bg = MagicMock()
-        app.dependency_overrides[BackgroundTasks] = lambda: mock_bg
+        # Patch the background task function itself
+        with patch("app.api.knowledge_bases._perform_indexing_task", new_callable=AsyncMock) as mock_task:
+            try:
+                # Re-fetch KB in endpoint ensures we see documents
+                response = await client.post(f"/api/v1/knowledge-bases/{sample_kb.id}/index")
 
-        from app.api.knowledge_bases import _perform_indexing_task
+                assert response.status_code == 200
+                data = response.json()
+                assert data["status"] == "indexing"
+                assert data["current_version"] == 1
 
-        try:
-            # Re-fetch KB in endpoint ensures we see documents
-            response = await client.post(f"/api/v1/knowledge-bases/{sample_kb.id}/index")
-
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "indexing"
-            assert data["current_version"] == 1
-
-            # Verify task was added to background tasks
-            mock_bg.add_task.assert_called_once()
-            call_args = mock_bg.add_task.call_args
-            assert call_args[0][0] == _perform_indexing_task
-            assert call_args[1]["kb_id"] == sample_kb.id
-            assert call_args[1]["rag_adapter"] == mock_adapter
-        finally:
-            app.dependency_overrides.clear()
+                # Verify task was called
+                mock_task.assert_called_once()
+                call_args = mock_task.call_args
+                assert call_args[1]["kb_id"] == sample_kb.id
+                assert call_args[1]["rag_adapter"] == mock_adapter
+            finally:
+                app.dependency_overrides.clear()
 
     @pytest.mark.asyncio
     async def test_index_kb_empty_fails(
@@ -755,7 +749,6 @@ class TestKBIndexing:
         # regardless of what happens in the background task (unless add_task itself fails).
         from app.services.rag_adapter import get_rag_adapter_service
         from app.main import app
-        from starlette.background import BackgroundTasks
 
         mock_adapter = MagicMock()
         mock_adapter.get_or_create_rag.return_value = MagicMock()
@@ -763,22 +756,18 @@ class TestKBIndexing:
 
         app.dependency_overrides[get_rag_adapter_service] = lambda: mock_adapter
 
-        # Mock BackgroundTasks
-        mock_bg = MagicMock()
-        app.dependency_overrides[BackgroundTasks] = lambda: mock_bg
+        # Patch the background task function itself
+        with patch("app.api.knowledge_bases._perform_indexing_task", new_callable=AsyncMock) as mock_task:
+            try:
+                response = await client.post(f"/api/v1/knowledge-bases/{sample_kb.id}/index")
 
-        from app.api.knowledge_bases import _perform_indexing_task
+                assert response.status_code == 200
+                assert response.json()["status"] == "indexing"
 
-        try:
-            response = await client.post(f"/api/v1/knowledge-bases/{sample_kb.id}/index")
-
-            assert response.status_code == 200
-            assert response.json()["status"] == "indexing"
-
-            # Verify task was added
-            mock_bg.add_task.assert_called_once()
-        finally:
-            app.dependency_overrides.clear()
+                # Verify task was called
+                mock_task.assert_called_once()
+            finally:
+                app.dependency_overrides.clear()
 
     @pytest.mark.asyncio
     async def test_index_kb_with_config_success(
@@ -791,7 +780,6 @@ class TestKBIndexing:
         """Test indexing a KB with a specific RAG configuration."""
         from app.services.rag_adapter import get_rag_adapter_service
         from app.main import app
-        from starlette.background import BackgroundTasks
 
         mock_adapter = MagicMock()
         mock_adapter.get_or_create_rag.return_value = MagicMock()
@@ -799,27 +787,22 @@ class TestKBIndexing:
 
         app.dependency_overrides[get_rag_adapter_service] = lambda: mock_adapter
 
-        # Mock BackgroundTasks
-        mock_bg = MagicMock()
-        app.dependency_overrides[BackgroundTasks] = lambda: mock_bg
+        # Patch the background task function itself
+        with patch("app.api.knowledge_bases._perform_indexing_task", new_callable=AsyncMock) as mock_task:
+            try:
+                response = await client.post(
+                    f"/api/v1/knowledge-bases/{sample_kb.id}/index",
+                    json={"rag_config_id": str(sample_rag_config.id)},
+                )
 
-        from app.api.knowledge_bases import _perform_indexing_task
+                assert response.status_code == 200
+                assert response.json()["status"] == "indexing"
 
-        try:
-            response = await client.post(
-                f"/api/v1/knowledge-bases/{sample_kb.id}/index",
-                json={"rag_config_id": str(sample_rag_config.id)},
-            )
-
-            assert response.status_code == 200
-            assert response.json()["status"] == "indexing"
-
-            # Verify task was added with config ID
-            mock_bg.add_task.assert_called_once()
-            call_args = mock_bg.add_task.call_args
-            assert call_args[0][0] == _perform_indexing_task
-            assert call_args[1]["kb_id"] == sample_kb.id
-            assert call_args[1]["rag_config_id"] == str(sample_rag_config.id)
-            assert call_args[1]["rag_adapter"] == mock_adapter
-        finally:
-            app.dependency_overrides.clear()
+                # Verify task was called (since ASGITransport runs bg tasks)
+                mock_task.assert_called_once()
+                call_args = mock_task.call_args
+                assert call_args[1]["kb_id"] == sample_kb.id
+                assert call_args[1]["rag_config_id"] == sample_rag_config.id
+                assert call_args[1]["rag_adapter"] == mock_adapter
+            finally:
+                app.dependency_overrides.clear()

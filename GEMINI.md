@@ -13,7 +13,9 @@ The project evaluates four RAG approaches:
 3. Graph RAG (Neo4j + LangChain)
 4. Filesystem RAG (LLM-guided file retrieval)
 
-## Development Commands
+## Development Environment and Commands
+
+You work on a Windows 11 PC, use only Powershell commands not linux.
 
 ### Environment Setup
 

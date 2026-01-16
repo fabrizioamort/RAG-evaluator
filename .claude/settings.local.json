@@ -12,7 +12,9 @@
       "mcp__context7__resolve-library-id",
       "mcp__context7__query-docs",
       "Bash(dir \"C:\\Users\\fabri\\projects\\RAG-evaluator\\platform\\frontend\")",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(Get-ChildItem -Path \"C:\\Users\\fabri\\projects\\RAG-evaluator\\platform\" -Recurse -Name -Directory)",
+      "Bash(Select-Object -First 30)"
     ]
   }
 }
