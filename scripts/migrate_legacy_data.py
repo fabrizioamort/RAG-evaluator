@@ -16,7 +16,8 @@ if not (root_path / "platform" / "backend").exists():
 os.chdir(str(root_path))
 
 # Load environment variables for the backend BEFORE importing app modules
-from dotenv import load_dotenv
+# Load environment variables for the backend BEFORE importing app modules
+from dotenv import load_dotenv  # noqa: E402
 
 env_path = root_path / "platform" / "backend" / ".env"
 load_dotenv(env_path)
@@ -33,8 +34,8 @@ if "sqlite" in db_url and "///./" in db_url:
 backend_path = root_path / "platform" / "backend"
 sys.path.append(str(backend_path))
 
-from app.database import async_session_maker
-from app.models import (
+from app.database import async_session_maker  # noqa: E402
+from app.models import (  # noqa: E402
     Document,
     Evaluation,
     EvaluationResult,
@@ -45,7 +46,7 @@ from app.models import (
     TestCase,
     TestSet,
 )
-from sqlalchemy import select
+from sqlalchemy import select  # noqa: E402
 
 
 async def migrate_knowledge_base(session, project_id: uuid.UUID):
@@ -158,7 +159,6 @@ async def migrate_test_sets(session, project_id: uuid.UUID):
     test_set = result.scalar_one_or_none()
 
     if not test_set:
-        test_case_count = len(data.get("test_cases", []))
         test_set = TestSet(
             id=uuid.uuid4(),
             project_id=project_id,
@@ -210,7 +210,17 @@ async def migrate_reports(session, project_id: uuid.UUID, test_set_id: uuid.UUID
                 print(f"Error loading {report_file}: {e}")
                 continue
 
-        impl_name = data.get("rag_implementation", "Unknown Implementation")
+        # Extract timestamp from filename or data
+        try:
+            parts = report_file.stem.split("_")
+            timestamp_str = f"{parts[-2]}_{parts[-1]}"
+            completed_at = datetime.strptime(timestamp_str, "%Y-%m-%d_%H%M%S")
+        except Exception:
+            completed_at = datetime.now()
+
+        pass_rate = data.get("pass_rate", 0.0)
+        if pass_rate > 1.0:
+            pass_rate = pass_rate / 100.0
 
         # Check if evaluation already exists
         query = select(Evaluation).where(
@@ -222,18 +232,18 @@ async def migrate_reports(session, project_id: uuid.UUID, test_set_id: uuid.UUID
             print(f"Evaluation for {report_file.name} already exists, skipping.")
             continue
 
-        # Extract timestamp from filename or data
-        try:
-            parts = report_file.stem.split("_")
-            timestamp_str = f"{parts[-2]}_{parts[-1]}"
-            completed_at = datetime.strptime(timestamp_str, "%Y-%m-%d_%H%M%S")
-        except:
-            completed_at = datetime.now()
-
-        pass_rate = data.get("pass_rate", 0.0)
-        if pass_rate > 1.0:
-            pass_rate = pass_rate / 100.0
-
+        # Create Evaluation
+        eval_run = Evaluation(
+            id=uuid.uuid4(),
+            project_id=project_id,
+            test_set_id=test_set_id,
+            status="completed",
+            started_at=completed_at,
+            completed_at=completed_at,
+            pass_rate=pass_rate,
+            summary_metrics=data.get("metrics", {}),
+            notes=f"Imported from {report_file.name}",
+        )
         session.add(eval_run)
         await session.flush()
 
@@ -279,7 +289,7 @@ async def migrate_rag_configs(session, project_id: uuid.UUID):
         with open(report_file, encoding="utf-8") as f:
             try:
                 data = json.load(f)
-            except:
+            except Exception:
                 continue
 
         impl_name = data.get("rag_implementation", "Unknown Implementation")
@@ -343,7 +353,7 @@ async def main():
             print(f"Project {project_name} already exists.")
 
         # 2. Migrate KBs
-        kb_id = await migrate_knowledge_base(session, project.id)
+        await migrate_knowledge_base(session, project.id)
         await session.commit()
 
         # 3. Migrate Test Sets

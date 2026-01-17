@@ -16,7 +16,7 @@ if not (root_path / "platform" / "backend").exists():
 os.chdir(str(root_path))
 
 # Load environment variables for the backend BEFORE importing app modules
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
 env_path = root_path / "platform" / "backend" / ".env"
 load_dotenv(env_path)
@@ -33,8 +33,8 @@ if "sqlite" in db_url and "///./" in db_url:
 backend_path = root_path / "platform" / "backend"
 sys.path.append(str(backend_path))
 
-from app.database import async_session_maker
-from app.models import Evaluation, EvaluationResult, TestCase
+from app.database import async_session_maker  # noqa: E402
+from app.models import Evaluation, EvaluationResult, TestCase  # noqa: E402
 
 
 async def main():

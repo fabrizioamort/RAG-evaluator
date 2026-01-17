@@ -9,7 +9,7 @@ root_path = Path("platform/backend").resolve()
 sys.path.append(str(root_path))
 os.chdir(str(Path(".").resolve()))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
 env_path = root_path / ".env"
 load_dotenv(env_path)
@@ -21,8 +21,8 @@ if "sqlite" in db_url and "///./" in db_url:
     os.environ["DATABASE_URL"] = fixed_db_url
     print(f"Fixed DB URL: {fixed_db_url}")
 
-from app.database import async_session_maker
-from app.models import Evaluation, EvaluationResult
+from app.database import async_session_maker  # noqa: E402
+from app.models import Evaluation, EvaluationResult  # noqa: E402
 
 
 async def main():

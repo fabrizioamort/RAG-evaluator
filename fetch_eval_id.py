@@ -10,7 +10,7 @@ root_path = Path(__file__).parent
 sys.path.append(str(root_path / "platform" / "backend"))
 
 os.chdir(str(root_path))
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(root_path / "platform" / "backend" / ".env")
 
@@ -21,8 +21,8 @@ if "sqlite" in db_url and "///./" in db_url:
     fixed_db_url = f"sqlite+aiosqlite:///{abs_db_path}"
     os.environ["DATABASE_URL"] = fixed_db_url
 
-from app.database import async_session_maker
-from app.models import Evaluation
+from app.database import async_session_maker  # noqa: E402
+from app.models import Evaluation  # noqa: E402
 
 
 async def main():
