@@ -7,10 +7,17 @@ vector similarity search.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
-from rag_evaluator.common.base_rag import BaseRAG
+from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
+from rag_evaluator.common.provider_interfaces import (
+    GeneratedAnswer,
+    RetrievalTrace,
+    RetrievedChunk,
+    RetrievedContext,
+)
 from rag_evaluator.rag_implementations.filesystem_rag.agent.agent import (
     FilesystemRAGAgent,
 )
@@ -47,6 +54,7 @@ class FilesystemRAG(BaseRAG):
         max_iterations: int = 10,
         max_tool_calls: int = 20,
         max_file_reads: int = 10,
+        config: RAGConfig | None = None,
     ) -> None:
         """Initialize Filesystem RAG.
 
@@ -57,11 +65,14 @@ class FilesystemRAG(BaseRAG):
             max_iterations: Maximum ReAct loop iterations per query
             max_tool_calls: Maximum tool calls per query
             max_file_reads: Maximum file reads per query
+            config: Optional RAGConfig for configuration
         """
-        super().__init__("Filesystem RAG")
+        super().__init__("Filesystem RAG", config=config)
 
-        self.llm_model = llm_model
-        self.prepared_path = prepared_path
+        # Override llm_model from config if provided
+        self.llm_model = self.config.llm_model if config else llm_model
+        # Resolve to absolute path to ensure robustness against CWD changes
+        self.prepared_path = str(Path(prepared_path).resolve())
         self.word_threshold = word_threshold
         self.max_iterations = max_iterations
         self.max_tool_calls = max_tool_calls
@@ -74,6 +85,11 @@ class FilesystemRAG(BaseRAG):
         # Query tracking
         self._query_metrics: list[dict[str, Any]] = []
         self._total_queries = 0
+
+    def close(self) -> None:
+        """Close agent and clear metrics."""
+        self._agent = None
+        self._query_metrics = []
 
     def prepare_documents(self, documents_path: str) -> None:
         """Prepare documents by converting to markdown and building indexes.
@@ -128,6 +144,199 @@ class FilesystemRAG(BaseRAG):
             max_file_reads=self.max_file_reads,
         )
 
+    def retrieve(self, question: str, top_k: int = 5) -> RetrievedContext:
+        """Retrieve context using LLM-guided filesystem navigation.
+
+        The agent navigates indexes and documents to gather relevant context.
+        Note: top_k is ignored for filesystem RAG as the agent determines
+        what to retrieve based on the query.
+
+        Args:
+            question: The question to retrieve context for
+            top_k: Ignored for filesystem RAG
+
+        Returns:
+            RetrievedContext with chunks and trace information
+        """
+        if self._agent is None:
+            # Try to initialize if prepared path exists
+            if Path(self.prepared_path).exists():
+                self._initialize_agent()
+            else:
+                raise ValueError(
+                    "Agent not initialized. Call prepare_documents() first, "
+                    f"or ensure prepared path exists: {self.prepared_path}"
+                )
+
+        # Ensure agent is initialized (for type checker)
+        if self._agent is None:
+            raise RuntimeError("Agent initialization failed")
+
+        start_time = time.time()
+
+        # Execute query through agent
+        response = self._agent.query(question)
+
+        retrieval_time = time.time() - start_time
+
+        # Build chunk details from context
+        chunk_details = []
+        files_read = response.metadata.get("files_read", [])
+
+        for i, chunk in enumerate(response.context):
+            # Try to determine source from files_read
+            source = files_read[i] if i < len(files_read) else f"agent_context_{i}"
+
+            chunk_details.append(
+                RetrievedChunk(
+                    content=chunk,
+                    document_id=source,
+                    chunk_id=f"fs_chunk_{i}",
+                    score=1.0 - (i * 0.05),  # Agent-retrieved, decreasing relevance
+                    rank=i,
+                    source=source,
+                    metadata={
+                        "search_mode": response.metadata.get("search_mode", "unknown"),
+                    },
+                )
+            )
+
+        # Build trace from agent's reasoning
+        reasoning_trace = response.metadata.get("reasoning_trace", [])
+        trace = RetrievalTrace(
+            strategy="agentic",
+            total_duration_ms=retrieval_time * 1000,
+        )
+
+        # Add routing step
+        trace.add_step(
+            step_type="query_routing",
+            input_data={"query": question},
+            output_refs=[],
+            duration_ms=0,  # Included in overall time
+            metadata={"search_mode": response.metadata.get("search_mode", "unknown")},
+        )
+
+        # Add navigation steps from reasoning trace
+        for i, step in enumerate(reasoning_trace):
+            trace.add_step(
+                step_type="agent_step",
+                input_data={"step_number": i + 1},
+                output_refs=[],
+                duration_ms=0,
+                metadata={"reasoning": step},
+            )
+
+        # Add file read steps
+        for file_path in files_read:
+            trace.add_step(
+                step_type="file_read",
+                input_data={"file": file_path},
+                output_refs=[],
+                duration_ms=0,
+            )
+
+        trace.retrieved_chunks = chunk_details
+
+        return RetrievedContext(
+            chunks=response.context,
+            chunk_details=chunk_details,
+            trace=trace,
+            retrieval_time=retrieval_time,
+        )
+
+    def _retrieve_only(self, question: str, top_k: int = 5) -> dict[str, Any]:
+        """Perform retrieval without generation.
+
+        For FilesystemRAG, retrieval and generation are interleaved by the agent,
+        so this returns the full response but only extracts context.
+
+        Args:
+            question: The question to retrieve context for
+            top_k: Ignored for filesystem RAG
+
+        Returns:
+            Dictionary with context and metadata
+        """
+        context = self.retrieve(question, top_k)
+        return {
+            "context": context.chunks,
+            "metadata": {
+                "sources": [c.source for c in context.chunk_details],
+                "search_mode": context.trace.steps[0]
+                .get("metadata", {})
+                .get("search_mode", "unknown")
+                if context.trace.steps
+                else "unknown",
+            },
+        }
+
+    def _generate_only(self, question: str, context_chunks: list[str]) -> str:
+        """Generate answer from context.
+
+        For FilesystemRAG, the agent typically generates the answer during retrieval.
+        This method can be used for re-generation with different context.
+
+        Args:
+            question: The question to answer
+            context_chunks: Retrieved context chunks
+
+        Returns:
+            Generated answer text
+        """
+        # FilesystemRAG doesn't have a separate generation step
+        # The agent generates during query. For re-generation, we'd need
+        # to call the agent's LLM directly.
+        if self._agent is None:
+            raise ValueError("Agent not initialized")
+
+        # Build context prompt and call agent's LLM
+        context_text = "\n\n".join([f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)])
+
+        prompt = f"""Based on the following context gathered from the filesystem, answer the question.
+
+Context:
+{context_text}
+
+Question: {question}
+
+Answer:"""
+
+        # Use the agent to answer (simplified - ideally we'd call LLM directly)
+        response = self._agent.query(f"Using this context: {context_text}\n\nAnswer: {question}")
+
+        # Estimate token usage
+        estimated_prompt_tokens = len(prompt) // 4
+        estimated_completion_tokens = len(response.answer) // 4
+
+        self._token_usage.add_prompt_tokens(estimated_prompt_tokens)
+        self._token_usage.add_completion_tokens(estimated_completion_tokens)
+
+        return response.answer
+
+    def generate(self, question: str, context: RetrievedContext) -> GeneratedAnswer:
+        """Generate answer from retrieved context.
+
+        Args:
+            question: The question to answer
+            context: Previously retrieved context
+
+        Returns:
+            GeneratedAnswer with text and token usage
+        """
+        start_time = time.time()
+
+        answer = self._generate_only(question, context.chunks)
+
+        generation_time = time.time() - start_time
+
+        return GeneratedAnswer(
+            text=answer,
+            generation_time=generation_time,
+            prompt_tokens=self._token_usage.prompt_tokens,
+            completion_tokens=self._token_usage.completion_tokens,
+        )
+
     def query(self, question: str, top_k: int = 5) -> dict[str, Any]:
         """Query using LLM-guided filesystem navigation.
 
@@ -147,6 +356,9 @@ class FilesystemRAG(BaseRAG):
             - context: List of context chunks used
             - metadata: Query execution metadata
         """
+        # Reset token usage for this query
+        self.reset_token_usage()
+
         if self._agent is None:
             # Try to initialize if prepared path exists
             if Path(self.prepared_path).exists():
@@ -176,6 +388,12 @@ class FilesystemRAG(BaseRAG):
         self._query_metrics.append(query_metric)
         self._total_queries += 1
 
+        # Estimate token usage from agent activity
+        estimated_prompt = len(question) * response.metadata.get("iterations", 1) * 10
+        estimated_completion = len(response.answer) // 4
+        self._token_usage.add_prompt_tokens(estimated_prompt)
+        self._token_usage.add_completion_tokens(estimated_completion)
+
         # Return in standard RAG format
         return {
             "answer": response.answer,
@@ -188,6 +406,7 @@ class FilesystemRAG(BaseRAG):
                 "search_mode": response.metadata.get("search_mode", "unknown"),
                 "iterations": response.metadata.get("iterations", 0),
                 "reasoning_trace": response.metadata.get("reasoning_trace", []),
+                "token_usage": self._token_usage.to_dict(),
             },
         }
 
@@ -211,6 +430,7 @@ class FilesystemRAG(BaseRAG):
                 "avg_files_read": 0.0,
                 "search_mode_distribution": {},
                 "preparation_metrics": self._preparation_metrics,
+                "token_usage": self._token_usage.to_dict(),
             }
 
         # Calculate averages
@@ -234,6 +454,7 @@ class FilesystemRAG(BaseRAG):
             "avg_iterations": round(avg_iterations, 2),
             "search_mode_distribution": search_mode_distribution,
             "preparation_metrics": self._preparation_metrics,
+            "token_usage": self._token_usage.to_dict(),
         }
 
     def get_prepared_path(self) -> str:
@@ -250,7 +471,7 @@ class FilesystemRAG(BaseRAG):
         Returns:
             True if prepared filesystem exists
         """
-        return Path(self.prepared_path).exists()
+        return (Path(self.prepared_path) / "_meta" / "statistics.json").exists()
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Get agent cache statistics.

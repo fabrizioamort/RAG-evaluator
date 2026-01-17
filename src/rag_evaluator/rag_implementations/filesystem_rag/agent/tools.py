@@ -135,8 +135,29 @@ class FilesystemRAGTools:
         if not full_path.is_file():
             raise ValueError(f"Path is not a file: {path}")
 
+        # Security check: Ignore binary files
+        binary_extensions = {".bin", ".sqlite3", ".db", ".pyc", ".exe", ".dll", ".so", ".pkl"}
+        if full_path.suffix.lower() in binary_extensions:
+            return {
+                "content": f"Error: Cannot read binary file '{path}'. Access denied.",
+                "total_lines": 0,
+                "is_partial": False,
+                "headers": [],
+            }
+
         # Read file content
         try:
+            # First check if it looks like binary by reading first block
+            with open(full_path, "rb") as f:
+                chunk = f.read(1024)
+                if b"\x00" in chunk:
+                    return {
+                        "content": f"Error: File '{path}' appears to be binary. Access denied.",
+                        "total_lines": 0,
+                        "is_partial": False,
+                        "headers": [],
+                    }
+
             content = full_path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             # Try with latin-1 as fallback

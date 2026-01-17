@@ -14,6 +14,7 @@ from typing import Any
 
 from openai import OpenAI
 
+from rag_evaluator.common.llm_utils import get_safe_llm_params
 from rag_evaluator.config import settings
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.document_processor import (
     ProcessedDocument,
@@ -581,12 +582,14 @@ def llm_analysis(
     prompt = ANALYSIS_PROMPT.format(title=title, content=content)
 
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,  # Deterministic results
-            response_format={"type": "json_object"},
-        )
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+        }
+        kwargs = get_safe_llm_params(model, temperature=0.0, **kwargs)
+
+        response = client.chat.completions.create(**kwargs)
 
         result_text = response.choices[0].message.content
         if not result_text:

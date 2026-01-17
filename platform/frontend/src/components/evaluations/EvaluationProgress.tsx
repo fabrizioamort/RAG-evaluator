@@ -1,0 +1,149 @@
+import { Play, Pause, XCircle, CheckCircle2, AlertCircle, Clock } from 'lucide-react'
+import { useEvaluationStream } from '../../hooks/useEvaluationStream'
+import { api } from '../../api/client'
+
+interface EvaluationProgressProps {
+    evaluationId: string
+    onClose?: () => void
+}
+
+export function EvaluationProgress({ evaluationId, onClose }: EvaluationProgressProps) {
+    const { completed, total, status, currentQuestion, error, summaryMetrics } = useEvaluationStream(evaluationId)
+
+    const progress = total > 0 ? (completed / total) * 100 : 0
+
+    const handlePause = async () => {
+        try {
+            await api.evaluations.pause(evaluationId)
+        } catch (err) {
+            console.error('Failed to pause evaluation:', err)
+        }
+    }
+
+    const handleResume = async () => {
+        try {
+            await api.evaluations.resume(evaluationId)
+        } catch (err) {
+            console.error('Failed to resume evaluation:', err)
+        }
+    }
+
+    const handleCancel = async () => {
+        if (window.confirm('Are you sure you want to cancel this evaluation?')) {
+            try {
+                await api.evaluations.cancel(evaluationId)
+            } catch (err) {
+                console.error('Failed to cancel evaluation:', err)
+            }
+        }
+    }
+
+    return (
+        <div className="rounded-xl border border-border bg-card p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-6">
+                <div>
+                    <h3 className="text-xl font-bold flex items-center gap-2">
+                        {status === 'running' && <Clock className="h-5 w-5 text-blue-500 animate-spin" />}
+                        {status === 'completed' && <CheckCircle2 className="h-5 w-5 text-green-500" />}
+                        {status === 'failed' && <AlertCircle className="h-5 w-5 text-red-500" />}
+                        {status === 'paused' && <Pause className="h-5 w-5 text-yellow-500" />}
+                        {status === 'cancelled' && <XCircle className="h-5 w-5 text-gray-500" />}
+                        Evaluation Status: <span className="capitalize">{status}</span>
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                        ID: {evaluationId}
+                    </p>
+                </div>
+
+                <div className="flex gap-2">
+                    {status === 'running' && (
+                        <button
+                            onClick={handlePause}
+                            className="flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-600 transition-colors"
+                        >
+                            <Pause className="h-4 w-4" /> Pause
+                        </button>
+                    )}
+                    {status === 'paused' && (
+                        <button
+                            onClick={handleResume}
+                            className="flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 text-sm font-medium text-white hover:bg-green-600 transition-colors"
+                        >
+                            <Play className="h-4 w-4" /> Resume
+                        </button>
+                    )}
+                    {(status === 'running' || status === 'paused') && (
+                        <button
+                            onClick={handleCancel}
+                            className="flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 transition-colors"
+                        >
+                            <XCircle className="h-4 w-4" /> Cancel
+                        </button>
+                    )}
+                    {onClose && (
+                        <button
+                            onClick={onClose}
+                            className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
+                        >
+                            Close
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="space-y-4">
+                <div className="flex items-center justify-between text-sm font-medium">
+                    <span>Overall Progress</span>
+                    <span>{completed} / {total} test cases ({Math.round(progress)}%)</span>
+                </div>
+
+                <div className="h-4 w-full overflow-hidden rounded-full bg-secondary/30">
+                    <div
+                        className="h-full bg-primary transition-all duration-500 ease-in-out"
+                        style={{ width: `${progress}%` }}
+                    />
+                </div>
+
+                {status === 'running' && currentQuestion && (
+                    <div className="mt-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        <h4 className="text-sm font-semibold text-muted-foreground mb-2">Current Question:</h4>
+                        <div className="rounded-lg bg-accent/50 p-4 border border-border">
+                            <p className="text-sm font-medium italic">"{currentQuestion}"</p>
+                        </div>
+                    </div>
+                )}
+
+                {error && (
+                    <div className="mt-4 rounded-lg bg-red-500/10 p-4 border border-red-500/20 text-red-600">
+                        <div className="flex items-center gap-2 font-semibold">
+                            <AlertCircle className="h-4 w-4" />
+                            <span>Evaluation Error</span>
+                        </div>
+                        <p className="mt-1 text-sm">{error}</p>
+                    </div>
+                )}
+
+                {status === 'completed' && summaryMetrics && (
+                    <div className="mt-8">
+                        <h4 className="text-lg font-bold mb-4">Summary results</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {[
+                                { label: 'Faithfulness', value: summaryMetrics.faithfulness_avg, color: 'text-blue-500' },
+                                { label: 'Relevancy', value: summaryMetrics.relevancy_avg, color: 'text-green-500' },
+                                { label: 'Precision', value: summaryMetrics.precision_avg, color: 'text-purple-500' },
+                                { label: 'Recall', value: summaryMetrics.recall_avg, color: 'text-orange-500' }
+                            ].map((m) => (
+                                <div key={m.label} className="rounded-xl border border-border p-4 bg-muted/30">
+                                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
+                                    <p className={`text-2xl font-black mt-1 ${m.color}`}>
+                                        {m.value?.toFixed(2) || 'N/A'}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}

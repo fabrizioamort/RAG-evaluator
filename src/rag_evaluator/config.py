@@ -11,6 +11,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # LLM Configuration
@@ -38,6 +39,9 @@ class Settings(BaseSettings):
     hybrid_chunk_overlap: int = Field(default=100, description="Chunk overlap for hybrid search")
     hybrid_fusion_alpha: float = Field(
         default=0.5, description="Weight for dense vs sparse (0=sparse only, 1=dense only)"
+    )
+    hybrid_indexing_batch_size: int = Field(
+        default=16, description="Batch size for hybrid indexing to avoid OOM"
     )
     sparse_model_name: str = Field(
         default="prithivida/Splade_PP_en_v1",
@@ -67,6 +71,9 @@ class Settings(BaseSettings):
     )
     eval_contextual_recall_threshold: float = Field(
         default=0.7, description="Minimum threshold for contextual recall metric"
+    )
+    eval_include_reason: bool = Field(
+        default=True, description="Whether to include reasoning in DeepEval metrics"
     )
 
     # Data directories

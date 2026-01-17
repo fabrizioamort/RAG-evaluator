@@ -37,25 +37,25 @@ class RAGEvaluator:
             FaithfulnessMetric(
                 threshold=settings.eval_faithfulness_threshold,
                 model=settings.openai_model,
-                include_reason=False,  # Disable verbose reasoning to save tokens
+                include_reason=settings.eval_include_reason,
                 async_mode=settings.deepeval_async_mode,
             ),
             AnswerRelevancyMetric(
                 threshold=settings.eval_answer_relevancy_threshold,
                 model=settings.openai_model,
-                include_reason=False,  # Disable verbose reasoning to save tokens
+                include_reason=settings.eval_include_reason,
                 async_mode=settings.deepeval_async_mode,
             ),
             ContextualPrecisionMetric(
                 threshold=settings.eval_contextual_precision_threshold,
                 model=settings.openai_model,
-                include_reason=False,  # Disable verbose reasoning to save tokens
+                include_reason=settings.eval_include_reason,
                 async_mode=settings.deepeval_async_mode,
             ),
             ContextualRecallMetric(
                 threshold=settings.eval_contextual_recall_threshold,
                 model=settings.openai_model,
-                include_reason=False,  # Disable verbose reasoning to save tokens
+                include_reason=settings.eval_include_reason,
                 async_mode=settings.deepeval_async_mode,
             ),
         ]
@@ -189,19 +189,26 @@ class RAGEvaluator:
                         "contextual_recall": None,
                     }
 
-                    # Iterate through metrics_data to extract scores
+                    # Iterate through metrics_data to extract scores and reasoning
                     if hasattr(test_result, "metrics_data"):
                         for metric_data in test_result.metrics_data:
                             metric_name = metric_data.name.lower().replace(" ", "_")
                             # Map DeepEval metric names to our naming convention
+                            target_key = None
                             if "faithfulness" in metric_name:
-                                metrics_dict["faithfulness"] = metric_data.score
+                                target_key = "faithfulness"
                             elif "answer" in metric_name and "relevancy" in metric_name:
-                                metrics_dict["answer_relevancy"] = metric_data.score
+                                target_key = "answer_relevancy"
                             elif "contextual" in metric_name and "precision" in metric_name:
-                                metrics_dict["contextual_precision"] = metric_data.score
+                                target_key = "contextual_precision"
                             elif "contextual" in metric_name and "recall" in metric_name:
-                                metrics_dict["contextual_recall"] = metric_data.score
+                                target_key = "contextual_recall"
+
+                            if target_key:
+                                metrics_dict[target_key] = metric_data.score
+                                # Capture reasoning if available
+                                if hasattr(metric_data, "reason") and metric_data.reason:
+                                    detailed_results[i][f"{target_key}_reason"] = metric_data.reason
 
                     detailed_results[i]["metrics"] = metrics_dict
 
