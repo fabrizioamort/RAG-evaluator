@@ -142,6 +142,7 @@ class PreparationPipeline:
             if self.output_path.exists():
                 print(f"  Clearing existing output directory: {self.output_path}")
                 import shutil
+
                 shutil.rmtree(self.output_path)
             self.output_path.mkdir(parents=True, exist_ok=True)
 

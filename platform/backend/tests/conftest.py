@@ -3,7 +3,6 @@
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -15,7 +14,9 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
+import app.database as db_module
 from app.config import Settings
+from app.main import app
 
 # IMPORTANT: Import all models to ensure they are registered with Base.metadata
 from app.models import (  # noqa: F401
@@ -39,8 +40,6 @@ from app.models import (  # noqa: F401
     TestTemplate,
     Webhook,
 )
-import app.database as db_module
-from app.main import app
 
 
 # Test settings override

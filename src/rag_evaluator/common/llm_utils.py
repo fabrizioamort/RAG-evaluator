@@ -20,7 +20,11 @@ def is_reasoning_model(model_name: str) -> bool:
     model_lower = model_name.lower()
 
     # OpenAI reasoning models
-    if any(x in model_lower for x in ["o1-", "o3-", "/o1", "/o3", "gpt-5"]) or model_lower in ["o1", "o3", "gpt-5"]:
+    if any(x in model_lower for x in ["o1-", "o3-", "/o1", "/o3", "gpt-5"]) or model_lower in [
+        "o1",
+        "o3",
+        "gpt-5",
+    ]:
         return True
 
     return False

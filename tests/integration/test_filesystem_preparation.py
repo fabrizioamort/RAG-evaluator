@@ -22,8 +22,11 @@ def test_full_pipeline_with_real_data(tmp_path: Path) -> None:
     output_path = tmp_path / "prepared_output"
 
     # Ensure input data exists
-    if not input_path.exists() or not any(input_path.iterdir()):
-        pytest.skip("No data found in data/raw for integration test")
+    # Ensure input data exists (ignoring .gitkeep and hidden files)
+    if not input_path.exists() or not any(
+        f.name != ".gitkeep" and not f.name.startswith(".") for f in input_path.iterdir()
+    ):
+        pytest.skip("No actual data found in data/raw for integration test")
 
     # Run pipeline with heuristic analysis to avoid API costs during test
     pipeline = PreparationPipeline(

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class KnowledgeBaseIndexCreate(BaseModel):
@@ -64,13 +64,13 @@ class IndexBuildProgress(BaseModel):
 
 class IndexArchiveRequest(BaseModel):
     """Request to archive an index."""
-    
+
     reason: str | None = None
 
 
 class IndexRetryRequest(BaseModel):
     """Request to retry a failed index build."""
-    
+
     force: bool = False
 
 

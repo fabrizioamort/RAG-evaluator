@@ -230,7 +230,7 @@ async def get_recent_activity(
                 action="created" if kb.status == "pending" else kb.status,
                 name=kb.name,
                 timestamp=kb.created_at,
-                metadata={"status": kb.status, "document_count": kb.document_count},
+                metadata={"status": kb.status},
             )
         )
 

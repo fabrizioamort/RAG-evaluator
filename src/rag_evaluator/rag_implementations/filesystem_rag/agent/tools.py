@@ -150,7 +150,7 @@ class FilesystemRAGTools:
             # First check if it looks like binary by reading first block
             with open(full_path, "rb") as f:
                 chunk = f.read(1024)
-                if b'\x00' in chunk:
+                if b"\x00" in chunk:
                     return {
                         "content": f"Error: File '{path}' appears to be binary. Access denied.",
                         "total_lines": 0,

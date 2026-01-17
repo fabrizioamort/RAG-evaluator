@@ -1,27 +1,25 @@
 """Knowledge Base Index API endpoints."""
 
-from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
-from sse_starlette.sse import EventSourceResponse
+from fastapi import APIRouter, BackgroundTasks, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
+from sse_starlette.sse import EventSourceResponse
 
 from app.api.deps import DbSession, Pagination
-from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.knowledge_base import KnowledgeBase
-from app.models.rag_config import RAGConfig
+from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.schemas.knowledge_base_index import (
+    IndexArchiveRequest,
+    IndexRetryRequest,
     KnowledgeBaseIndexCreate,
     KnowledgeBaseIndexList,
     KnowledgeBaseIndexResponse,
-    IndexArchiveRequest,
-    IndexRetryRequest,
 )
 from app.services.index_build_service import IndexBuildService
-from app.services.job_event_log import JobEventLog, get_job_event_log
-from app.utils.exceptions import NotFoundError, BadRequestError
+from app.services.job_event_log import get_job_event_log
+from app.utils.exceptions import BadRequestError, NotFoundError
 from app.utils.logging_config import get_logger
 
 router = APIRouter(tags=["Indexes"])
@@ -84,7 +82,7 @@ async def list_indexes(
 
     if kb_id:
         query = query.where(KnowledgeBaseIndex.knowledge_base_id == kb_id)
-    
+
     if project_id:
         query = query.join(KnowledgeBase).where(KnowledgeBase.project_id == project_id)
 
@@ -142,10 +140,10 @@ async def create_index(
 
     # Trigger build in background
     from app.database import get_db_context
-    
+
     async def run_build_task(index_id: UUID) -> None:
         async with get_db_context() as task_db:
-            task_event_log = get_job_event_log() # Use singleton/default
+            task_event_log = get_job_event_log()  # Use singleton/default
             task_service = IndexBuildService(task_db, task_event_log)
             await task_service.build_index(index_id)
 
@@ -213,7 +211,7 @@ async def delete_index(
     except ValueError as e:
         # Check if it's the dependency error
         if "evaluations" in str(e):
-            raise BadRequestError(detail=str(e)) # Should be 409 Conflict ideally
+            raise BadRequestError(detail=str(e))  # Should be 409 Conflict ideally
         raise NotFoundError(detail=str(e))
 
 
@@ -235,10 +233,8 @@ async def stream_index_build(
         raise NotFoundError(detail="Index not found")
 
     event_log = get_job_event_log()
-    
-    return EventSourceResponse(
-        event_log.subscribe(index_id)
-    )
+
+    return EventSourceResponse(event_log.subscribe(index_id))
 
 
 @router.post(
@@ -262,10 +258,10 @@ async def retry_index_build(
         raise NotFoundError(detail="Index not found")
 
     if index.status not in ["failed", "pending"]:
-         raise BadRequestError(detail=f"Cannot retry index in '{index.status}' status")
+        raise BadRequestError(detail=f"Cannot retry index in '{index.status}' status")
 
     from app.database import get_db_context
-    
+
     async def run_build_task(idx_id: UUID) -> None:
         async with get_db_context() as task_db:
             task_event_log = get_job_event_log()

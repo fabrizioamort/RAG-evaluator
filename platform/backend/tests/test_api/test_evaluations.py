@@ -67,7 +67,7 @@ async def sample_rag_config(db_session: AsyncSession, sample_project: Project) -
         rag_type="vector_semantic",
         llm_provider="openai",
         llm_model="gpt-4o-mini",
-        parameters={"collection_name": "test"}
+        parameters={"collection_name": "test"},
     )
     db_session.add(config)
     await db_session.commit()
@@ -162,7 +162,7 @@ async def sample_evaluation(
         knowledge_base_id=sample_kb.id,
         test_set_id=sample_test_set.id,
         rag_config_id=sample_rag_config.id,
-        knowledge_base_index_id=sample_index.id, # Added
+        knowledge_base_index_id=sample_index.id,  # Added
         status="completed",
         pass_rate=0.8,
     )

@@ -15,7 +15,6 @@ from typing import Any
 from openai import OpenAI
 
 from rag_evaluator.common.llm_utils import get_safe_llm_params
-
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.index_builder import (
     DocumentInfo,
 )

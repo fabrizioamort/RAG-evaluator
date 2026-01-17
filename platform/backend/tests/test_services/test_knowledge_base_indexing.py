@@ -1,13 +1,13 @@
 """Tests for knowledge base indexing via IndexBuildService."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from typing import cast
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document
 from app.models.knowledge_base import KnowledgeBase
-from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.knowledge_base_version import KnowledgeBaseVersion
 from app.models.project import Project
 from app.models.rag_config import RAGConfig
@@ -200,7 +200,8 @@ async def test_build_index_success(
     assert index.build_duration_seconds is not None
 
     # Verify event log was called
-    mock_event_log.log_event.assert_called()
+    # Verify event log was called
+    cast(AsyncMock, mock_event_log.log_event).assert_called()
 
 
 @pytest.mark.asyncio

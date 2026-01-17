@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -35,7 +35,7 @@ def _kb_to_response(kb: KnowledgeBase) -> KnowledgeBaseResponse:
     """Convert KnowledgeBase model to KnowledgeBaseResponse schema."""
     # Handle lazy loading safely or assume loaded
     doc_count = len(kb.documents) if kb.documents else 0
-    
+
     return KnowledgeBaseResponse(
         id=kb.id,
         project_id=kb.project_id,
@@ -45,7 +45,7 @@ def _kb_to_response(kb: KnowledgeBase) -> KnowledgeBaseResponse:
         status=kb.status,
         current_version=kb.current_version,
         storage_path=kb.storage_path,
-        index_path=None, # Deprecated
+        index_path=None,  # Deprecated
         document_count=doc_count,
         created_at=kb.created_at,
     )
@@ -62,7 +62,7 @@ def _kb_to_response_with_documents(kb: KnowledgeBase) -> KnowledgeBaseWithDocume
         status=kb.status,
         current_version=kb.current_version,
         storage_path=kb.storage_path,
-        index_path=None, # Deprecated
+        index_path=None,  # Deprecated
         document_count=len(kb.documents) if kb.documents else 0,
         created_at=kb.created_at,
         documents=[
@@ -188,7 +188,7 @@ async def list_knowledge_bases(
     query = (
         select(KnowledgeBase)
         .where(KnowledgeBase.project_id == project_id)
-        .where(KnowledgeBase.archived_at.is_(None)) # Filter archived
+        .where(KnowledgeBase.archived_at.is_(None))  # Filter archived
         .options(selectinload(KnowledgeBase.documents))
     )
 
@@ -255,7 +255,7 @@ async def create_knowledge_base(
     await _create_version(db, kb, "initial", "Knowledge base created", documents=[])
 
     await db.commit()
-    
+
     # Reload with documents to ensure relationships are loaded for response
     # This prevents MissingGreenlet error
     kb = await _get_kb_or_404(db, kb.id)
@@ -302,7 +302,7 @@ async def update_knowledge_base(
     kb = await _get_kb_or_404(db, kb_id)
 
     if kb.is_archived:
-         raise BadRequestError(detail="Cannot update archived knowledge base")
+        raise BadRequestError(detail="Cannot update archived knowledge base")
 
     # Update only provided fields
     update_data = kb_data.model_dump(exclude_unset=True, by_alias=False)
@@ -361,7 +361,7 @@ async def archive_knowledge_base(
 ) -> None:
     """Archive a knowledge base."""
     kb = await _get_kb_or_404(db, kb_id)
-    
+
     if kb.is_archived:
         return
 
@@ -383,7 +383,7 @@ async def restore_knowledge_base(
     """Restore a knowledge base."""
     # Need to fetch even if archived, _get_kb_or_404 does not filter archived
     kb = await _get_kb_or_404(db, kb_id)
-    
+
     if not kb.is_archived:
         return
 
@@ -606,5 +606,5 @@ async def get_kb_status(
         "document_count": len(kb.documents) if kb.documents else 0,
         "total_size_bytes": total_size,
         "storage_path": kb.storage_path,
-        "is_archived": kb.is_archived, # Added
+        "is_archived": kb.is_archived,  # Added
     }

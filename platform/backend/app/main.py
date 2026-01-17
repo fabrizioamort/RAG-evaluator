@@ -181,7 +181,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 app.include_router(health.router, prefix=settings.API_V1_PREFIX)
 app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
 app.include_router(knowledge_bases.router, prefix=settings.API_V1_PREFIX)
-app.include_router(indexes.router, prefix=settings.API_V1_PREFIX) # Added
+app.include_router(indexes.router, prefix=settings.API_V1_PREFIX)  # Added
 app.include_router(test_sets.router, prefix=settings.API_V1_PREFIX)
 app.include_router(test_templates.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rag_configs.router, prefix=settings.API_V1_PREFIX)

@@ -1,7 +1,7 @@
 """Tests for knowledge bases API endpoints."""
 
 import io
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -126,9 +126,7 @@ class TestListKnowledgeBases:
         assert data["items"][0]["status"] == "pending"
 
     @pytest.mark.asyncio
-    async def test_list_kbs_pagination(
-        self, client: AsyncClient, sample_project: Project
-    ) -> None:
+    async def test_list_kbs_pagination(self, client: AsyncClient, sample_project: Project) -> None:
         """Test pagination works correctly."""
         # Note: We need multiple KBs, but simplified for now
         pass
@@ -656,20 +654,21 @@ class TestIndexCreation:
     ) -> None:
         """Test creating an index successfully."""
         from app.services.rag_adapter import get_rag_adapter_service
-        
+
         mock_adapter = MagicMock()
         mock_adapter.create_rag_for_index.return_value = MagicMock()
         mock_adapter.prepare_documents = AsyncMock(return_value={"chunk_count": 10})
-        
+
         from app.main import app
+
         app.dependency_overrides[get_rag_adapter_service] = lambda: mock_adapter
-        
+
         try:
             response = await client.post(
                 f"/api/v1/knowledge-bases/{sample_kb.id}/indexes",
-                json={"rag_config_id": str(sample_rag_config.id)}
+                json={"rag_config_id": str(sample_rag_config.id)},
             )
-            
+
             assert response.status_code == 201
             data = response.json()
             assert data["status"] == "pending"
@@ -684,10 +683,10 @@ class TestIndexCreation:
     ) -> None:
         """Test that indexing an empty KB fails."""
         # sample_kb has no documents in this test context
-        
+
         response = await client.post(
             f"/api/v1/knowledge-bases/{sample_kb.id}/indexes",
-            json={"rag_config_id": str(sample_rag_config.id)}
+            json={"rag_config_id": str(sample_rag_config.id)},
         )
 
         assert response.status_code == 400
