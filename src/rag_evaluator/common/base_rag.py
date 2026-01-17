@@ -5,6 +5,7 @@ providing a standardized interface for document preparation, retrieval,
 generation, and querying.
 """
 
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -93,8 +94,45 @@ class BaseRAG(ABC):
         """
         self.name = name
         self.config = config or RAGConfig(name=name)
-        self._token_usage = TokenUsage()
+        self._total_token_usage = TokenUsage()
+        self._token_local = threading.local()
         self._progress_callback: ProgressCallback | None = None
+        self._metrics_lock = threading.Lock()
+
+    @property
+    def _token_usage(self) -> TokenUsage:
+        """Get thread-local token usage.
+
+        Returns:
+            TokenUsage instance for the current thread.
+        """
+        if not hasattr(self._token_local, "usage"):
+            # Create a new TokenUsage that also updates the total
+            self._token_local.usage = TokenUsage()
+
+            # We need to wrap the add methods to also update the global total
+            # This is a bit hacky but avoids changing all RAG implementations
+            original_prompt = self._token_local.usage.add_prompt_tokens
+            original_completion = self._token_local.usage.add_completion_tokens
+            original_embedding = self._token_local.usage.add_embedding_tokens
+
+            def wrapped_prompt(count: int) -> None:
+                original_prompt(count)
+                self._total_token_usage.add_prompt_tokens(count)
+
+            def wrapped_completion(count: int) -> None:
+                original_completion(count)
+                self._total_token_usage.add_completion_tokens(count)
+
+            def wrapped_embedding(count: int) -> None:
+                original_embedding(count)
+                self._total_token_usage.add_embedding_tokens(count)
+
+            self._token_local.usage.add_prompt_tokens = wrapped_prompt
+            self._token_local.usage.add_completion_tokens = wrapped_completion
+            self._token_local.usage.add_embedding_tokens = wrapped_embedding
+
+        return self._token_local.usage  # type: ignore[no-any-return]
 
     def set_progress_callback(self, callback: ProgressCallback | None) -> None:
         """Set callback for progress reporting during long operations.
@@ -343,16 +381,23 @@ class BaseRAG(ABC):
         pass
 
     def get_token_usage(self) -> TokenUsage:
-        """Return token usage from last query.
+        """Return global token usage across all steps/threads.
 
         Returns:
-            TokenUsage object with current counts
+            TokenUsage object with aggregate counts
         """
-        return self._token_usage
+        return self._total_token_usage
 
     def reset_token_usage(self) -> None:
-        """Reset token usage counters."""
-        self._token_usage = TokenUsage()
+        """Reset thread-local token usage counters.
+        Used at the start of individual queries to track per-query usage.
+        """
+        self._token_usage.reset()
+
+    def reset_global_token_usage(self) -> None:
+        """Reset global token usage counters."""
+        self._total_token_usage.reset()
+        self._token_usage.reset()
 
     def get_config(self) -> RAGConfig:
         """Get the RAG configuration.

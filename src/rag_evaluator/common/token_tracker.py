@@ -4,7 +4,8 @@ This module provides utilities for tracking token usage
 across RAG operations for cost calculation and monitoring.
 """
 
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -19,6 +20,7 @@ class TokenUsage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     embedding_tokens: int = 0
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False, compare=False)
 
     @property
     def total_tokens(self) -> int:
@@ -27,7 +29,8 @@ class TokenUsage:
         Returns:
             Sum of all token types
         """
-        return self.prompt_tokens + self.completion_tokens + self.embedding_tokens
+        with self._lock:
+            return self.prompt_tokens + self.completion_tokens + self.embedding_tokens
 
     def add(self, other: "TokenUsage") -> "TokenUsage":
         """Add another TokenUsage to this one.
@@ -40,11 +43,13 @@ class TokenUsage:
         Returns:
             New TokenUsage with combined counts
         """
-        return TokenUsage(
-            prompt_tokens=self.prompt_tokens + other.prompt_tokens,
-            completion_tokens=self.completion_tokens + other.completion_tokens,
-            embedding_tokens=self.embedding_tokens + other.embedding_tokens,
-        )
+        with self._lock:
+            with other._lock:
+                return TokenUsage(
+                    prompt_tokens=self.prompt_tokens + other.prompt_tokens,
+                    completion_tokens=self.completion_tokens + other.completion_tokens,
+                    embedding_tokens=self.embedding_tokens + other.embedding_tokens,
+                )
 
     def add_prompt_tokens(self, count: int) -> None:
         """Add prompt tokens.
@@ -52,7 +57,8 @@ class TokenUsage:
         Args:
             count: Number of prompt tokens to add
         """
-        self.prompt_tokens += count
+        with self._lock:
+            self.prompt_tokens += count
 
     def add_completion_tokens(self, count: int) -> None:
         """Add completion tokens.
@@ -60,7 +66,8 @@ class TokenUsage:
         Args:
             count: Number of completion tokens to add
         """
-        self.completion_tokens += count
+        with self._lock:
+            self.completion_tokens += count
 
     def add_embedding_tokens(self, count: int) -> None:
         """Add embedding tokens.
@@ -68,13 +75,15 @@ class TokenUsage:
         Args:
             count: Number of embedding tokens to add
         """
-        self.embedding_tokens += count
+        with self._lock:
+            self.embedding_tokens += count
 
     def reset(self) -> None:
         """Reset all token counts to zero."""
-        self.prompt_tokens = 0
-        self.completion_tokens = 0
-        self.embedding_tokens = 0
+        with self._lock:
+            self.prompt_tokens = 0
+            self.completion_tokens = 0
+            self.embedding_tokens = 0
 
     def to_dict(self) -> dict[str, int]:
         """Convert to dictionary for serialization.
@@ -82,12 +91,20 @@ class TokenUsage:
         Returns:
             Dictionary with all token counts
         """
-        return {
-            "prompt_tokens": self.prompt_tokens,
-            "completion_tokens": self.completion_tokens,
-            "embedding_tokens": self.embedding_tokens,
-            "total_tokens": self.total_tokens,
-        }
+        with self._lock:
+            # Calculate total_tokens directly while holding the lock
+            # to avoid re-entering the lock via the property (though RLock allows it)
+            prompt = self.prompt_tokens
+            completion = self.completion_tokens
+            embedding = self.embedding_tokens
+            total = prompt + completion + embedding
+
+            return {
+                "prompt_tokens": prompt,
+                "completion_tokens": completion,
+                "embedding_tokens": embedding,
+                "total_tokens": total,
+            }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TokenUsage":

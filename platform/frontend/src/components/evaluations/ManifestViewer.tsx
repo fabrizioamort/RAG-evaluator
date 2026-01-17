@@ -117,7 +117,7 @@ interface ManifestSectionProps {
     title: string
     icon: React.ReactNode
     subtitle: string
-    data: any
+    data: unknown
     defaultOpen?: boolean
 }
 
@@ -151,7 +151,7 @@ function ManifestSection({ title, icon, subtitle, data, defaultOpen = false }: M
     )
 }
 
-function JsonTree({ data, level = 0 }: { data: any, level?: number }) {
+function JsonTree({ data, level = 0 }: { data: unknown, level?: number }) {
     if (data === null) return <span className="text-muted-foreground">null</span>
     if (typeof data !== 'object') {
         if (typeof data === 'string') return <span className="text-green-600">"{data}"</span>

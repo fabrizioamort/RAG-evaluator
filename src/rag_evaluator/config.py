@@ -58,6 +58,12 @@ class Settings(BaseSettings):
         default="data/test_set.json", description="Path to evaluation test set"
     )
     eval_reports_dir: str = Field(default="reports", description="Evaluation reports directory")
+    eval_parallel_queries: bool = Field(
+        default=False, description="Whether to run RAG queries in parallel during evaluation"
+    )
+    eval_max_workers: int = Field(
+        default=4, description="Maximum number of parallel workers for RAG queries"
+    )
 
     # DeepEval Metric Thresholds (0.0 to 1.0)
     eval_faithfulness_threshold: float = Field(

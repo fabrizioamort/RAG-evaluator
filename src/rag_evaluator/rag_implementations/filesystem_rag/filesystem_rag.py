@@ -385,8 +385,9 @@ Answer:"""
             "search_mode": response.metadata.get("search_mode", "unknown"),
             "iterations": response.metadata.get("iterations", 0),
         }
-        self._query_metrics.append(query_metric)
-        self._total_queries += 1
+        with self._metrics_lock:
+            self._query_metrics.append(query_metric)
+            self._total_queries += 1
 
         # Estimate token usage from agent activity
         estimated_prompt = len(question) * response.metadata.get("iterations", 1) * 10
@@ -454,7 +455,7 @@ Answer:"""
             "avg_iterations": round(avg_iterations, 2),
             "search_mode_distribution": search_mode_distribution,
             "preparation_metrics": self._preparation_metrics,
-            "token_usage": self._token_usage.to_dict(),
+            "token_usage": self.get_token_usage().to_dict(),
         }
 
     def get_prepared_path(self) -> str:

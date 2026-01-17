@@ -16,7 +16,7 @@ function timeAgo(dateString: string) {
     const date = new Date(dateString)
     const now = new Date()
     const seconds = Math.floor((now.getTime() - date.getTime()) / 1000)
-    
+
     if (seconds < 60) return 'just now'
     const minutes = Math.floor(seconds / 60)
     if (minutes < 60) return `${minutes}m ago`
@@ -24,7 +24,7 @@ function timeAgo(dateString: string) {
     if (hours < 24) return `${hours}h ago`
     const days = Math.floor(hours / 24)
     return `${days}d ago`
-  }
+}
 
 export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }: StartEvaluationWizardProps) {
     const [step, setStep] = useState<Step>('testset')
@@ -99,7 +99,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
             onClose()
         } catch (error) {
             console.error('Failed to start evaluation:', error)
-            alert('Failed to start evaluation: ' + (error as any).message)
+            alert('Failed to start evaluation: ' + (error as Error).message)
         } finally {
             setIsStarting(false)
         }
@@ -228,7 +228,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                                         <h3 className="text-lg font-bold">Select Index</h3>
                                         <p className="text-sm text-muted-foreground">Choose the specific index (RAG configuration) to evaluate.</p>
                                     </div>
-                                    
+
                                     {isLoadingIndexes ? (
                                         <div className="flex justify-center py-8">
                                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -343,8 +343,8 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                                     else if (step === 'index') setStep('review')
                                 }}
                                 disabled={
-                                    (step === 'testset' && !selectedTestSet) || 
-                                    (step === 'kb' && !selectedKb) || 
+                                    (step === 'testset' && !selectedTestSet) ||
+                                    (step === 'kb' && !selectedKb) ||
                                     (step === 'index' && !selectedIndex)
                                 }
                                 className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"

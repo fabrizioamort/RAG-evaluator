@@ -109,8 +109,8 @@ class RAGEvaluator:
         deepeval_test_cases: list[LLMTestCase] = []
         detailed_results: list[dict[str, Any]] = []
 
-        # Execute queries and create DeepEval test cases
-        for i, test_case in enumerate(self.test_cases, 1):
+        def process_test_case(i_test_case: tuple[int, dict[str, Any]]) -> dict[str, Any]:
+            i, test_case = i_test_case
             if verbose:
                 print(f"[{i}/{len(self.test_cases)}] Querying: {test_case['question'][:60]}...")
 
@@ -138,11 +138,12 @@ class RAGEvaluator:
                 context=ground_truth_context,  # Ground truth context
                 retrieval_context=context_list,  # Actually retrieved context
             )
-            deepeval_test_cases.append(llm_test_case)
 
-            # Store detailed result
-            detailed_results.append(
-                {
+            # Return both the test case and detailed result
+            return {
+                "index": i - 1,
+                "llm_test_case": llm_test_case,
+                "detailed_result": {
                     "test_case_id": test_case.get("id", f"tc_{i:03d}"),
                     "question": test_case["question"],
                     "answer": response["answer"],
@@ -151,8 +152,27 @@ class RAGEvaluator:
                     "retrieval_time": response.get("metadata", {}).get("retrieval_time", 0.0),
                     "difficulty": test_case.get("difficulty", "unknown"),
                     "category": test_case.get("category", "general"),
-                }
-            )
+                },
+            }
+
+        # Execute queries (parallel or sequential)
+        indexed_test_cases = list(enumerate(self.test_cases, 1))
+
+        if settings.eval_parallel_queries:
+            if verbose:
+                print(f"Running RAG queries in parallel (max workers: {settings.eval_max_workers})...")
+            from concurrent.futures import ThreadPoolExecutor
+
+            with ThreadPoolExecutor(max_workers=settings.eval_max_workers) as executor:
+                query_results = list(executor.map(process_test_case, indexed_test_cases))
+        else:
+            query_results = [process_test_case(tc) for tc in indexed_test_cases]
+
+        # Sort results back to original order and extract components
+        query_results.sort(key=lambda x: x["index"])
+        for res in query_results:
+            deepeval_test_cases.append(res["llm_test_case"])
+            detailed_results.append(res["detailed_result"])
 
         if verbose:
             print(f"\n{'=' * 60}")

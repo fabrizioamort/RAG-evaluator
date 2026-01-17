@@ -4,7 +4,7 @@ import { Plus, Loader2, RefreshCcw } from 'lucide-react'
 import { api, ProjectCreate } from '@/api/client'
 import { ProjectList } from '@/components/projects/ProjectList'
 import { CreateProjectDialog } from '@/components/projects/CreateProjectDialog'
-import { useToast } from '@/components/ui/toast'
+import { useToast } from '@/components/ui/toast-context'
 
 export function Projects() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)

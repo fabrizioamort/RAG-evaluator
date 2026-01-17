@@ -25,7 +25,7 @@ interface EvaluationResultsProps {
     onBack: () => void
 }
 
-const formatScore = (val: any, decimals: number = 2) => {
+const formatScore = (val: number | string | null | undefined, decimals: number = 2) => {
     if (val === null || val === undefined) return 'N/A';
     const num = typeof val === 'number' ? val : parseFloat(val);
     return isNaN(num) ? 'N/A' : num.toFixed(decimals);
@@ -203,15 +203,11 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
                                                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Avg Latency</p>
-                                                <p className="text-xl font-bold">
-                                                    {formatScore(evaluation.data.performance_metrics?.avg_latency_seconds)}s
-                                                </p>
+                                                {formatScore(evaluation.data.performance_metrics?.avg_latency_seconds as number)}s
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Total Cost</p>
-                                                <p className="text-xl font-bold">
-                                                    ${formatScore(evaluation.data.cost_metrics?.total_cost_usd, 4)}
-                                                </p>
+                                                ${formatScore(evaluation.data.cost_metrics?.total_cost_usd as number, 4)}
                                             </div>
                                         </div>
                                     </div>

@@ -252,7 +252,8 @@ class ChromaSemanticRAG(BaseRAG):
         distances = distances_list[0] if distances_list else []
 
         retrieval_time = time.time() - start_time
-        self._retrieval_times.append(retrieval_time)
+        with self._metrics_lock:
+            self._retrieval_times.append(retrieval_time)
 
         # Build chunk details
         chunk_details = []
@@ -428,5 +429,5 @@ Answer:"""
             "total_chunks": collection_count,
             "total_queries": len(self._retrieval_times),
             "collection_name": self.collection_name,
-            "token_usage": self._token_usage.to_dict(),
+            "token_usage": self.get_token_usage().to_dict(),
         }

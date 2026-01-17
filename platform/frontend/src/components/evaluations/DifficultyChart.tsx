@@ -93,7 +93,7 @@ export const DifficultyChart: React.FC<DifficultyChartProps> = ({ results }) => 
                         }}
                     />
                     <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={20}>
-                        {chartData.map((entry: any, index: number) => (
+                        {chartData.map((entry, index: number) => (
                             <Cell key={`cell-${index}`} fill={COLORS[entry.originalDiff]} />
                         ))}
                     </Bar>

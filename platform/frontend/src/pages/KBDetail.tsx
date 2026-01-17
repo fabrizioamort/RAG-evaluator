@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -18,7 +18,7 @@ import { api, KnowledgeBaseIndex } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { CreateIndexDialog } from '@/components/indexes/CreateIndexDialog'
 import { IndexCard } from '@/components/indexes/IndexCard'
-import { useToast } from '@/components/ui/toast'
+import { useToast } from '@/components/ui/toast-context'
 
 export function KBDetail() {
     const { id } = useParams<{ id: string }>()
@@ -35,7 +35,7 @@ export function KBDetail() {
         enabled: !!id,
     })
 
-    const fetchIndexes = async () => {
+    const fetchIndexes = useCallback(async () => {
         if (!id) return
         try {
             const response = await api.indexes.list({ kb_id: id })
@@ -43,11 +43,11 @@ export function KBDetail() {
         } catch (e) {
             console.error('Failed to fetch indexes', e)
         }
-    }
+    }, [id])
 
     useEffect(() => {
         fetchIndexes()
-    }, [id])
+    }, [fetchIndexes])
 
     const deleteDocMutation = useMutation({
         mutationFn: (docId: string) => api.knowledgeBases.deleteDocument(id!, docId),
@@ -251,13 +251,13 @@ export function KBDetail() {
                         {indexes.length} index{indexes.length !== 1 ? 'es' : ''} available
                     </span>
                 </div>
-                
+
                 {indexes.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground bg-muted/20">
                         <Layers className="h-12 w-12 mx-auto opacity-20 mb-3" />
                         <p className="font-medium">No indexes yet</p>
                         <p className="text-sm mt-1">Create an index to start running evaluations.</p>
-                        <button 
+                        <button
                             onClick={() => setIsIndexDialogOpen(true)}
                             className="mt-4 text-primary hover:underline text-sm"
                             disabled={documents.length === 0}
@@ -268,10 +268,10 @@ export function KBDetail() {
                 ) : (
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                         {indexes.map(index => (
-                            <IndexCard 
-                                key={index.id} 
-                                index={index} 
-                                onDelete={fetchIndexes} 
+                            <IndexCard
+                                key={index.id}
+                                index={index}
+                                onDelete={fetchIndexes}
                             />
                         ))}
                     </div>

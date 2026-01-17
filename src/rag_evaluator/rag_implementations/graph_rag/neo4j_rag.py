@@ -170,7 +170,8 @@ class Neo4jGraphRAG(BaseRAG):
             )
 
             retrieval_time = time.time() - start_time
-            self._retrieval_times.append(retrieval_time)
+            with self._metrics_lock:
+                self._retrieval_times.append(retrieval_time)
 
             # Extract context from retriever results
             context_chunks = []
@@ -245,7 +246,8 @@ class Neo4jGraphRAG(BaseRAG):
 
         except Exception as e:
             retrieval_time = time.time() - start_time
-            self._retrieval_times.append(retrieval_time)
+            with self._metrics_lock:
+                self._retrieval_times.append(retrieval_time)
 
             # Return empty context with error in trace
             trace = RetrievalTrace(
@@ -362,7 +364,8 @@ Answer:"""
         self.reset_token_usage()
 
         start_time = time.time()
-        self._total_queries += 1
+        with self._metrics_lock:
+            self._total_queries += 1
 
         try:
             # Use GraphRAG pipeline to retrieve and generate
@@ -373,7 +376,8 @@ Answer:"""
             )
 
             retrieval_time = time.time() - start_time
-            self._retrieval_times.append(retrieval_time)
+            with self._metrics_lock:
+                self._retrieval_times.append(retrieval_time)
 
             # Extract context from retriever results
             context_chunks = []
@@ -414,7 +418,8 @@ Answer:"""
         except Exception as e:
             # Fallback response on error
             retrieval_time = time.time() - start_time
-            self._retrieval_times.append(retrieval_time)
+            with self._metrics_lock:
+                self._retrieval_times.append(retrieval_time)
 
             return {
                 "answer": f"Error querying graph RAG: {str(e)}",
@@ -445,7 +450,7 @@ Answer:"""
         return {
             "avg_retrieval_time": avg_retrieval_time,
             "total_queries": self._total_queries,
-            "token_usage": self._token_usage.to_dict(),
+            "token_usage": self.get_token_usage().to_dict(),
             **graph_stats,
         }
 

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, KnowledgeBaseCreate, Evaluation, RAGConfig } from '@/api/client'
-import { useToast } from '@/components/ui/toast'
+import { useToast } from '@/components/ui/toast-context'
 import { TestSetList } from '@/components/test-sets/TestSetList'
 import { TestSetDetail } from '@/components/test-sets/TestSetDetail'
 import { CreateTestSetDialog } from '@/components/test-sets/CreateTestSetDialog'

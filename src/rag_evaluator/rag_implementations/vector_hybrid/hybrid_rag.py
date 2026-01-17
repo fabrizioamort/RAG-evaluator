@@ -361,7 +361,8 @@ class HybridSearchRAG(BaseRAG):
                 )
 
         retrieval_time = time.time() - start_time
-        self._retrieval_times.append(retrieval_time)
+        with self._metrics_lock:
+            self._retrieval_times.append(retrieval_time)
 
         # Build trace
         trace = RetrievalTrace(
@@ -565,5 +566,5 @@ Answer:"""
             "chunk_overlap": self.config.parameters.get(
                 "chunk_overlap", settings.hybrid_chunk_overlap
             ),
-            "token_usage": self._token_usage.to_dict(),
+            "token_usage": self.get_token_usage().to_dict(),
         }

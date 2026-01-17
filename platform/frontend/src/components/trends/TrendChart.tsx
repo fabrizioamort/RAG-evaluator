@@ -56,7 +56,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ trends }) => {
                 minute: '2-digit',
             }).format(date)
 
-            const dataPoint: any = {
+            const dataPoint: Record<string, string | number> = {
                 timestamp,
                 formattedDate,
             }
@@ -93,8 +93,8 @@ export const TrendChart: React.FC<TrendChartProps> = ({ trends }) => {
                         key={metric.key}
                         onClick={() => setSelectedMetric(metric.key)}
                         className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all shadow-sm ${selectedMetric === metric.key
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-muted text-muted-foreground hover:bg-secondary hover:text-foreground'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-muted-foreground hover:bg-secondary hover:text-foreground'
                             }`}
                     >
                         {metric.label}

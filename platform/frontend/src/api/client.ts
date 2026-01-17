@@ -298,8 +298,8 @@ export interface Evaluation {
   started_at: string | null
   completed_at: string | null
   summary_metrics: SummaryMetrics | null
-  performance_metrics: Record<string, any> | null
-  cost_metrics: Record<string, any> | null
+  performance_metrics: Record<string, unknown> | null
+  cost_metrics: Record<string, unknown> | null
   pass_rate: number | null
   is_baseline: boolean
   baseline_reason: string | null
