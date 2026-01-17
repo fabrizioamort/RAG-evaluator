@@ -165,7 +165,7 @@ def _generate_corpus_overview_llm(
         response = client.chat.completions.create(**kwargs)
 
         content = response.choices[0].message.content
-        if content:
+        if isinstance(content, str):
             return content
     except Exception as e:
         print(f"  Warning: LLM synthesis failed: {e}")

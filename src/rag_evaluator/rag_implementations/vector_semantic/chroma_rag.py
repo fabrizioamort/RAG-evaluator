@@ -78,7 +78,7 @@ class ChromaSemanticRAG(BaseRAG):
             # ChromaDB doesn't have a public close() for PersistentClient in all versions,
             # but we can try to persistence if applicable or just nullify reference
             # In newer versions, PersistentClient handles teardown better
-            self.client = None
+            self.client = None  # type: ignore[assignment]
             if hasattr(self, "openai_client"):
                 self.openai_client.close()
         except Exception:

@@ -98,7 +98,7 @@ class Neo4jGraphRAG(BaseRAG):
         """Close Neo4j driver."""
         if hasattr(self, "driver") and self.driver:
             self.driver.close()
-            self.driver = None
+            self.driver = None  # type: ignore[assignment]
 
     def __del__(self) -> None:
         """Close Neo4j driver on cleanup."""

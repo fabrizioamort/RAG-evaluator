@@ -78,7 +78,7 @@ class HybridSearchRAG(BaseRAG):
         try:
             if hasattr(self, "client") and self.client:
                 self.client.close()
-                self.client = None
+                self.client = None  # type: ignore[assignment]
             if hasattr(self, "openai_client") and self.openai_client:
                 self.openai_client.close()
         except Exception:
