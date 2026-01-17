@@ -42,13 +42,9 @@ documents/       → Full document content with .meta.json metadata
 - Maximum {max_tool_calls} tool calls per query
 - Maximum {max_file_reads} file reads per query
 - Prefer summaries over full documents when sufficient
-- Always cite which documents you used
 
 ## Response Format
-After gathering information, provide:
-1. A clear answer to the question
-2. Sources: List the documents used (e.g., "doc_007.md, section 3")
-3. Confidence: High/Medium/Low based on evidence quality
+After gathering information, provide a clear, direct answer to the question without additional labels or formatting.
 
 {strategy_hint}
 
@@ -67,7 +63,6 @@ Strategy:
 - Check _index/questions/question_seeds.md for direct matches
 - Use _index/topics/_topic_map.md for topic queries
 - Read summaries before full documents
-- Cite your sources
 
 {strategy_hint}
 
@@ -182,13 +177,7 @@ def format_final_answer_prompt() -> str:
     Returns:
         Prompt string requesting final answer
     """
-    return (
-        "Based on the information gathered, please provide your final answer. "
-        "Include:\n"
-        "1. A clear, comprehensive answer to the question\n"
-        "2. Sources: List specific documents and sections used\n"
-        "3. Confidence level: High/Medium/Low"
-    )
+    return "Based on the information gathered, please provide a clear, comprehensive answer to the question."
 
 
 def format_limit_reached_prompt(limit_type: str) -> str:
