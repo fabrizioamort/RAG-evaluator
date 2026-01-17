@@ -58,35 +58,33 @@ def upgrade() -> None:
     op.create_index("idx_kbi_rag_config", "knowledge_base_indexes", ["rag_config_id"])
 
     # 2. Add archived_at to knowledge_bases
-    op.add_column(
-        "knowledge_bases",
-        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
-    )
+    with op.batch_alter_table("knowledge_bases") as batch_op:
+        batch_op.add_column(sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True))
 
     # 3. Add knowledge_base_index_id to evaluations
-    op.add_column(
-        "evaluations",
-        sa.Column("knowledge_base_index_id", sa.UUID(), nullable=True),
-    )
-    op.create_foreign_key(
-        "fk_evaluations_knowledge_base_index",
-        "evaluations",
-        "knowledge_base_indexes",
-        ["knowledge_base_index_id"],
-        ["id"],
-        ondelete="RESTRICT",
-    )
-    op.create_index("idx_evaluations_kb_index", "evaluations", ["knowledge_base_index_id"])
+    with op.batch_alter_table("evaluations") as batch_op:
+        batch_op.add_column(sa.Column("knowledge_base_index_id", sa.UUID(), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_evaluations_knowledge_base_index",
+            "knowledge_base_indexes",
+            ["knowledge_base_index_id"],
+            ["id"],
+            ondelete="RESTRICT",
+        )
+        batch_op.create_index("idx_evaluations_kb_index", ["knowledge_base_index_id"])
 
 
 def downgrade() -> None:
     # Remove knowledge_base_index_id from evaluations
-    op.drop_index("idx_evaluations_kb_index", table_name="evaluations")
-    op.drop_constraint("fk_evaluations_knowledge_base_index", "evaluations", type_="foreignkey")
-    op.drop_column("evaluations", "knowledge_base_index_id")
+    with op.batch_alter_table("evaluations") as batch_op:
+        # Check if index exists before dropping to be safe, or just let batch handle it
+        batch_op.drop_index("idx_evaluations_kb_index")
+        batch_op.drop_constraint("fk_evaluations_knowledge_base_index", type_="foreignkey")
+        batch_op.drop_column("knowledge_base_index_id")
 
     # Remove archived_at from knowledge_bases
-    op.drop_column("knowledge_bases", "archived_at")
+    with op.batch_alter_table("knowledge_bases") as batch_op:
+        batch_op.drop_column("archived_at")
 
     # Drop knowledge_base_indexes table
     op.drop_index("idx_kbi_rag_config", table_name="knowledge_base_indexes")

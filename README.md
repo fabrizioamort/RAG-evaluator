@@ -1,579 +1,158 @@
-# RAG Evaluator
+# RAG Evaluator Platform
 
 [![Tests](https://github.com/fabrizioamort/RAG-evaluator/workflows/Tests/badge.svg)](https://github.com/fabrizioamort/RAG-evaluator/actions)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue.svg)](https://github.com/python/mypy)
-[![Testing: pytest](https://img.shields.io/badge/testing-pytest-green.svg)](https://github.com/pytest-dev/pytest)
-[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
 
-A comprehensive evaluation framework for comparing different RAG (Retrieval Augmented Generation) methodologies and technologies.
+**The comprehensive platform for designing, testing, and evaluating Retrieval Augmented Generation (RAG) systems.**
 
-## Overview
+RAG Evaluator provides a unified environment to experiment with different retrieval strategies, manage knowledge bases, and rigorously benchmark performance using the [DeepEval](https://github.com/confident-ai/deepeval) framework.
 
-The project has evolved into two main components:
+---
 
-1. **Core RAG Implementation CLI**: The original command-line interface for RAG evaluation.
-2. **RAG Evaluation Platform (Web UI)**: A new, comprehensive web-based platform for managing projects, knowledge bases, and evaluations.
+## 🚀 Features
 
-3. **Vector Semantic Search** ✅ - Using ChromaDB for pure semantic similarity
-4. **Hybrid Search** ✅ - Combining dense (semantic) and sparse (keyword) vectors using Qdrant with RRF fusion
-5. **Graph RAG** ✅ - Using Neo4j graph database with neo4j-graphrag for hybrid vector + graph retrieval
-6. **Filesystem RAG** ✅ - Direct filesystem search with LLM-guided retrieval (Agentic)
+### 🏢 Enterprise-Grade Platform
 
-## Evaluation Metrics
+- **Project Management:** Organize evaluations by project and use case.
+- **Knowledge Base Management:** Upload and index documents (PDF, DOCX, TXT) with ease.
+- **Visual Analytics:** Interactive dashboards to track performance trends over time.
+- **Metric Explainability:** Understand *why* a score is low with detailed reasoning from the LLM judge.
 
-...
+### 🧠 Advanced RAG Architectures
 
-## Quick Start
+Compare multiple implementation strategies out-of-the-box:
 
-### Using the CLI
+1. **Vector Semantic Search:** Baseline RAG using ChromaDB and OpenAI embeddings.
+2. **Hybrid Search:** Combines dense (semantic) and sparse (keyword/SPLADE) vectors using Qdrant and RRF fusion.
+3. **Graph RAG:** Leverages Neo4j knowledge graphs for structured, relationship-aware retrieval.
+4. **Filesystem RAG:** An agentic approach that navigates file structures like a human developer.
 
-```bash
-# Prepare documents for RAG implementations
-uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
+### 📊 Rigorous Evaluation
 
-# Or prepare for Hybrid Search RAG (requires Qdrant - see below)
-uv run rag-eval prepare --rag-type vector_hybrid --input-dir data/raw
+Powered by DeepEval, we measure:
 
-# Or prepare for Graph RAG (requires Neo4j - see below)
-uv run rag-eval prepare --rag-type graph_rag --input-dir data/raw
+- **Faithfulness:** Measures if the Generated Answer is factually derived only from the Retrieved Context. It checks for "hallucinations" (information not present in your documents).
+- **Answer Relevancy:** Measures how relevant the Generated Answer is to the original Question. It assesses if the answer actually addresses the prompt (ignoring factual correctness).
+- **Contextual Precision:** Measures the quality of the ranking in your retrieval. It rewards systems where the most relevant chunks appear at the very top of the list.
+- **Contextual Recall:** Measures if the retrieval system found all the necessary information. It checks if the retrieved chunks contain everything needed to construct the Expected Answer.
 
-# Or prepare for Filesystem RAG
-uv run rag-eval prepare --rag-type filesystem_rag --input-dir data/raw
+---
 
-# Run evaluation on a specific RAG implementation
-uv run rag-eval evaluate --rag-type vector_semantic
+## 🏗️ Architecture
 
-# Run evaluation on Hybrid Search RAG
-uv run rag-eval evaluate --rag-type vector_hybrid
+The project consists of two main components that share the same core RAG logic:
 
-# Run evaluation on Graph RAG
-uv run rag-eval evaluate --rag-type graph_rag
+1. **The Platform (Web UI):** A modern Full-Stack application (FastAPI + React) for teams and production use cases.
+2. **The CLI Tool:** A powerful command-line interface for local development, debugging, and CI/CD integration.
 
-# Run evaluation on Filesystem RAG
-uv run rag-eval evaluate --rag-type filesystem_rag
-
-# Run evaluation on all implementations
-uv run rag-eval evaluate --rag-type all --output reports
-
-# Launch the web UI
-uv run rag-eval ui
+```mermaid
+graph TD
+    User[User] -->|Web Browser| Frontend[React Frontend]
+    User -->|Terminal| CLI[CLI Tool]
+    
+    Frontend -->|API| Backend[FastAPI Backend]
+    
+    subgraph "Core Engine"
+        Backend --> RAG[RAG Implementations]
+        CLI --> RAG
+        RAG --> Eval[DeepEval Framework]
+    end
+    
+    subgraph "Storage & Infrastructure"
+        RAG --> Chroma[ChromaDB]
+        RAG --> Qdrant[Qdrant]
+        RAG --> Neo4j[Neo4j]
+        Backend --> DB[(PostgreSQL/SQLite)]
+    end
 ```
 
-...
+---
 
-## Filesystem RAG Setup (Agentic)
+## ⚡ Quick Start
 
-The Filesystem RAG implementation employs an **LLM-guided agent** that navigates a prepared filesystem structure to find and retrieve relevant information, mimicking how a human developer explores a codebase.
+### Option A: The Platform (Recommended)
 
-### How Filesystem RAG Works
+Run the full stack (Frontend, Backend, Databases) using Docker.
 
-Unlike traditional RAG that uses vector similarity, Filesystem RAG operates in two stages:
+**Prerequisites:** Docker & Docker Compose.
 
-1. **Document Preparation**:
-   - Converts all documents (PDF, DOCX, TXT) to clean Markdown.
-   - Performs hybrid analysis (Heuristic for simple docs, LLM for complex ones).
-   - Builds a structured directory index (`_index/`, `_summaries/`, `_meta/`).
-   - Generates topic maps, entity registries, and question seeds.
+1. **Clone the repository:**
 
-2. **Agentic Retrieval**:
-   - A ReAct-based agent receives the query and routes it (Known-item vs Exploratory).
-   - The agent uses tools to navigate the prepared filesystem.
-   - It reads summaries before full documents and follows references.
+    ```bash
+    git clone https://github.com/fabrizioamort/RAG-evaluator.git
+    cd RAG-evaluator
+    ```
 
-### Using Filesystem RAG
+2. **Configure Environment:**
 
-```bash
-# 1. Prepare documents (builds the indexed filesystem structure)
-uv run rag-eval prepare --rag-type filesystem_rag --input-dir data/raw
+    ```bash
+    cp .env.example .env
+    # Edit .env and set your OPENAI_API_KEY
+    ```
 
-# 2. Run evaluation
-uv run rag-eval evaluate --rag-type filesystem_rag
+3. **Launch:**
 
-# 3. View results and reasoning traces in UI
-uv run rag-eval ui
-```
+    ```bash
+    docker-compose up -d
+    ```
 
-### Agent Tools
+4. **Access:**
+    - **Dashboard:** [http://localhost:3000](http://localhost:3000)
+    - **API Docs:** [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs)
 
-The agent has access to several specialized tools:
+### Option B: The CLI (For Developers)
 
-- `list_directory`: Explore the index structure.
-- `read_file`: Read document content (supports progressive disclosure for large files).
-- `grep_search`: Keyword/Regex searching across the corpus.
-- `find_files`: Locate files by name or pattern.
-- `get_file_info`: Inspect metadata without reading full content.
+Run evaluations directly from your terminal.
 
-### Filesystem RAG Features
+**Prerequisites:** Python 3.11+ and [uv](https://github.com/astral-sh/uv).
 
-- **No Vector DB Required**: Operates directly on the filesystem.
-- **Interpretable Reasoning**: Each query generates a "Reasoning Trace" visible in the UI.
-- **Progressive Disclosure**: Only reads what is necessary to answer the question.
-- **Human-Readable Indexes**: The prepared structure is fully browsable by humans.
+1. **Install Dependencies:**
 
-### Using the Streamlit UI
+    ```bash
+    uv sync
+    ```
 
-The web interface provides interactive visualization of evaluation results with three main tabs:
+2. **Prepare Data:**
 
-```bash
-# Launch the UI (loads latest evaluation reports)
-uv run rag-eval ui
+    ```bash
+    # Index documents for semantic search
+    uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
+    ```
 
-# Alternative way to launch the UI
-uv run python scripts/run_streamlit.py
-```
+3. **Run Evaluation:**
 
-**UI Features:**
+    ```bash
+    uv run rag-eval evaluate --rag-type vector_semantic
+    ```
 
-- **Overview Tab**: Summary statistics, metrics comparison bar charts, accuracy vs latency scatter plots, and key findings
-- **Detailed Comparison Tab**: Score distribution histograms, performance by difficulty breakdown, and side-by-side comparison tables
-- **Query Explorer Tab**: Filter test cases by difficulty/category/score, view individual question details, and compare implementation responses
+See the [CLI Reference](docs/cli.md) for advanced usage.
 
-The UI automatically loads the most recent evaluation report from the `reports/` directory.
+---
 
-## Hybrid Search RAG Setup (Qdrant)
+## 📚 Documentation
 
-The Hybrid Search RAG implementation combines **dense vectors** (semantic similarity via OpenAI embeddings) with **sparse vectors** (keyword matching via SPLADE) using Qdrant's native hybrid search with RRF (Reciprocal Rank Fusion).
+- **[Deployment Guide](docs/deployment.md):** Detailed production setup instructions.
+- **[API Reference](docs/api.md):** comprehensive API documentation for the backend.
+- **[CLI Reference](docs/cli.md):** Command-line usage, flags, and advanced RAG setup (Graph, Hybrid, etc.).
+- **[Contributing](CONTRIBUTING.md):** Guide for developers wanting to add new features or RAG types.
 
-### Hybrid Search Prerequisites
+---
 
-1. **Qdrant Database**: Start Qdrant using Docker Compose:
+## 🔧 Configuration
 
-```bash
-# Start Qdrant (from project root)
-docker compose up -d qdrant
-```
+The system is configured via the `.env` file. Key settings include:
 
-This starts Qdrant on:
+- **LLM:** `OPENAI_API_KEY`, `OPENAI_MODEL` (default: `gpt-4-turbo-preview`)
+- **Databases:** `QDRANT_URL`, `NEO4J_URI`
+- **Evaluation:** `EVAL_FAITHFULNESS_THRESHOLD`, `DEEPEVAL_ASYNC_MODE`
 
-- HTTP API: `http://localhost:6333`
-- GRPC: `localhost:6334`
+See `.env.example` for all available options.
 
-1. **Configuration** (optional): Customize in `.env`:
-
-```bash
-QDRANT_URL=http://localhost:6333
-QDRANT_COLLECTION_NAME=hybrid_rag
-HYBRID_CHUNK_SIZE=700
-HYBRID_CHUNK_OVERLAP=100
-SPARSE_MODEL_NAME=prithvida/Splade_pp_en_v1
-```
-
-### How Hybrid Search Works
-
-The Hybrid Search implementation:
-
-1. **Document Indexing**:
-   - Loads documents from multiple formats (TXT, PDF, DOCX)
-   - Splits into smaller chunks (700 chars) optimized for keyword matching
-   - Generates **dense embeddings** using OpenAI `text-embedding-3-small`
-   - Generates **sparse embeddings** using SPLADE via FastEmbed
-   - Stores both vector types in Qdrant with named vectors
-
-2. **Hybrid Retrieval**:
-   - **Dense Search**: Finds semantically similar chunks
-   - **Sparse Search**: Finds chunks with matching keywords/terms
-   - **RRF Fusion**: Combines both result sets using Reciprocal Rank Fusion
-
-3. **Answer Generation**:
-   - Uses retrieved context from hybrid search
-   - Generates answers using LLM
-
-### Using Hybrid Search RAG
-
-```bash
-# 1. Start Qdrant
-docker compose up -d qdrant
-
-# 2. Prepare documents (indexes with both dense and sparse vectors)
-uv run rag-eval prepare --rag-type vector_hybrid --input-dir data/raw
-
-# 3. Run evaluation
-uv run rag-eval evaluate --rag-type vector_hybrid
-
-# 4. View results in UI
-uv run rag-eval ui
-```
-
-### Hybrid Search Features
-
-- **Keyword + Semantic**: Best of both worlds - precise term matching and semantic understanding
-- **RRF Fusion**: Robust fusion algorithm that doesn't require score normalization
-- **Smaller Chunks**: 700-char chunks optimized for keyword matching
-- **SPLADE Embeddings**: State-of-the-art sparse embeddings for term importance
-
-## Graph RAG Setup (Neo4j)
-
-The Graph RAG implementation uses **neo4j-graphrag**, the official Neo4j GraphRAG package for Python, to build knowledge graphs from documents and perform hybrid retrieval combining vector search with graph traversal.
-
-### Graph RAG Prerequisites
-
-1. **Neo4j Database**: You need a running Neo4j instance (version 5.x or later)
-   - **Local Installation**: Download from [neo4j.com/download](https://neo4j.com/download/)
-   - **Neo4j Desktop**: Easiest option for local development
-   - **Neo4j Aura**: Free cloud-hosted option
-   - **Docker**: `docker run -p 7687:7687 -p 7474:7474 -e NEO4J_AUTH=neo4j/password neo4j:latest`
-
-2. **Configuration**: Set Neo4j credentials in `.env`:
-
-```bash
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your_neo4j_password
-```
-
-### How Graph RAG Works
-
-The Graph RAG implementation:
-
-1. **Document Ingestion**:
-   - Loads documents from multiple formats (TXT, PDF, DOCX)
-   - Uses LLM to dynamically extract entities and relationships (no pre-defined schema required)
-   - Builds a knowledge graph in Neo4j with interconnected entities
-
-2. **Hybrid Retrieval**:
-   - **Vector Search**: Finds semantically similar chunks using embeddings
-   - **Graph Traversal**: Expands from found nodes to related entities via graph relationships
-   - Enriches context with graph structure (entities, relationships)
-
-3. **Answer Generation**:
-   - Combines retrieved text chunks with graph metadata
-   - Generates answers using LLM with enhanced context
-
-### Using Graph RAG
-
-```bash
-# 1. Prepare documents (builds knowledge graph)
-uv run rag-eval prepare --rag-type graph_rag --input-dir data/raw
-
-# 2. Run evaluation
-uv run rag-eval evaluate --rag-type graph_rag
-
-# 3. View results in UI
-uv run rag-eval ui
-```
-
-### Graph RAG Features
-
-- **Dynamic Schema Inference**: No need to predefine entity types or relationships
-- **Multi-hop Reasoning**: Excels at questions requiring connections across multiple entities
-- **Graph-Enhanced Context**: Retrieves not just matching text but related concepts
-- **Vector + Graph Hybrid**: Combines semantic similarity with structural relationships
-
-### Viewing the Knowledge Graph
-
-You can explore the generated knowledge graph using Neo4j Browser:
-
-1. Open Neo4j Browser (typically at `http://localhost:7474`)
-2. Run queries to explore the graph:
-
-```cypher
-// View all node types and counts
-MATCH (n)
-RETURN labels(n)[0] AS type, count(*) AS count
-ORDER BY count DESC
-
-// View entities and their relationships
-MATCH (n)-[r]->(m)
-RETURN n, r, m
-LIMIT 25
-
-// Search for specific entities
-MATCH (n)
-WHERE n.name CONTAINS 'RAG'
-RETURN n
-```
-
-## Evaluation Framework
-
-The project includes a comprehensive evaluation pipeline powered by [DeepEval](https://github.com/confident-ai/deepeval).
-
-### Running Evaluations
-
-```bash
-# Prepare documents (one-time setup)
-uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
-
-# Run evaluation with default test set
-uv run rag-eval evaluate --rag-type vector_semantic
-
-# Run evaluation with custom test set
-uv run rag-eval evaluate --rag-type vector_semantic --test-set my_tests.json
-
-# Run with verbose output
-uv run rag-eval evaluate --rag-type vector_semantic --verbose
-
-# Alternative: use the evaluation script directly
-uv run python scripts/run_evaluation.py --rag-type vector_semantic --verbose
-```
-
-### Test Dataset
-
-The evaluation uses a test dataset (`data/test_set.json`) with question-answer pairs. Each test case includes:
-
-- **question**: The query to test
-- **expected_answer**: The ground truth answer
-- **ground_truth_context**: Reference context chunks
-- **difficulty**: Test case difficulty (easy/medium/hard)
-- **category**: Question type (definition/explanation/comparison/etc.)
-
-Example test case:
-
-```json
-{
-  "id": "tc_001",
-  "question": "What is RAG?",
-  "expected_answer": "RAG (Retrieval Augmented Generation) combines...",
-  "ground_truth_context": ["RAG is a technique that..."],
-  "difficulty": "easy",
-  "category": "definition"
-}
-```
-
-### Detailed Metrics Breakdown
-
-The framework evaluates RAG implementations across four key metrics:
-
-1. **Faithfulness** (threshold: 0.7)
-   - Measures if the answer is derived only from the retrieved context
-   - Prevents hallucination
-
-2. **Answer Relevancy** (threshold: 0.7)
-   - Measures if the answer actually addresses the question
-   - Ensures responses are on-topic
-
-3. **Contextual Precision** (threshold: 0.7)
-   - Measures if the retrieved documents are relevant
-   - Evaluates retrieval quality
-
-4. **Contextual Recall** (threshold: 0.7)
-   - Measures if all relevant information was retrieved
-   - Ensures comprehensive context
-
-### Evaluation Reports
-
-Each evaluation generates comprehensive reports with enhanced statistical analysis:
-
-**JSON Report** (`reports/eval_<impl>_<timestamp>.json`)
-
-- Machine-readable results
-- Complete metric details
-- Detailed per-test-case results
-
-**Markdown Report** (`reports/eval_<impl>_<timestamp>.md`)
-
-- Human-readable summary with multiple sections:
-  - **Metrics Summary**: Overall scores with pass/fail indicators
-  - **Statistical Analysis**: Mean, median, std dev, and 95% confidence intervals for each metric
-  - **Performance by Difficulty**: Breakdown by easy/medium/hard questions
-  - **Failure Analysis**: Detailed analysis of low-scoring test cases
-  - **Statistical Comparison**: Pairwise t-tests between implementations (in comparison reports)
-  - **Detailed Results**: Individual test case breakdowns with performance data
-
-### Customizing Thresholds
-
-Metric thresholds can be customized in `.env`:
-
-```bash
-EVAL_FAITHFULNESS_THRESHOLD=0.8
-EVAL_ANSWER_RELEVANCY_THRESHOLD=0.75
-EVAL_CONTEXTUAL_PRECISION_THRESHOLD=0.7
-EVAL_CONTEXTUAL_RECALL_THRESHOLD=0.7
-```
-
-### Comparing Implementations
-
-Compare multiple RAG implementations (coming soon):
-
-```bash
-uv run rag-eval evaluate --rag-type all
-```
-
-This generates a comparison report highlighting strengths and weaknesses of each approach.
-
-## RAG Evaluation Platform (Web UI)
-
-The RAG Evaluation Platform is a comprehensive, web-based solution for managing RAG lifecycles. It extends the core evaluation framework with multi-project support, real-time tracking, and rich visualization.
-
-### Key Platform Features
-
-- **Multi-Project Management**: Organize evaluations by project, knowledge base, and test set.
-- **Automatic Test Generation**: Use LLMs to generate high-quality test cases directly from your documents.
-- **Real-time Evaluation Tracking**: Monitor long-running evaluations with live progress bars and SSE updates.
-- **Metric Explainability**: Don't just see the scores; read the judge's reasoning for every metric.
-- **Retrieval Traces**: Visualize the step-by-step retrieval process for every query.
-- **Trend Analysis**: Track performance improvements or regressions over time with built-in charts.
-- **Baseline Comparison**: Set "golden" evaluations and compare new runs against them.
-- **Webhooks**: Integrate with CI/CD pipelines via event-driven webhooks.
-
-### Screenshots
-
-![Platform Dashboard](/placeholder_dashboard.png)
-*Figure 1: Platform Dashboard showing recent activity and project status.*
-
-![Evaluation Detail](/placeholder_evaluation_detail.png)
-*Figure 2: Detailed evaluation results with metric explainability.*
-
-![Retrieval Trace](/placeholder_retrieval_trace.png)
-*Figure 3: Step-by-step retrieval trace visualization.*
-
-### Platform Quick Start
-
-The easiest way to run the platform is using Docker Compose:
-
-```bash
-docker-compose up -d
-```
-
-Visit `http://localhost:3000` to access the dashboard.
-
-### Documentation
-
-For detailed information, see our documentation:
-
-- [API Reference](docs/api.md)
-- [Deployment Guide](docs/deployment.md)
-- [Documentation Home](docs/README.md)
-
-## Project Structure
-
-```text
-RAG-evaluator/
-├── src/rag_evaluator/
-│   ├── rag_implementations/     # RAG implementation modules
-│   │   ├── vector_semantic/     # ChromaDB semantic search
-│   │   ├── vector_hybrid/       # Hybrid search
-│   │   ├── graph_rag/           # Neo4j graph RAG
-│   │   └── filesystem_rag/      # Filesystem-based RAG
-│   ├── evaluation/              # Evaluation framework
-│   │   ├── evaluator.py         # Main evaluation logic
-│   │   ├── report_generator.py  # Enhanced report generation
-│   │   ├── statistics.py        # Statistical analysis module
-│   │   └── difficulty_analysis.py # Difficulty breakdown analysis
-│   ├── common/                  # Shared utilities and base classes
-│   │   ├── base_rag.py          # Abstract base class for RAG
-│   │   └── document_loaders.py  # Multi-format document loading
-│   ├── ui/                      # Streamlit web interface
-│   │   └── streamlit_app.py     # 3-tab interactive dashboard
-│   ├── config.py               # Configuration management
-│   └── cli.py                  # CLI entry point
-├── data/
-│   ├── raw/                    # Source documents
-│   └── processed/              # Processed documents
-├── tests/
-│   ├── unit/                   # Unit tests
-│   └── integration/            # Integration tests
-├── reports/                    # Evaluation reports
-└── scripts/                    # Helper scripts
-```
-
-## Development
-
-### Running Tests
-
-```bash
-# Run all tests
-uv run pytest
-
-# Run with coverage
-uv run pytest --cov=src/rag_evaluator --cov-report=html
-
-# Run specific test file
-uv run pytest tests/unit/test_evaluator.py
-```
-
-### Code Quality
-
-```bash
-# Format code
-uv run ruff format .
-
-# Lint code
-uv run ruff check .
-
-# Type checking
-uv run mypy src/rag_evaluator
-```
-
-## Configuration
-
-Key configuration options in `.env`:
-
-**LLM Configuration:**
-
-- `OPENAI_API_KEY` - Your OpenAI API key (required)
-- `OPENAI_MODEL` - Model for answer generation (default: gpt-4-turbo-preview, supports gpt-5-nano)
-- `EMBEDDING_MODEL` - Model for embeddings (default: text-embedding-3-small)
-- `OPENAI_TIMEOUT` - API timeout in seconds (default: 600)
-
-**Database Configuration:**
-
-- `CHROMA_PERSIST_DIRECTORY` - ChromaDB storage location (default: ./data/chroma_db)
-- `QDRANT_URL` - Qdrant HTTP endpoint (default: <http://localhost:6333>)
-- `QDRANT_COLLECTION_NAME` - Qdrant collection name (default: hybrid_rag)
-- `NEO4J_URI` - Neo4j connection URI (for Graph RAG)
-- `NEO4J_PASSWORD` - Neo4j password
-
-**Hybrid Search Configuration:**
-
-- `HYBRID_CHUNK_SIZE` - Chunk size for hybrid search (default: 700)
-- `HYBRID_CHUNK_OVERLAP` - Chunk overlap (default: 100)
-- `SPARSE_MODEL_NAME` - FastEmbed sparse model (default: prithvida/Splade_pp_en_v1)
-
-**Evaluation Configuration:**
-
-- `EVAL_TEST_SET_PATH` - Path to test dataset (default: data/test_set.json)
-- `EVAL_REPORTS_DIR` - Reports output directory (default: reports)
-- `EVAL_FAITHFULNESS_THRESHOLD` - Faithfulness metric threshold (default: 0.7)
-- `EVAL_ANSWER_RELEVANCY_THRESHOLD` - Answer relevancy threshold (default: 0.7)
-- `EVAL_CONTEXTUAL_PRECISION_THRESHOLD` - Context precision threshold (default: 0.7)
-- `EVAL_CONTEXTUAL_RECALL_THRESHOLD` - Context recall threshold (default: 0.7)
-
-**DeepEval Configuration:**
-
-- `DEEPEVAL_ASYNC_MODE` - Enable parallel evaluation (default: False, set to False to avoid rate limits)
-- `DEEPEVAL_PER_TASK_TIMEOUT` - Per-task timeout in seconds (default: 900)
-- `DEEPEVAL_PER_ATTEMPT_TIMEOUT` - Per-attempt timeout in seconds (default: 300)
-- `DEEPEVAL_MAX_RETRIES` - Maximum retry attempts (default: 3)
-
-## Platform Support
-
-**Windows Compatibility:**
-
-- CLI output optimized for Windows console (no emoji characters that cause encoding errors)
-- Proper handling of file paths and line endings
-- All features tested on Windows 10/11
-
-**Model Compatibility:**
-
-- Supports both standard OpenAI models (gpt-4-turbo, gpt-4o) and newer models (gpt-5-nano)
-- Automatic temperature parameter adjustment for models that don't support it (e.g., gpt-5-nano)
-
-**Rate Limiting:**
-
-- Configurable async mode to prevent API rate limit errors
-- Automatic retry logic with exponential backoff
-- Timeout configuration for long-running evaluations
-
-## Requirements
-
-- Python 3.11+
-- OpenAI API key
-- Docker (for Qdrant and Neo4j)
-- Qdrant (for Hybrid Search RAG) - via Docker Compose
-- Neo4j database (for Graph RAG) - via Docker Compose or external instance
-
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
-
-- Setting up the development environment
-- Code quality standards and testing requirements
-- How to add new RAG implementations
-- Pull request process
+---
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
