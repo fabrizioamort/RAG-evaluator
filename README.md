@@ -157,6 +157,98 @@ See `.env.example` for all available options.
 
 ---
 
+## 🛠️ Development
+
+### Prerequisites
+
+- Python 3.11+
+- [uv](https://github.com/astral-sh/uv) (Python package manager)
+- Node.js 18+ and npm
+- Make (optional, but recommended)
+- Docker & Docker Compose (for infrastructure)
+
+### Setup
+
+```bash
+# Install all dependencies (core + backend + frontend)
+make install
+
+# Or install individually:
+uv sync --all-extras              # Core library
+cd platform/backend && uv sync    # Backend
+cd platform/frontend && npm install  # Frontend
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run specific test suites
+make test-core      # Core library tests (pytest)
+make test-backend   # Backend API tests (pytest)
+make test-frontend  # Frontend tests (vitest)
+```
+
+### Linting & Formatting
+
+```bash
+# Run all linters
+make lint
+
+# Run specific linters
+make lint-core      # ruff + mypy on src/rag_evaluator
+make lint-backend   # ruff on platform/backend
+make lint-frontend  # eslint on platform/frontend
+
+# Format code
+make format
+```
+
+### Pre-Push Check
+
+Run all checks before pushing:
+
+```bash
+make check          # Sequential: format → lint → test
+
+# Or run in parallel (faster):
+make check-parallel -j3
+```
+
+### Development Servers
+
+```bash
+# Start infrastructure (databases)
+make dev-infra
+
+# Start backend (in separate terminal)
+make dev-backend
+
+# Start frontend (in separate terminal)
+make dev-frontend
+```
+
+### Available Make Targets
+
+Run `make help` to see all available commands:
+
+```
+make install          - Install all dependencies
+make test             - Run all tests
+make lint             - Run all linters
+make format           - Format code with ruff
+make check            - Run all checks (format + lint + test)
+make check-parallel   - Run independent checks in parallel
+make dev-backend      - Start backend server
+make dev-frontend     - Start frontend dev server
+make dev-infra        - Start infrastructure containers
+make clean            - Clean generated files
+```
+
+---
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
