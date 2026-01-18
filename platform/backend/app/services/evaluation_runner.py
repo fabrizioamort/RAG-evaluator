@@ -12,9 +12,10 @@ from deepeval.metrics import (
     ContextualPrecisionMetric,
     ContextualRecallMetric,
     FaithfulnessMetric,
+    GEval,
 )
 from deepeval.models.base_model import DeepEvalBaseLLM
-from deepeval.test_case import LLMTestCase
+from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -173,19 +174,65 @@ class EvaluationRunner:
         self.test_cases = sorted(self.evaluation.test_set.test_cases, key=lambda x: x.created_at)
 
     def _initialize_metrics(self, llm_model: str) -> List[Any]:
-        """Initialize DeepEval metrics."""
+        """Initialize DeepEval metrics based on evaluation configuration."""
         include_reason = settings.EVAL_INCLUDE_REASON
-        # Use our safe wrapper instead of just a model string
         safe_model = SafeDeepEvalLLM(model_name=llm_model)
 
-        return [
-            FaithfulnessMetric(threshold=0.7, model=safe_model, include_reason=include_reason),
-            AnswerRelevancyMetric(threshold=0.7, model=safe_model, include_reason=include_reason),
-            ContextualPrecisionMetric(
-                threshold=0.7, model=safe_model, include_reason=include_reason
-            ),
-            ContextualRecallMetric(threshold=0.7, model=safe_model, include_reason=include_reason),
-        ]
+        # Get selected metrics from config, fallback to all
+        selected_metrics = ["faithfulness", "relevancy", "precision", "recall", "g_eval"]
+        if self.evaluation and self.evaluation.metric_config:
+            selected_metrics = self.evaluation.metric_config.get("metrics", selected_metrics)
+
+        metrics: List[Any] = []
+        if "faithfulness" in selected_metrics:
+            metrics.append(
+                FaithfulnessMetric(threshold=0.7, model=safe_model, include_reason=include_reason)
+            )
+        if "relevancy" in selected_metrics or "answer_relevancy" in selected_metrics:
+            metrics.append(
+                AnswerRelevancyMetric(
+                    threshold=0.7, model=safe_model, include_reason=include_reason
+                )
+            )
+        if "precision" in selected_metrics or "contextual_precision" in selected_metrics:
+            metrics.append(
+                ContextualPrecisionMetric(
+                    threshold=0.7, model=safe_model, include_reason=include_reason
+                )
+            )
+        if "recall" in selected_metrics or "contextual_recall" in selected_metrics:
+            metrics.append(
+                ContextualRecallMetric(
+                    threshold=0.7, model=safe_model, include_reason=include_reason
+                )
+            )
+        if "g_eval" in selected_metrics:
+            metrics.append(
+                GEval(
+                    name="Correctness",
+                    criteria="""Determine if the actual output is semantically equivalent to the expected output.
+                    The core information and facts should align, while minor differences in formatting,
+                    punctuation, casing, or stylistic additions (like abbreviations in parentheses)
+                    should be ignored. Focus on factual accuracy and semantic completeness.""",
+                    evaluation_params=[
+                        LLMTestCaseParams.INPUT,
+                        LLMTestCaseParams.ACTUAL_OUTPUT,
+                        LLMTestCaseParams.EXPECTED_OUTPUT,
+                    ],
+                    evaluation_steps=[
+                        "Identify the core facts and entities in the expected output.",
+                        "Check if the actual output conveys all these core facts accurately.",
+                        "Ignore minor formatting differences like trailing punctuation (e.g., 'McGill University' vs 'McGill University.')",
+                        "Ignore stylistic variations or parenthetical additions that don't change meaning (e.g., 'Artificial Intelligence' vs 'Artificial Intelligence (AI)')",
+                        "Check for any contradictory information that would make the answer factually incorrect.",
+                        "Score 1.0 if the semantic meaning is the same, even if the phrasing differs slightly."
+                    ],
+                    threshold=settings.EVAL_G_EVAL_THRESHOLD,
+                    model=safe_model,
+                )
+            )
+
+        return metrics
 
     async def run(self) -> None:
         """Execute the evaluation loop."""
@@ -359,13 +406,19 @@ class EvaluationRunner:
             scores: Dict[str, Any] = {}
             for metric in metrics:
                 await metric.a_measure(llm_test_case)
-                name = metric.__class__.__name__.replace("Metric", "").lower()
-                if name == "answerrelevancy":
+                class_name = metric.__class__.__name__
+                if class_name == "FaithfulnessMetric":
+                    name = "faithfulness"
+                elif class_name == "AnswerRelevancyMetric":
                     name = "relevancy"
-                elif name == "contextualprecision":
+                elif class_name == "ContextualPrecisionMetric":
                     name = "precision"
-                elif name == "contextualrecall":
+                elif class_name == "ContextualRecallMetric":
                     name = "recall"
+                elif class_name == "GEval":
+                    name = "g_eval"
+                else:
+                    name = class_name.lower().replace("metric", "")
 
                 scores[f"{name}_score"] = metric.score
                 scores[f"{name}_reason"] = getattr(metric, "reason", None)
@@ -465,7 +518,8 @@ class EvaluationRunner:
                         "average_score": sum(
                             v for k, v in scores.items() if "_score" in k and v is not None
                         )
-                        / 4.0,
+                        / len([v for k, v in scores.items() if "_score" in k and v is not None])
+                        if scores else 0,
                     },
                 },
             )
@@ -515,6 +569,7 @@ class EvaluationRunner:
                 func.avg(EvaluationResult.relevancy_score).label("relevancy_avg"),
                 func.avg(EvaluationResult.precision_score).label("precision_avg"),
                 func.avg(EvaluationResult.recall_score).label("recall_avg"),
+                func.avg(EvaluationResult.g_eval_score).label("g_eval_avg"),
                 func.sum(EvaluationResult.prompt_tokens).label("total_prompt"),
                 func.sum(EvaluationResult.completion_tokens).label("total_completion"),
                 func.sum(EvaluationResult.cost_usd).label("total_cost"),
@@ -526,34 +581,57 @@ class EvaluationRunner:
         )
         stats = result.one()
 
-        # Calculate pass rate (simplified: all metrics > 0.7)
-        pass_res = await self.db.execute(
-            select(func.count(EvaluationResult.id)).where(
-                EvaluationResult.evaluation_id == self.evaluation_id,
-                EvaluationResult.faithfulness_score >= 0.7,
-                EvaluationResult.relevancy_score >= 0.7,
-                EvaluationResult.precision_score >= 0.7,
-                EvaluationResult.recall_score >= 0.7,
-            )
+        # Calculate pass rate based on selected metrics
+        selected_metrics = (
+            self.evaluation.metric_config.get("metrics", [])
+            if self.evaluation and self.evaluation.metric_config
+            else ["faithfulness", "relevancy", "precision", "recall", "g_eval"]
         )
+
+        pass_conditions = [EvaluationResult.evaluation_id == self.evaluation_id]
+        if "faithfulness" in selected_metrics:
+            pass_conditions.append(EvaluationResult.faithfulness_score >= 0.7)
+        if "relevancy" in selected_metrics:
+            pass_conditions.append(EvaluationResult.relevancy_score >= 0.7)
+        if "precision" in selected_metrics:
+            pass_conditions.append(EvaluationResult.precision_score >= 0.7)
+        if "recall" in selected_metrics:
+            pass_conditions.append(EvaluationResult.recall_score >= 0.7)
+        if "g_eval" in selected_metrics:
+            pass_conditions.append(EvaluationResult.g_eval_score >= 0.7)
+
+        pass_res = await self.db.execute(select(func.count(EvaluationResult.id)).where(*pass_conditions))
         passed_count = pass_res.scalar_one()
         pass_rate = (passed_count / stats.total_count) if stats.total_count > 0 else 0.0
 
-        summary_metrics = {
-            "faithfulness_avg": float(stats.faithfulness_avg or 0),
-            "relevancy_avg": float(stats.relevancy_avg or 0),
-            "precision_avg": float(stats.precision_avg or 0),
-            "recall_avg": float(stats.recall_avg or 0),
-            "overall_avg": (
-                (
-                    float(stats.faithfulness_avg or 0)
-                    + float(stats.relevancy_avg or 0)
-                    + float(stats.precision_avg or 0)
-                    + float(stats.recall_avg or 0)
-                )
-                / 4.0
-            ),
-        }
+        # Build summary metrics dynamically
+        summary_metrics = {}
+        overall_scores = []
+
+        if "faithfulness" in selected_metrics:
+            summary_metrics["faithfulness_avg"] = float(stats.faithfulness_avg or 0)
+            overall_scores.append(summary_metrics["faithfulness_avg"])
+
+        if "relevancy" in selected_metrics:
+            summary_metrics["relevancy_avg"] = float(stats.relevancy_avg or 0)
+            overall_scores.append(summary_metrics["relevancy_avg"])
+
+        if "precision" in selected_metrics:
+            summary_metrics["precision_avg"] = float(stats.precision_avg or 0)
+            overall_scores.append(summary_metrics["precision_avg"])
+
+        if "recall" in selected_metrics:
+            summary_metrics["recall_avg"] = float(stats.recall_avg or 0)
+            overall_scores.append(summary_metrics["recall_avg"])
+
+        if "g_eval" in selected_metrics:
+            summary_metrics["g_eval_avg"] = float(stats.g_eval_avg or 0)
+            overall_scores.append(summary_metrics["g_eval_avg"])
+
+        # Final overall average
+        summary_metrics["overall_avg"] = (
+            round(sum(overall_scores) / len(overall_scores), 3) if overall_scores else 0.0
+        )
 
         cost_metrics = {
             "total_cost_usd": float(stats.total_cost or 0),

@@ -12,8 +12,9 @@ from deepeval.metrics import (
     ContextualPrecisionMetric,
     ContextualRecallMetric,
     FaithfulnessMetric,
+    GEval,
 )
-from deepeval.test_case import LLMTestCase
+from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 
 from rag_evaluator.common.base_rag import BaseRAG
 from rag_evaluator.config import settings
@@ -22,43 +23,106 @@ from rag_evaluator.config import settings
 class RAGEvaluator:
     """Evaluator for RAG implementations using DeepEval."""
 
-    def __init__(self, test_set_path: str | None = None) -> None:
+    def __init__(
+        self,
+        test_set_path: str | None = None,
+        selected_metrics: list[str] | None = None,
+    ) -> None:
         """Initialize the evaluator.
 
         Args:
             test_set_path: Path to test dataset JSON file.
                           Defaults to settings.eval_test_set_path.
+            selected_metrics: List of metric names to use.
+                             Available: faithfulness, answer_relevancy,
+                             contextual_precision, contextual_recall, g_eval.
+                             If None, all current metrics are used.
         """
         self.test_set_path = test_set_path or settings.eval_test_set_path
         self.test_cases = self._load_test_set()
+        self.selected_metrics = selected_metrics or [
+            "faithfulness",
+            "answer_relevancy",
+            "contextual_precision",
+            "contextual_recall",
+            "g_eval",
+        ]
 
         # Initialize DeepEval metrics with thresholds from settings
-        self.metrics = [
-            FaithfulnessMetric(
-                threshold=settings.eval_faithfulness_threshold,
-                model=settings.openai_model,
-                include_reason=settings.eval_include_reason,
-                async_mode=settings.deepeval_async_mode,
-            ),
-            AnswerRelevancyMetric(
-                threshold=settings.eval_answer_relevancy_threshold,
-                model=settings.openai_model,
-                include_reason=settings.eval_include_reason,
-                async_mode=settings.deepeval_async_mode,
-            ),
-            ContextualPrecisionMetric(
-                threshold=settings.eval_contextual_precision_threshold,
-                model=settings.openai_model,
-                include_reason=settings.eval_include_reason,
-                async_mode=settings.deepeval_async_mode,
-            ),
-            ContextualRecallMetric(
-                threshold=settings.eval_contextual_recall_threshold,
-                model=settings.openai_model,
-                include_reason=settings.eval_include_reason,
-                async_mode=settings.deepeval_async_mode,
-            ),
-        ]
+        self.metrics = self._initialize_metrics()
+
+    def _initialize_metrics(self) -> list[Any]:
+        """Initialize selected DeepEval metrics."""
+        metrics: list[Any] = []
+
+        if "faithfulness" in self.selected_metrics:
+            metrics.append(
+                FaithfulnessMetric(
+                    threshold=settings.eval_faithfulness_threshold,
+                    model=settings.openai_model,
+                    include_reason=settings.eval_include_reason,
+                    async_mode=settings.deepeval_async_mode,
+                )
+            )
+
+        if "answer_relevancy" in self.selected_metrics:
+            metrics.append(
+                AnswerRelevancyMetric(
+                    threshold=settings.eval_answer_relevancy_threshold,
+                    model=settings.openai_model,
+                    include_reason=settings.eval_include_reason,
+                    async_mode=settings.deepeval_async_mode,
+                )
+            )
+
+        if "contextual_precision" in self.selected_metrics:
+            metrics.append(
+                ContextualPrecisionMetric(
+                    threshold=settings.eval_contextual_precision_threshold,
+                    model=settings.openai_model,
+                    include_reason=settings.eval_include_reason,
+                    async_mode=settings.deepeval_async_mode,
+                )
+            )
+
+        if "contextual_recall" in self.selected_metrics:
+            metrics.append(
+                ContextualRecallMetric(
+                    threshold=settings.eval_contextual_recall_threshold,
+                    model=settings.openai_model,
+                    include_reason=settings.eval_include_reason,
+                    async_mode=settings.deepeval_async_mode,
+                )
+            )
+
+        if "g_eval" in self.selected_metrics:
+            metrics.append(
+                GEval(
+                    name="Correctness",
+                    criteria="""Determine if the actual output is semantically equivalent to the expected output.
+                    The core information and facts should align, while minor differences in formatting,
+                    punctuation, casing, or stylistic additions (like abbreviations in parentheses)
+                    should be ignored. Focus on factual accuracy and semantic completeness.""",
+                    evaluation_params=[
+                        LLMTestCaseParams.INPUT,
+                        LLMTestCaseParams.ACTUAL_OUTPUT,
+                        LLMTestCaseParams.EXPECTED_OUTPUT,
+                    ],
+                    evaluation_steps=[
+                        "Identify the core facts and entities in the expected output.",
+                        "Check if the actual output conveys all these core facts accurately.",
+                        "Ignore minor formatting differences like trailing punctuation (e.g., 'McGill University' vs 'McGill University.')",
+                        "Ignore stylistic variations or parenthetical additions that don't change meaning (e.g., 'Artificial Intelligence' vs 'Artificial Intelligence (AI)')",
+                        "Check for any contradictory information that would make the answer factually incorrect.",
+                        "Score 1.0 if the semantic meaning is the same, even if the phrasing differs slightly."
+                    ],
+                    threshold=settings.eval_g_eval_threshold,
+                    model=settings.openai_model,
+                    async_mode=settings.deepeval_async_mode,
+                )
+            )
+
+        return metrics
 
     def _load_test_set(self) -> list[dict[str, Any]]:
         """Load test cases from JSON file.
@@ -203,10 +267,7 @@ class RAGEvaluator:
                 if i < len(detailed_results):
                     # Extract scores from metrics_data
                     metrics_dict: dict[str, float | None] = {
-                        "faithfulness": None,
-                        "answer_relevancy": None,
-                        "contextual_precision": None,
-                        "contextual_recall": None,
+                        name: None for name in self.selected_metrics
                     }
 
                     # Iterate through metrics_data to extract scores and reasoning
@@ -223,8 +284,10 @@ class RAGEvaluator:
                                 target_key = "contextual_precision"
                             elif "contextual" in metric_name and "recall" in metric_name:
                                 target_key = "contextual_recall"
+                            elif "correctness" in metric_name or "g_eval" in metric_name:
+                                target_key = "g_eval"
 
-                            if target_key:
+                            if target_key and target_key in metrics_dict:
                                 metrics_dict[target_key] = metric_data.score
                                 # Capture reasoning if available
                                 if hasattr(metric_data, "reason") and metric_data.reason:
@@ -250,10 +313,9 @@ class RAGEvaluator:
             "performance_metrics": rag_impl.get_metrics(),
             "pass_rate": pass_rate,
             "thresholds": {
-                "faithfulness": settings.eval_faithfulness_threshold,
-                "answer_relevancy": settings.eval_answer_relevancy_threshold,
-                "contextual_precision": settings.eval_contextual_precision_threshold,
-                "contextual_recall": settings.eval_contextual_recall_threshold,
+                name: getattr(settings, f"eval_{name}_threshold")
+                for name in self.selected_metrics
+                if hasattr(settings, f"eval_{name}_threshold")
             },
         }
 
@@ -277,10 +339,7 @@ class RAGEvaluator:
             Dictionary with average scores for each metric
         """
         metric_scores: dict[str, list[float]] = {
-            "faithfulness": [],
-            "answer_relevancy": [],
-            "contextual_precision": [],
-            "contextual_recall": [],
+            name: [] for name in self.selected_metrics
         }
 
         # Extract scores from detailed results
@@ -319,10 +378,9 @@ class RAGEvaluator:
 
         passed_count = 0
         thresholds = {
-            "faithfulness": settings.eval_faithfulness_threshold,
-            "answer_relevancy": settings.eval_answer_relevancy_threshold,
-            "contextual_precision": settings.eval_contextual_precision_threshold,
-            "contextual_recall": settings.eval_contextual_recall_threshold,
+            name: getattr(settings, f"eval_{name}_threshold")
+            for name in self.selected_metrics
+            if hasattr(settings, f"eval_{name}_threshold")
         }
 
         for result in detailed_results:

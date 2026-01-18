@@ -126,12 +126,13 @@ export function EvaluationProgress({ evaluationId, onClose }: EvaluationProgress
                 {status === 'completed' && summaryMetrics && (
                     <div className="mt-8">
                         <h4 className="text-lg font-bold mb-4">Summary results</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                             {[
                                 { label: 'Faithfulness', value: summaryMetrics.faithfulness_avg, color: 'text-blue-500' },
                                 { label: 'Relevancy', value: summaryMetrics.relevancy_avg, color: 'text-green-500' },
                                 { label: 'Precision', value: summaryMetrics.precision_avg, color: 'text-purple-500' },
-                                { label: 'Recall', value: summaryMetrics.recall_avg, color: 'text-orange-500' }
+                                { label: 'Recall', value: summaryMetrics.recall_avg, color: 'text-orange-500' },
+                                { label: 'Correctness', value: summaryMetrics.g_eval_avg, color: 'text-rose-500' }
                             ].map((m) => (
                                 <div key={m.label} className="rounded-xl border border-border p-4 bg-muted/30">
                                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>

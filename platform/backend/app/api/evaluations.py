@@ -87,6 +87,7 @@ def _evaluation_to_response(eval_model: Evaluation, result_count: int = 0) -> Ev
         tags=eval_model.tags if isinstance(eval_model.tags, list) else [],
         error_message=eval_model.error_message,
         created_at=eval_model.created_at,
+        metric_config=eval_model.metric_config,
         result_count=result_count,
     )
 
@@ -176,18 +177,30 @@ async def create_evaluation(
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         evaluation_name = f"{index.name} - {timestamp}"
 
+    # Default metrics if none provided
+    selected_metrics = evaluation_data.metric_names or [
+        "faithfulness",
+        "relevancy",
+        "precision",
+        "recall",
+        "g_eval",
+    ]
+
     evaluation = Evaluation(
         project_id=project_id,
         name=evaluation_name,
         knowledge_base_id=kb.id,  # Storing for backward compatibility/queries
         knowledge_base_index_id=index.id,
         kb_version_id=index.kb_version_id,
-        test_set_id=test_set.id,
+        test_set_id=ts.id if (ts := test_set) else None,  # Using ts handle
         run_manifest_id=manifest.id,
         status="pending",
         notes=evaluation_data.notes,
         tags=evaluation_data.tags,
+        metric_config={"metrics": selected_metrics},
     )
+    if not evaluation.test_set_id:
+        evaluation.test_set_id = test_set.id
     db.add(evaluation)
     await db.commit()
     await db.refresh(evaluation)

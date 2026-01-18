@@ -80,6 +80,7 @@ async def test_evaluation_runner_success(db_session: AsyncSession, setup_data: E
         patch("app.services.evaluation_runner.AnswerRelevancyMetric") as mock_rel,
         patch("app.services.evaluation_runner.ContextualPrecisionMetric") as mock_prec,
         patch("app.services.evaluation_runner.ContextualRecallMetric") as mock_recall,
+        patch("app.services.evaluation_runner.GEval") as mock_geval,
         patch("app.services.evaluation_runner.get_job_event_log") as mock_get_event_log,
     ):
         # Setup RAG Adapter mock
@@ -93,6 +94,7 @@ async def test_evaluation_runner_success(db_session: AsyncSession, setup_data: E
             (mock_rel, "AnswerRelevancyMetric"),
             (mock_prec, "ContextualPrecisionMetric"),
             (mock_recall, "ContextualRecallMetric"),
+            (mock_geval, "GEval"),
         ]:
             inst = MagicMock()
             inst.__class__.__name__ = name

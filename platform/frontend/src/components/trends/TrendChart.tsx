@@ -29,6 +29,7 @@ const METRICS = [
     { key: 'relevancy_avg', label: 'Relevancy' },
     { key: 'precision_avg', label: 'Precision' },
     { key: 'recall_avg', label: 'Recall' },
+    { key: 'g_eval_avg', label: 'Correctness' },
     { key: 'overall_avg', label: 'Overall' },
 ]
 

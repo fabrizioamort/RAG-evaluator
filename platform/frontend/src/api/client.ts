@@ -284,6 +284,7 @@ export interface SummaryMetrics {
   relevancy_avg?: number
   precision_avg?: number
   recall_avg?: number
+  g_eval_avg?: number
   overall_avg?: number
 }
 
@@ -305,6 +306,7 @@ export interface Evaluation {
   is_baseline: boolean
   baseline_reason: string | null
   error_message: string | null
+  metric_config?: { metrics: string[] } | null
   result_count: number
   created_at: string
 }
@@ -313,6 +315,7 @@ export interface EvaluationCreate {
   name?: string
   knowledge_base_index_id: string
   test_set_id: string
+  metric_names?: string[]
   notes?: string
   tags?: string[]
 }
@@ -330,6 +333,8 @@ export interface EvaluationResult {
   precision_reason: string | null
   recall_score: number | null
   recall_reason: string | null
+  g_eval_score: number | null
+  g_eval_reason: string | null
   latency_seconds: number | null
   cost_usd: string | null
   prompt_tokens: number | null

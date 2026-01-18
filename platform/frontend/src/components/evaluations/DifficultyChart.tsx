@@ -32,12 +32,14 @@ export const DifficultyChart: React.FC<DifficultyChartProps> = ({ results }) => 
                 const sum = (curr.faithfulness_score || 0) +
                     (curr.relevancy_score || 0) +
                     (curr.precision_score || 0) +
-                    (curr.recall_score || 0)
+                    (curr.recall_score || 0) +
+                    (curr.g_eval_score || 0)
                 const count = [
                     curr.faithfulness_score,
                     curr.relevancy_score,
                     curr.precision_score,
-                    curr.recall_score
+                    curr.recall_score,
+                    curr.g_eval_score
                 ].filter(v => v !== null && v !== undefined).length
 
                 return acc + (count > 0 ? sum / count : 0)

@@ -15,6 +15,7 @@ export function BaselineComparison({ current, baseline }: BaselineComparisonProp
         { key: 'relevancy_avg', label: 'Relevancy' },
         { key: 'precision_avg', label: 'Precision' },
         { key: 'recall_avg', label: 'Recall' },
+        { key: 'g_eval_avg', label: 'Correctness' },
         { key: 'overall_avg', label: 'Overall' },
     ] as const
 
@@ -34,7 +35,7 @@ export function BaselineComparison({ current, baseline }: BaselineComparisonProp
                 )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                 {metrics.map((m) => {
                     const currVal = current.summary_metrics ? current.summary_metrics[m.key] : undefined
                     const baseVal = baseline.summary_metrics ? baseline.summary_metrics[m.key] : undefined

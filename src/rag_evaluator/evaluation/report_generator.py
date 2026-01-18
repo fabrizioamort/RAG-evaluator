@@ -116,6 +116,7 @@ class ReportGenerator:
             "answer_relevancy",
             "contextual_precision",
             "contextual_recall",
+            "g_eval",
         ]:
             # Extract individual scores from detailed_results
             scores = [
@@ -161,6 +162,7 @@ class ReportGenerator:
             "answer_relevancy",
             "contextual_precision",
             "contextual_recall",
+            "g_eval",
         ]:
             difficulty_analysis = analyze_by_difficulty(
                 evaluation_results["detailed_results"], metric_name=metric
@@ -212,6 +214,7 @@ class ReportGenerator:
                     "answer_relevancy",
                     "contextual_precision",
                     "contextual_recall",
+                    "g_eval",
                 ]
             )
         ]
@@ -242,6 +245,7 @@ class ReportGenerator:
                     "answer_relevancy",
                     "contextual_precision",
                     "contextual_recall",
+                    "g_eval",
                 ]
                 if failure["metrics"].get(metric, 1.0) < low_score_threshold
             ]
@@ -372,6 +376,7 @@ class ReportGenerator:
             "answer_relevancy",
             "contextual_precision",
             "contextual_recall",
+            "g_eval",
         ]:
             avg = metrics_summary.get(f"{metric}_avg", 0.0)
             min_val = metrics_summary.get(f"{metric}_min", 0.0)
@@ -428,6 +433,7 @@ class ReportGenerator:
                 "answer_relevancy",
                 "contextual_precision",
                 "contextual_recall",
+                "g_eval",
             ]:
                 score = metrics.get(metric_name)
                 if score is not None:
@@ -504,8 +510,8 @@ class ReportGenerator:
             "",
             "## Summary Comparison",
             "",
-            "| Implementation | Pass Rate | Faithfulness | Answer Relevancy | Ctx Precision | Ctx Recall |",
-            "|----------------|-----------|--------------|------------------|---------------|------------|",
+            "| Implementation | Pass Rate | Faithfulness | Answer Relevancy | Ctx Precision | Ctx Recall | Correctness |",
+            "|----------------|-----------|--------------|------------------|---------------|------------|-------------|",
         ]
 
         # Add summary row for each implementation
@@ -517,7 +523,8 @@ class ReportGenerator:
                 f"{metrics.get('faithfulness_avg', 0.0):.3f} | "
                 f"{metrics.get('answer_relevancy_avg', 0.0):.3f} | "
                 f"{metrics.get('contextual_precision_avg', 0.0):.3f} | "
-                f"{metrics.get('contextual_recall_avg', 0.0):.3f} |"
+                f"{metrics.get('contextual_recall_avg', 0.0):.3f} | "
+                f"{metrics.get('g_eval_avg', 0.0):.3f} |"
             )
 
         # Add performance comparison
@@ -593,6 +600,7 @@ class ReportGenerator:
                 "answer_relevancy",
                 "contextual_precision",
                 "contextual_recall",
+                "g_eval",
             ]:
                 avg = metrics.get(f"{metric}_avg", 0.0)
                 metric_name = metric.replace("_", " ").title()

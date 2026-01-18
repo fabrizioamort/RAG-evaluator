@@ -61,6 +61,8 @@ class EvaluationResult(BaseModelNoUpdate):
     precision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     recall_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     recall_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    g_eval_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    g_eval_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Performance metrics
     latency_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)

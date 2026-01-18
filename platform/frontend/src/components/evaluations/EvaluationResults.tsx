@@ -31,6 +31,14 @@ const formatScore = (val: number | string | null | undefined, decimals: number =
     return isNaN(num) ? 'N/A' : num.toFixed(decimals);
 };
 
+const METRIC_DEFINITIONS = [
+    { id: 'faithfulness', label: 'Faithfulness', avgKey: 'faithfulness_avg', scoreKey: 'faithfulness_score', reasonKey: 'faithfulness_reason', color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20', short: 'F' },
+    { id: 'relevancy', label: 'Relevancy', avgKey: 'relevancy_avg', scoreKey: 'relevancy_score', reasonKey: 'relevancy_reason', color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/20', short: 'R' },
+    { id: 'precision', label: 'Precision', avgKey: 'precision_avg', scoreKey: 'precision_score', reasonKey: 'precision_reason', color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20', short: 'P' },
+    { id: 'recall', label: 'Recall', avgKey: 'recall_avg', scoreKey: 'recall_score', reasonKey: 'recall_reason', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/20', short: 'C' },
+    { id: 'g_eval', label: 'Correctness', avgKey: 'g_eval_avg', scoreKey: 'g_eval_score', reasonKey: 'g_eval_reason', color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/20', short: 'G' },
+] as const;
+
 export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsProps) {
     const [page] = useState(1)
     const [search, setSearch] = useState('')
@@ -78,6 +86,8 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
     }
 
     const items = results?.data?.items || []
+    const selectedMetricIds = evaluation?.data?.metric_config?.metrics || ['faithfulness', 'relevancy', 'precision', 'recall', 'g_eval'];
+    const activeMetrics = METRIC_DEFINITIONS.filter(m => selectedMetricIds.includes(m.id));
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
@@ -181,20 +191,21 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                 {/* Left Column: Metrics & Performance */}
                                 <div className="lg:col-span-2 space-y-4">
                                     {!baseline?.data && (
-                                        <div className="grid grid-cols-2 gap-4">
-                                            {[
-                                                { label: 'Faithfulness', value: evaluation.data.summary_metrics.faithfulness_avg, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
-                                                { label: 'Relevancy', value: evaluation.data.summary_metrics.relevancy_avg, color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/20' },
-                                                { label: 'Precision', value: evaluation.data.summary_metrics.precision_avg, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
-                                                { label: 'Recall', value: evaluation.data.summary_metrics.recall_avg, color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/20' }
-                                            ].map((m) => (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                            {activeMetrics.map((m) => (
                                                 <div key={m.label} className={cn("rounded-xl border p-4", m.bg, m.border)}>
-                                                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
-                                                    <p className={cn("text-2xl font-black mt-1", m.color)}>
-                                                        {formatScore(m.value)}
+                                                    <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
+                                                    <p className={cn("text-xl sm:text-2xl font-black mt-1", m.color)}>
+                                                        {formatScore(evaluation.data.summary_metrics?.[m.avgKey as keyof typeof evaluation.data.summary_metrics])}
                                                     </p>
                                                 </div>
                                             ))}
+                                            <div className="rounded-xl border bg-primary/10 border-primary/20 p-4">
+                                                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Overall</p>
+                                                <p className="text-xl sm:text-2xl font-black mt-1 text-primary">
+                                                    {formatScore(evaluation.data.summary_metrics?.overall_avg)}
+                                                </p>
+                                            </div>
                                         </div>
                                     )}
 
@@ -276,11 +287,10 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                     </div>
 
                                     {/* Mini Score Badges */}
-                                    <div className="flex items-center gap-2">
-                                        <ScoreBadge label="F" value={result.faithfulness_score} />
-                                        <ScoreBadge label="R" value={result.relevancy_score} />
-                                        <ScoreBadge label="P" value={result.precision_score} />
-                                        <ScoreBadge label="C" value={result.recall_score} />
+                                    <div className="flex items-center gap-1 sm:gap-2">
+                                        {activeMetrics.map(m => (
+                                            <ScoreBadge key={m.id} label={m.short} value={result[m.scoreKey as keyof EvaluationResult] as number} />
+                                        ))}
                                     </div>
 
                                     <ChevronDown
@@ -349,30 +359,17 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                                     </div>
                                                 </div>
 
-                                                {/* Right Column: Reasoning & Metrics */}
                                                 <div className="space-y-4">
                                                     <h4 className="text-sm font-semibold mb-2">Metric Analysis</h4>
                                                     <div className="space-y-3">
-                                                        <MetricExplainability
-                                                            label="Faithfulness"
-                                                            score={result.faithfulness_score}
-                                                            reason={result.faithfulness_reason}
-                                                        />
-                                                        <MetricExplainability
-                                                            label="Answer Relevancy"
-                                                            score={result.relevancy_score}
-                                                            reason={result.relevancy_reason}
-                                                        />
-                                                        <MetricExplainability
-                                                            label="Contextual Precision"
-                                                            score={result.precision_score}
-                                                            reason={result.precision_reason}
-                                                        />
-                                                        <MetricExplainability
-                                                            label="Contextual Recall"
-                                                            score={result.recall_score}
-                                                            reason={result.recall_reason}
-                                                        />
+                                                        {activeMetrics.map(m => (
+                                                            <MetricExplainability
+                                                                key={m.id}
+                                                                label={m.label}
+                                                                score={result[m.scoreKey as keyof EvaluationResult] as number}
+                                                                reason={result[m.reasonKey as keyof EvaluationResult] as string}
+                                                            />
+                                                        ))}
                                                     </div>
                                                 </div>
                                             </div>

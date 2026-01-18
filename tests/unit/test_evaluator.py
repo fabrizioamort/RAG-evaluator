@@ -89,12 +89,13 @@ def test_evaluator_initialization(temp_test_set: Path) -> None:
         patch("rag_evaluator.evaluation.evaluator.AnswerRelevancyMetric"),
         patch("rag_evaluator.evaluation.evaluator.ContextualPrecisionMetric"),
         patch("rag_evaluator.evaluation.evaluator.ContextualRecallMetric"),
+        patch("rag_evaluator.evaluation.evaluator.GEval"),
     ):
         evaluator = RAGEvaluator(test_set_path=str(temp_test_set))
 
         assert evaluator.test_set_path == str(temp_test_set)
         assert len(evaluator.test_cases) == 2
-        assert len(evaluator.metrics) == 4  # 4 DeepEval metrics
+        assert len(evaluator.metrics) == 5  # 5 DeepEval metrics
 
 
 def test_evaluator_initialization_default_path() -> None:
@@ -126,6 +127,7 @@ def test_load_test_set_missing_file() -> None:
 def test_calculate_pass_rate_all_pass() -> None:
     """Test pass rate calculation when all tests pass."""
     evaluator = RAGEvaluator.__new__(RAGEvaluator)
+    evaluator.selected_metrics = ["faithfulness", "answer_relevancy", "contextual_precision", "contextual_recall"]
 
     # Mock settings for thresholds
     with patch("rag_evaluator.evaluation.evaluator.settings") as mock_settings:
@@ -133,6 +135,7 @@ def test_calculate_pass_rate_all_pass() -> None:
         mock_settings.eval_answer_relevancy_threshold = 0.7
         mock_settings.eval_contextual_precision_threshold = 0.7
         mock_settings.eval_contextual_recall_threshold = 0.7
+        mock_settings.eval_g_eval_threshold = 0.7
 
         detailed_results = [
             {
@@ -160,12 +163,14 @@ def test_calculate_pass_rate_all_pass() -> None:
 def test_calculate_pass_rate_partial_pass() -> None:
     """Test pass rate calculation with partial passes."""
     evaluator = RAGEvaluator.__new__(RAGEvaluator)
+    evaluator.selected_metrics = ["faithfulness", "answer_relevancy", "contextual_precision", "contextual_recall"]
 
     with patch("rag_evaluator.evaluation.evaluator.settings") as mock_settings:
         mock_settings.eval_faithfulness_threshold = 0.7
         mock_settings.eval_answer_relevancy_threshold = 0.7
         mock_settings.eval_contextual_precision_threshold = 0.7
         mock_settings.eval_contextual_recall_threshold = 0.7
+        mock_settings.eval_g_eval_threshold = 0.7
 
         detailed_results = [
             {
@@ -193,6 +198,7 @@ def test_calculate_pass_rate_partial_pass() -> None:
 def test_calculate_pass_rate_empty_results() -> None:
     """Test pass rate calculation with empty results."""
     evaluator = RAGEvaluator.__new__(RAGEvaluator)
+    evaluator.selected_metrics = []
     pass_rate = evaluator._calculate_pass_rate([])
     assert pass_rate == 0.0
 
@@ -200,6 +206,7 @@ def test_calculate_pass_rate_empty_results() -> None:
 def test_calculate_metrics_summary() -> None:
     """Test metrics summary calculation."""
     evaluator = RAGEvaluator.__new__(RAGEvaluator)
+    evaluator.selected_metrics = ["faithfulness", "answer_relevancy", "contextual_precision", "contextual_recall"]
 
     # Create mock detailed results with metric scores
     detailed_results = []
@@ -239,6 +246,7 @@ def test_compare_implementations(temp_test_set: Path) -> None:
         patch("rag_evaluator.evaluation.evaluator.AnswerRelevancyMetric"),
         patch("rag_evaluator.evaluation.evaluator.ContextualPrecisionMetric"),
         patch("rag_evaluator.evaluation.evaluator.ContextualRecallMetric"),
+        patch("rag_evaluator.evaluation.evaluator.GEval"),
     ):
         # Mock the DeepEval evaluate function to return success
         mock_evaluate.return_value = None

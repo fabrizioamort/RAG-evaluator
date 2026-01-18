@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     eval_contextual_recall_threshold: float = Field(
         default=0.7, description="Minimum threshold for contextual recall metric"
     )
+    eval_g_eval_threshold: float = Field(
+        default=0.7, description="Minimum threshold for G-Eval metric"
+    )
     eval_include_reason: bool = Field(
         default=True, description="Whether to include reasoning in DeepEval metrics"
     )

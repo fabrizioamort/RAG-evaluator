@@ -37,6 +37,8 @@ class EvaluationResultBase(BaseSchema):
         default=None, ge=0, le=1, description="Contextual recall score"
     )
     recall_reason: str | None = Field(default=None, description="Recall explanation")
+    g_eval_score: float | None = Field(default=None, ge=0, le=1, description="G-Eval score")
+    g_eval_reason: str | None = Field(default=None, description="G-Eval explanation")
     latency_seconds: float | None = Field(
         default=None, ge=0, description="Query latency in seconds"
     )
@@ -69,6 +71,7 @@ class EvaluationResultResponse(EvaluationResultBase, BaseResponseSchema):
             self.relevancy_score,
             self.precision_score,
             self.recall_score,
+            self.g_eval_score,
         ]
         valid_scores = [s for s in scores if s is not None]
         return sum(valid_scores) / len(valid_scores) if valid_scores else None
@@ -90,6 +93,7 @@ class SummaryMetrics(BaseSchema):
     relevancy_avg: float | None = Field(default=None, description="Average relevancy")
     precision_avg: float | None = Field(default=None, description="Average precision")
     recall_avg: float | None = Field(default=None, description="Average recall")
+    g_eval_avg: float | None = Field(default=None, description="Average G-Eval")
     overall_avg: float | None = Field(default=None, description="Overall average")
 
 
@@ -125,6 +129,9 @@ class EvaluationCreate(EvaluationBase):
 
     test_set_id: UUID = Field(description="Test set to use")
     knowledge_base_index_id: UUID = Field(description="Knowledge Base Index to evaluate against")
+    metric_names: list[str] | None = Field(
+        default=None, description="List of metrics to calculate (default: all)"
+    )
     # knowledge_base_id and rag_config_id are removed as they are derived from the index
 
 
@@ -155,6 +162,7 @@ class EvaluationResponse(EvaluationBase, BaseResponseSchema):
     pass_rate: float | None = Field(default=None, ge=0, le=1, description="Pass rate (0-1)")
     is_baseline: bool = Field(default=False, description="Whether this is the baseline")
     baseline_reason: str | None = Field(default=None, description="Reason for baseline")
+    metric_config: dict[str, Any] | None = Field(default=None, description="Selected metric config")
     error_message: str | None = Field(default=None, description="Error if failed")
 
     # Counts

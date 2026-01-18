@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     EVAL_CHECKPOINT_INTERVAL: int = 5  # Checkpoint every N test cases
     EVAL_MAX_CONCURRENT: int = 1  # Max concurrent evaluations (OSS: 1)
     EVAL_INCLUDE_REASON: bool = True  # Whether to include reasoning in metrics
+    EVAL_G_EVAL_THRESHOLD: float = 0.7  # Default threshold for G-Eval
 
     # DeepEval Parallel Evaluation
     DEEPEVAL_ASYNC_MODE: bool = False

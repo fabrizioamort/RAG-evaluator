@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { X, Play, Loader2, Database, FileText, ChevronRight, ChevronLeft, LucideIcon, Layers, Calendar } from 'lucide-react'
+import { X, Play, Loader2, Database, FileText, ChevronRight, ChevronLeft, LucideIcon, Layers, Calendar, CheckSquare, Square, Info } from 'lucide-react'
 import { api, KnowledgeBase, TestSet, KnowledgeBaseIndex, EvaluationCreate } from '@/api/client'
 import { cn } from '@/lib/utils'
 
@@ -10,7 +10,15 @@ interface StartEvaluationWizardProps {
     onStarted: (evaluationId: string) => void
 }
 
-type Step = 'testset' | 'kb' | 'index' | 'review'
+type Step = 'testset' | 'kb' | 'index' | 'metrics' | 'review'
+
+const AVAILABLE_METRICS = [
+    { id: 'faithfulness', name: 'Faithfulness', description: 'Consistency of the answer with the retrieved context.' },
+    { id: 'relevancy', name: 'Answer Relevancy', description: 'Relevance of the answer to the user question.' },
+    { id: 'precision', name: 'Contextual Precision', description: 'Quality of the top-ranked retrieved documents.' },
+    { id: 'recall', name: 'Contextual Recall', description: 'Whether context contains answer to the question.' },
+    { id: 'g_eval', name: 'G-Eval (Correctness)', description: 'LLM-based evaluation of factual correctness vs expected answer.' },
+]
 
 function timeAgo(dateString: string) {
     const date = new Date(dateString)
@@ -35,6 +43,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
     const [selectedKb, setSelectedKb] = useState<string>('')
     const [selectedTestSet, setSelectedTestSet] = useState<string>('')
     const [selectedIndex, setSelectedIndex] = useState<string>('')
+    const [selectedMetrics, setSelectedMetrics] = useState<string[]>(AVAILABLE_METRICS.map(m => m.id))
     const [evaluationName, setEvaluationName] = useState<string>('')
 
     const [isLoading, setIsLoading] = useState(false)
@@ -64,6 +73,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
             setSelectedKb('')
             setSelectedTestSet('')
             setSelectedIndex('')
+            setSelectedMetrics(AVAILABLE_METRICS.map(m => m.id))
             setEvaluationName('')
             setIndexes([])
         }
@@ -95,7 +105,8 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
             const data: EvaluationCreate = {
                 name: evaluationName || undefined,
                 test_set_id: selectedTestSet,
-                knowledge_base_index_id: selectedIndex
+                knowledge_base_index_id: selectedIndex,
+                metric_names: selectedMetrics
             }
             const res = await api.evaluations.create(data)
             onStarted(res.data.id)
@@ -114,6 +125,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
         { id: 'testset', label: 'Test Set', icon: FileText },
         { id: 'kb', label: 'Knowledge Base', icon: Database },
         { id: 'index', label: 'Index', icon: Layers },
+        { id: 'metrics', label: 'Metrics', icon: CheckSquare },
         { id: 'review', label: 'Review', icon: Play }
     ]
 
@@ -284,6 +296,62 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                                 </div>
                             )}
 
+                            {step === 'metrics' && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <div className="mb-4">
+                                        <h3 className="text-lg font-bold">Select Metrics</h3>
+                                        <p className="text-sm text-muted-foreground">Choose which evaluations to perform on the RAG outputs.</p>
+                                    </div>
+
+                                    <div className="grid gap-3">
+                                        {AVAILABLE_METRICS.map(metric => {
+                                            const isSelected = selectedMetrics.includes(metric.id);
+                                            return (
+                                                <button
+                                                    key={metric.id}
+                                                    onClick={() => {
+                                                        if (isSelected) {
+                                                            setSelectedMetrics(selectedMetrics.filter(id => id !== metric.id));
+                                                        } else {
+                                                            setSelectedMetrics([...selectedMetrics, metric.id]);
+                                                        }
+                                                    }}
+                                                    className={cn(
+                                                        "flex items-start gap-4 rounded-xl border p-4 text-left transition-all",
+                                                        isSelected
+                                                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                                                            : "border-border hover:border-primary/50 hover:bg-accent"
+                                                    )}
+                                                >
+                                                    <div className={cn(
+                                                        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
+                                                        isSelected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30"
+                                                    )}>
+                                                        {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="font-bold">{metric.name}</p>
+                                                            {metric.id === 'g_eval' && (
+                                                                <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">New</span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground mt-0.5">{metric.description}</p>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="mt-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 flex gap-3">
+                                        <Info className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+                                        <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                                            Metrics use LLM-as-a-judge (GPT-4o-mini). Selecting more metrics increases total evaluation cost and duration.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
                             {step === 'review' && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                                     <div className="mb-4 text-center">
@@ -320,6 +388,19 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                                                     <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Index</p>
                                                     <p className="text-sm font-semibold truncate">{indexes.find(i => i.id === selectedIndex)?.name}</p>
                                                 </div>
+                                                <div className="bg-card p-4 sm:col-span-3 border-t border-border">
+                                                    <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Selected Metrics</p>
+                                                    <div className="flex flex-wrap gap-1.5 mt-1">
+                                                        {selectedMetrics.map(id => (
+                                                            <span key={id} className="text-[10px] bg-muted px-2 py-0.5 rounded font-medium text-muted-foreground">
+                                                                {AVAILABLE_METRICS.find(m => m.id === id)?.name}
+                                                            </span>
+                                                        ))}
+                                                        {selectedMetrics.length === 0 && (
+                                                            <span className="text-[10px] text-destructive font-medium italic">No metrics selected! (Evaluation will only track performance)</span>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -334,7 +415,8 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                 <div className="flex items-center justify-between border-t border-border p-6 bg-muted/20 rounded-b-xl">
                     <button
                         onClick={() => {
-                            if (step === 'review') setStep('index')
+                            if (step === 'review') setStep('metrics')
+                            else if (step === 'metrics') setStep('index')
                             else if (step === 'index') setStep('kb')
                             else if (step === 'kb') setStep('testset')
                         }}
@@ -367,7 +449,8 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                                 onClick={() => {
                                     if (step === 'testset') setStep('kb')
                                     else if (step === 'kb') setStep('index')
-                                    else if (step === 'index') setStep('review')
+                                    else if (step === 'index') setStep('metrics')
+                                    else if (step === 'metrics') setStep('review')
                                 }}
                                 disabled={
                                     (step === 'testset' && !selectedTestSet) ||
