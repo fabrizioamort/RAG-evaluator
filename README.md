@@ -23,7 +23,7 @@ RAG Evaluator provides a unified environment to experiment with different retrie
 
 ### 🧠 Advanced RAG Architectures
 
-Compare multiple implementation strategies out-of-the-box:
+Compare multiple implementation strategies out-of-the-box (see [RAG Strategies Guide](docs/rag_strategies.md) for details):
 
 1. **Vector Semantic Search:** Baseline RAG using ChromaDB and OpenAI embeddings.
 2. **Hybrid Search:** Combines dense (semantic) and sparse (keyword/SPLADE) vectors using Qdrant and RRF fusion.
@@ -32,12 +32,15 @@ Compare multiple implementation strategies out-of-the-box:
 
 ### 📊 Rigorous Evaluation
 
-Powered by DeepEval, we measure:
+Powered by [DeepEval](https://github.com/confident-ai/deepeval), evaluations are fully configurable. You can select any combination of the following metrics for each run:
 
-- **Faithfulness:** Measures if the Generated Answer is factually derived only from the Retrieved Context. It checks for "hallucinations" (information not present in your documents).
-- **Answer Relevancy:** Measures how relevant the Generated Answer is to the original Question. It assesses if the answer actually addresses the prompt (ignoring factual correctness).
-- **Contextual Precision:** Measures the quality of the ranking in your retrieval. It rewards systems where the most relevant chunks appear at the very top of the list.
-- **Contextual Recall:** Measures if the retrieval system found all the necessary information. It checks if the retrieved chunks contain everything needed to construct the Expected Answer.
+- **Faithfulness:** Checks for "hallucinations" (information not present in your documents).
+- **Answer Relevancy:** Assesses if the answer actually addresses the prompt.
+- **Contextual Precision:** Measures the quality of the ranking in your retrieval.
+- **Contextual Recall:** Checks if the retrieval system found all the necessary information.
+- **Correctness (G-Eval):** Uses "LLM-as-a-judge" to verify semantic equivalence between the generated answer and the ground truth, ignoring minor phrasing differences.
+
+👉 **[Read the Full Metrics Guide](docs/metrics.md)** for detailed definitions and usage strategies.
 
 ---
 
@@ -135,6 +138,7 @@ See the [CLI Reference](docs/cli.md) for advanced usage.
 ## 📚 Documentation
 
 - **[Deployment Guide](docs/deployment.md):** Detailed production setup instructions.
+- **[RAG Strategies Guide](docs/rag_strategies.md):** Deep dive into Vector, Hybrid, Graph, and Filesystem RAG architectures.
 - **[API Reference](docs/api.md):** comprehensive API documentation for the backend.
 - **[CLI Reference](docs/cli.md):** Command-line usage, flags, and advanced RAG setup (Graph, Hybrid, etc.).
 - **[Contributing](CONTRIBUTING.md):** Guide for developers wanting to add new features or RAG types.
