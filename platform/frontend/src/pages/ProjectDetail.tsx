@@ -403,7 +403,7 @@ function EvaluationsTab({ projectId }: { projectId: string }) {
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2">
-                                        <p className="font-bold">Evaluation #{evalItem.id.slice(0, 8)}</p>
+                                        <p className="font-bold">{evalItem.name || `Evaluation #${evalItem.id.slice(0, 8)}`}</p>
                                         <span className={cn(
                                             "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
                                             evalItem.status === 'completed' ? "bg-green-500/10 text-green-600" :

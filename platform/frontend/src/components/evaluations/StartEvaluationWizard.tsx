@@ -35,6 +35,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
     const [selectedKb, setSelectedKb] = useState<string>('')
     const [selectedTestSet, setSelectedTestSet] = useState<string>('')
     const [selectedIndex, setSelectedIndex] = useState<string>('')
+    const [evaluationName, setEvaluationName] = useState<string>('')
 
     const [isLoading, setIsLoading] = useState(false)
     const [isLoadingIndexes, setIsLoadingIndexes] = useState(false)
@@ -63,6 +64,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
             setSelectedKb('')
             setSelectedTestSet('')
             setSelectedIndex('')
+            setEvaluationName('')
             setIndexes([])
         }
     }, [isOpen, projectId, loadData])
@@ -91,6 +93,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
         setIsStarting(true)
         try {
             const data: EvaluationCreate = {
+                name: evaluationName || undefined,
                 test_set_id: selectedTestSet,
                 knowledge_base_index_id: selectedIndex
             }
@@ -243,7 +246,17 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                                             {indexes.map(idx => (
                                                 <button
                                                     key={idx.id}
-                                                    onClick={() => setSelectedIndex(idx.id)}
+                                                    onClick={() => {
+                                                        setSelectedIndex(idx.id)
+                                                        // Suggest a name
+                                                        const timestamp = new Date().toLocaleString([], {
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        });
+                                                        setEvaluationName(`${idx.name} - ${timestamp}`);
+                                                    }}
                                                     className={cn(
                                                         "flex items-center justify-between rounded-xl border p-4 text-left transition-all",
                                                         selectedIndex === idx.id
@@ -281,19 +294,32 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                                         <p className="text-muted-foreground">Verify your configuration before starting.</p>
                                     </div>
 
-                                    <div className="rounded-xl bg-accent/30 border border-border overflow-hidden">
-                                        <div className="grid gap-px bg-border sm:grid-cols-3">
-                                            <div className="bg-card p-4">
-                                                <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Test Set</p>
-                                                <p className="text-sm font-semibold truncate">{testSets.find(t => t.id === selectedTestSet)?.name}</p>
-                                            </div>
-                                            <div className="bg-card p-4">
-                                                <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Knowledge Base</p>
-                                                <p className="text-sm font-semibold truncate">{kbs.find(k => k.id === selectedKb)?.name}</p>
-                                            </div>
-                                            <div className="bg-card p-4">
-                                                <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Index</p>
-                                                <p className="text-sm font-semibold truncate">{indexes.find(i => i.id === selectedIndex)?.name}</p>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">Evaluation Name</label>
+                                            <input
+                                                type="text"
+                                                value={evaluationName}
+                                                onChange={(e) => setEvaluationName(e.target.value)}
+                                                placeholder="Give this evaluation a name..."
+                                                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                            />
+                                        </div>
+
+                                        <div className="rounded-xl bg-accent/30 border border-border overflow-hidden">
+                                            <div className="grid gap-px bg-border sm:grid-cols-3">
+                                                <div className="bg-card p-4">
+                                                    <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Test Set</p>
+                                                    <p className="text-sm font-semibold truncate">{testSets.find(t => t.id === selectedTestSet)?.name}</p>
+                                                </div>
+                                                <div className="bg-card p-4">
+                                                    <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Knowledge Base</p>
+                                                    <p className="text-sm font-semibold truncate">{kbs.find(k => k.id === selectedKb)?.name}</p>
+                                                </div>
+                                                <div className="bg-card p-4">
+                                                    <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Index</p>
+                                                    <p className="text-sm font-semibold truncate">{indexes.find(i => i.id === selectedIndex)?.name}</p>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -302,6 +328,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                         </>
                     )}
                 </div>
+
 
                 {/* Footer */}
                 <div className="flex items-center justify-between border-t border-border p-6 bg-muted/20 rounded-b-xl">

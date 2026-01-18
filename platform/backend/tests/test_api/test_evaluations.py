@@ -136,6 +136,42 @@ class TestCreateEvaluation:
         assert data["tags"] == ["test"]
 
     @pytest.mark.asyncio
+    async def test_create_evaluation_with_name(
+        self,
+        client: AsyncClient,
+        sample_index: KnowledgeBaseIndex,
+        sample_test_set: TestSet,
+    ) -> None:
+        """Test creating an evaluation with a custom name."""
+        payload = {
+            "name": "Custom Name",
+            "knowledge_base_index_id": str(sample_index.id),
+            "test_set_id": str(sample_test_set.id),
+        }
+        response = await client.post("/api/v1/evaluations", json=payload)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["name"] == "Custom Name"
+
+    @pytest.mark.asyncio
+    async def test_create_evaluation_auto_name(
+        self,
+        client: AsyncClient,
+        sample_index: KnowledgeBaseIndex,
+        sample_test_set: TestSet,
+    ) -> None:
+        """Test creating an evaluation with auto-generated name."""
+        payload = {
+            "knowledge_base_index_id": str(sample_index.id),
+            "test_set_id": str(sample_test_set.id),
+        }
+        response = await client.post("/api/v1/evaluations", json=payload)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["name"] is not None
+        assert sample_index.name in data["name"]
+
+    @pytest.mark.asyncio
     async def test_create_evaluation_invalid_ids(self, client: AsyncClient) -> None:
         """Test with non-existent IDs."""
         payload = {
@@ -187,6 +223,25 @@ class TestGetEvaluation:
         assert data["id"] == str(sample_evaluation.id)
         assert data["status"] == "completed"
         assert data["pass_rate"] == 0.8
+
+    @pytest.mark.asyncio
+    async def test_update_evaluation(
+        self, client: AsyncClient, sample_evaluation: Evaluation
+    ) -> None:
+        """Test updating evaluation name, notes, and tags."""
+        payload = {
+            "name": "Updated Name",
+            "notes": "Updated notes",
+            "tags": ["updated"],
+        }
+        response = await client.patch(
+            f"/api/v1/evaluations/{sample_evaluation.id}", json=payload
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Updated Name"
+        assert data["notes"] == "Updated notes"
+        assert data["tags"] == ["updated"]
 
     @pytest.mark.asyncio
     async def test_list_evaluations(

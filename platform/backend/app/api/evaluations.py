@@ -18,6 +18,7 @@ from app.models.run_manifest import RunManifest
 from app.models.test_set import TestSet
 from app.schemas.evaluation import (
     CostMetrics,
+    EvaluationBase,
     EvaluationCreate,
     EvaluationList,
     EvaluationResponse,
@@ -62,6 +63,7 @@ def _evaluation_to_response(eval_model: Evaluation, result_count: int = 0) -> Ev
     """Convert Evaluation model to EvaluationResponse schema."""
     return EvaluationResponse(
         id=eval_model.id,
+        name=eval_model.name,
         project_id=eval_model.project_id,
         knowledge_base_id=eval_model.knowledge_base_id,  # Derived from Index or stored as legacy
         knowledge_base_index_id=eval_model.knowledge_base_index_id,
@@ -169,8 +171,14 @@ async def create_evaluation(
     await db.flush()
 
     # 4. Create Evaluation
+    evaluation_name = evaluation_data.name
+    if not evaluation_name:
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        evaluation_name = f"{index.name} - {timestamp}"
+
     evaluation = Evaluation(
         project_id=project_id,
+        name=evaluation_name,
         knowledge_base_id=kb.id,  # Storing for backward compatibility/queries
         knowledge_base_index_id=index.id,
         kb_version_id=index.kb_version_id,
@@ -519,6 +527,34 @@ async def set_baseline(
     await db.refresh(evaluation)
 
     logger.info("Set baseline evaluation", evaluation_id=str(evaluation_id))
+
+    return _evaluation_to_response(evaluation)
+
+
+@router.patch(
+    "/evaluations/{evaluation_id}",
+    response_model=EvaluationResponse,
+    summary="Update evaluation details",
+)
+async def update_evaluation(
+    db: DbSession,
+    evaluation_id: UUID,
+    evaluation_update: EvaluationBase,
+) -> EvaluationResponse:
+    """Update evaluation details like name, notes, and tags."""
+    evaluation = await _get_evaluation_or_404(db, evaluation_id)
+
+    if evaluation_update.name is not None:
+        evaluation.name = evaluation_update.name
+    if evaluation_update.notes is not None:
+        evaluation.notes = evaluation_update.notes
+    if evaluation_update.tags is not None:
+        evaluation.tags = evaluation_update.tags
+
+    await db.commit()
+    await db.refresh(evaluation)
+
+    logger.info("Updated evaluation", evaluation_id=str(evaluation_id))
 
     return _evaluation_to_response(evaluation)
 

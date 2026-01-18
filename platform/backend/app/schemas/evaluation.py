@@ -114,8 +114,10 @@ class PerformanceMetrics(BaseSchema):
 class EvaluationBase(BaseSchema):
     """Base evaluation schema."""
 
+    name: str | None = Field(default=None, description="Human-readable name for the evaluation")
     notes: str | None = Field(default=None, description="Evaluation notes")
     tags: list[str] = Field(default_factory=list, description="Tags")
+
 
 
 class EvaluationCreate(EvaluationBase):

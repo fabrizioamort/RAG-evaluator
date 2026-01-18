@@ -289,6 +289,7 @@ export interface SummaryMetrics {
 
 export interface Evaluation {
   id: string
+  name?: string
   project_id: string
   knowledge_base_id: string | null
   knowledge_base_index_id: string | null
@@ -309,6 +310,7 @@ export interface Evaluation {
 }
 
 export interface EvaluationCreate {
+  name?: string
   knowledge_base_index_id: string
   test_set_id: string
   notes?: string
