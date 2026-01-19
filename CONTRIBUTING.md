@@ -168,17 +168,34 @@ npm test
 
 ## Adding New RAG Implementations
 
+For a comprehensive guide on developing and integrating custom RAG systems, see the **[Custom RAG Integration Guide](docs/custom_rag_integration.md)**.
+
+### Quick Overview
+
 To add a new RAG strategy (e.g., "Elasticsearch RAG"):
 
 1.  **Implement Core Logic:**
-    Create `src/rag_evaluator/rag_implementations/elasticsearch_rag/`. Inherit from `BaseRAG`.
-    See [CLI Reference](docs/cli.md) for details.
+    Create `src/rag_evaluator/rag_implementations/elasticsearch_rag/`. Inherit from `BaseRAG` and implement the required methods: `prepare_documents()`, `query()`, and `get_metrics()`.
 
 2.  **Register in CLI:**
-    Update `src/rag_evaluator/cli.py`.
+    Update `src/rag_evaluator/cli.py` - add your RAG to `get_rag_implementation()` and the CLI argument choices.
 
 3.  **Register in Backend (Optional):**
-    If you want it available in the Platform, update `platform/backend/app/services/rag_adapter.py` (or equivalent registry).
+    If you want it available in the Platform, update `platform/backend/app/services/rag_adapter.py`:
+    - Add to `RAG_TYPE_REGISTRY`
+    - Add to `RAG_TYPE_PARAMETERS`
+    - Add to `get_available_rag_types()`
+
+### Developing as a Separate Project
+
+For experimental or novel RAG systems, we recommend developing as a separate project first:
+
+1. Create a standalone project with minimal dependencies
+2. Copy the interface files (`base_rag.py`, `provider_interfaces.py`, `token_tracker.py`)
+3. Develop and test your RAG independently
+4. Integrate when stable by copying to `src/rag_evaluator/rag_implementations/`
+
+See the [Custom RAG Integration Guide](docs/custom_rag_integration.md#developing-as-a-separate-project) for detailed instructions and a project template.
 
 ## Pull Request Process
 

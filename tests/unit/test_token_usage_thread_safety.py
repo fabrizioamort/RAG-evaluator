@@ -17,6 +17,7 @@ def test_token_usage_to_dict_no_deadlock():
     assert data["embedding_tokens"] == 30
     assert data["total_tokens"] == 60
 
+
 def test_token_usage_concurrent_updates():
     """Test that TokenUsage handles concurrent updates correctly."""
     usage = TokenUsage()

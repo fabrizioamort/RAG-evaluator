@@ -139,7 +139,8 @@ See the [CLI Reference](docs/cli.md) for advanced usage.
 
 - **[Deployment Guide](docs/deployment.md):** Detailed production setup instructions.
 - **[RAG Strategies Guide](docs/rag_strategies.md):** Deep dive into Vector, Hybrid, Graph, and Filesystem RAG architectures.
-- **[API Reference](docs/api.md):** comprehensive API documentation for the backend.
+- **[Custom RAG Integration](docs/custom_rag_integration.md):** How to develop and integrate your own RAG system for evaluation.
+- **[API Reference](docs/api.md):** Comprehensive API documentation for the backend.
 - **[CLI Reference](docs/cli.md):** Command-line usage, flags, and advanced RAG setup (Graph, Hybrid, etc.).
 - **[Contributing](CONTRIBUTING.md):** Guide for developers wanting to add new features or RAG types.
 

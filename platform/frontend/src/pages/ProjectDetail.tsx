@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
     ArrowLeft,
@@ -291,9 +291,20 @@ function RAGConfigsTab({ projectId }: { projectId: string }) {
     )
 }
 
-function EvaluationsTab({ projectId }: { projectId: string }) {
+function EvaluationsTab({
+    projectId,
+    launchWizard,
+    initialKnowledgeBaseId,
+    initialIndexId,
+}: {
+    projectId: string
+    launchWizard?: boolean
+    initialKnowledgeBaseId?: string
+    initialIndexId?: string
+}) {
     const [isWizardOpen, setIsWizardOpen] = useState(false)
     const [activeEvaluationId, setActiveEvaluationId] = useState<string | null>(null)
+    const [hasAutoOpened, setHasAutoOpened] = useState(false)
     const queryClient = useQueryClient()
 
     const { data, isLoading } = useQuery({
@@ -304,6 +315,13 @@ function EvaluationsTab({ projectId }: { projectId: string }) {
 
     const evaluations = data?.data?.items || []
     const activeEvaluation = evaluations.find(e => e.id === activeEvaluationId)
+
+    useEffect(() => {
+        if (launchWizard && !hasAutoOpened) {
+            setIsWizardOpen(true)
+            setHasAutoOpened(true)
+        }
+    }, [launchWizard, hasAutoOpened])
 
     if (activeEvaluationId) {
         if (activeEvaluation?.status === 'completed') {
@@ -461,6 +479,8 @@ function EvaluationsTab({ projectId }: { projectId: string }) {
                     setActiveEvaluationId(id)
                     queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
                 }}
+                initialKnowledgeBaseId={initialKnowledgeBaseId}
+                initialIndexId={initialIndexId}
             />
         </div>
     )
@@ -515,6 +535,7 @@ const tabs = [
 export function ProjectDetail() {
     const { id } = useParams<{ id: string }>()
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
     const [activeTab, setActiveTab] = useState('kb')
 
     const { data: project, isLoading, isError } = useQuery({
@@ -522,6 +543,17 @@ export function ProjectDetail() {
         queryFn: () => api.projects.get(id!),
         enabled: !!id,
     })
+
+    const tabParam = searchParams.get('tab')
+    const shouldLaunchEval = searchParams.get('startEval') === '1'
+    const initialKnowledgeBaseId = searchParams.get('kbId') || undefined
+    const initialIndexId = searchParams.get('indexId') || undefined
+
+    useEffect(() => {
+        if (tabParam && tabs.some(tab => tab.id === tabParam)) {
+            setActiveTab(tabParam)
+        }
+    }, [tabParam])
 
     if (isLoading) {
         return (
@@ -615,7 +647,14 @@ export function ProjectDetail() {
                 {activeTab === 'kb' && <KnowledgeBasesTab projectId={p.id} />}
                 {activeTab === 'tests' && <TestSetsTab projectId={p.id} />}
                 {activeTab === 'rags' && <RAGConfigsTab projectId={p.id} />}
-                {activeTab === 'evals' && <EvaluationsTab projectId={p.id} />}
+                {activeTab === 'evals' && (
+                    <EvaluationsTab
+                        projectId={p.id}
+                        launchWizard={shouldLaunchEval}
+                        initialKnowledgeBaseId={initialKnowledgeBaseId}
+                        initialIndexId={initialIndexId}
+                    />
+                )}
                 {activeTab === 'trends' && <TrendsTab projectId={p.id} />}
             </div>
         </div>

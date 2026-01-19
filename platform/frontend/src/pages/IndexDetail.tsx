@@ -51,6 +51,20 @@ export function IndexDetail() {
         }
     }
 
+    const handleRunEvaluation = () => {
+        if (!index?.project_id) {
+            alert('Unable to start evaluation: missing project information.')
+            return
+        }
+        const params = new URLSearchParams({
+            tab: 'evals',
+            startEval: '1',
+            kbId: index.knowledge_base_id,
+            indexId: index.id,
+        })
+        navigate(`/projects/${index.project_id}?${params.toString()}`)
+    }
+
     if (loading) {
         return (
             <div className="flex justify-center items-center h-full min-h-[400px]">
@@ -83,7 +97,10 @@ export function IndexDetail() {
                 </div>
                 <div className="ml-auto flex space-x-3">
                     {index.status === 'ready' && (
-                        <button className="flex items-center px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                        <button
+                            onClick={handleRunEvaluation}
+                            className="flex items-center px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                        >
                             <Play className="h-4 w-4 mr-2" />
                             Run Evaluation
                         </button>

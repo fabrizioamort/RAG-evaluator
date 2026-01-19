@@ -8,6 +8,9 @@ interface StartEvaluationWizardProps {
     isOpen: boolean
     onClose: () => void
     onStarted: (evaluationId: string) => void
+    initialKnowledgeBaseId?: string
+    initialIndexId?: string
+    initialTestSetId?: string
 }
 
 type Step = 'testset' | 'kb' | 'index' | 'metrics' | 'review'
@@ -34,7 +37,15 @@ function timeAgo(dateString: string) {
     return `${days}d ago`
 }
 
-export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }: StartEvaluationWizardProps) {
+export function StartEvaluationWizard({
+    projectId,
+    isOpen,
+    onClose,
+    onStarted,
+    initialKnowledgeBaseId,
+    initialIndexId,
+    initialTestSetId,
+}: StartEvaluationWizardProps) {
     const [step, setStep] = useState<Step>('testset')
     const [kbs, setKbs] = useState<KnowledgeBase[]>([])
     const [testSets, setTestSets] = useState<TestSet[]>([])
@@ -45,6 +56,7 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
     const [selectedIndex, setSelectedIndex] = useState<string>('')
     const [selectedMetrics, setSelectedMetrics] = useState<string[]>(AVAILABLE_METRICS.map(m => m.id))
     const [evaluationName, setEvaluationName] = useState<string>('')
+    const [includeReason, setIncludeReason] = useState(true)
 
     const [isLoading, setIsLoading] = useState(false)
     const [isLoadingIndexes, setIsLoadingIndexes] = useState(false)
@@ -70,14 +82,15 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
         if (isOpen && projectId) {
             loadData()
             setStep('testset') // Reset step
-            setSelectedKb('')
-            setSelectedTestSet('')
-            setSelectedIndex('')
+            setSelectedKb(initialKnowledgeBaseId || '')
+            setSelectedTestSet(initialTestSetId || '')
+            setSelectedIndex(initialIndexId || '')
             setSelectedMetrics(AVAILABLE_METRICS.map(m => m.id))
             setEvaluationName('')
+            setIncludeReason(true)
             setIndexes([])
         }
-    }, [isOpen, projectId, loadData])
+    }, [isOpen, projectId, loadData, initialKnowledgeBaseId, initialIndexId, initialTestSetId])
 
     // Load indexes when KB is selected
     useEffect(() => {
@@ -106,7 +119,8 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                 name: evaluationName || undefined,
                 test_set_id: selectedTestSet,
                 knowledge_base_index_id: selectedIndex,
-                metric_names: selectedMetrics
+                metric_names: selectedMetrics,
+                include_reason: includeReason,
             }
             const res = await api.evaluations.create(data)
             onStarted(res.data.id)
@@ -349,6 +363,21 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                                             Metrics use LLM-as-a-judge (GPT-4o-mini). Selecting more metrics increases total evaluation cost and duration.
                                         </p>
                                     </div>
+
+                                    <label className="mt-4 flex items-start gap-3 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={includeReason}
+                                            onChange={(e) => setIncludeReason(e.target.checked)}
+                                            className="mt-1 h-4 w-4 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                        />
+                                        <span>
+                                            <span className="block font-semibold">Include metric reasoning</span>
+                                            <span className="block text-xs text-muted-foreground">
+                                                Disabling reduces token usage, but explanations will be omitted.
+                                            </span>
+                                        </span>
+                                    </label>
                                 </div>
                             )}
 
@@ -399,6 +428,9 @@ export function StartEvaluationWizard({ projectId, isOpen, onClose, onStarted }:
                                                         {selectedMetrics.length === 0 && (
                                                             <span className="text-[10px] text-destructive font-medium italic">No metrics selected! (Evaluation will only track performance)</span>
                                                         )}
+                                                    </div>
+                                                    <div className="mt-2 text-[10px] font-medium text-muted-foreground">
+                                                        Reasoning: {includeReason ? 'Enabled' : 'Disabled'}
                                                     </div>
                                                 </div>
                                             </div>

@@ -234,9 +234,7 @@ class TestGetEvaluation:
             "notes": "Updated notes",
             "tags": ["updated"],
         }
-        response = await client.patch(
-            f"/api/v1/evaluations/{sample_evaluation.id}", json=payload
-        )
+        response = await client.patch(f"/api/v1/evaluations/{sample_evaluation.id}", json=payload)
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "Updated Name"

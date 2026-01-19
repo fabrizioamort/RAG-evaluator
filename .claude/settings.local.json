@@ -1,20 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(uv init:*)",
-      "Bash(find:*)",
-      "Bash(tree:*)",
-      "Bash(uv sync:*)",
-      "Bash(uv add:*)",
-      "Bash(uv pip:*)",
-      "Bash(cat:*)",
-      "Bash(uv run ruff:*)",
-      "mcp__context7__resolve-library-id",
-      "mcp__context7__query-docs",
-      "Bash(dir \"C:\\Users\\fabri\\projects\\RAG-evaluator\\platform\\frontend\")",
-      "Bash(mkdir:*)",
-      "Bash(Get-ChildItem -Path \"C:\\Users\\fabri\\projects\\RAG-evaluator\\platform\" -Recurse -Name -Directory)",
-      "Bash(Select-Object -First 30)"
-    ]
+      "Bash(Select-Object FullName)"
+    ],
+    "deny": [],
+    "ask": []
   }
 }

@@ -316,6 +316,7 @@ export interface EvaluationCreate {
   knowledge_base_index_id: string
   test_set_id: string
   metric_names?: string[]
+  include_reason?: boolean
   notes?: string
   tags?: string[]
 }

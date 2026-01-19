@@ -176,6 +176,10 @@ class EvaluationRunner:
     def _initialize_metrics(self, llm_model: str) -> List[Any]:
         """Initialize DeepEval metrics based on evaluation configuration."""
         include_reason = settings.EVAL_INCLUDE_REASON
+        if self.evaluation and self.evaluation.metric_config:
+            config_value = self.evaluation.metric_config.get("include_reason")
+            if config_value is not None:
+                include_reason = bool(config_value)
         safe_model = SafeDeepEvalLLM(model_name=llm_model)
 
         # Get selected metrics from config, fallback to all
@@ -225,7 +229,7 @@ class EvaluationRunner:
                         "Ignore minor formatting differences like trailing punctuation (e.g., 'McGill University' vs 'McGill University.')",
                         "Ignore stylistic variations or parenthetical additions that don't change meaning (e.g., 'Artificial Intelligence' vs 'Artificial Intelligence (AI)')",
                         "Check for any contradictory information that would make the answer factually incorrect.",
-                        "Score 1.0 if the semantic meaning is the same, even if the phrasing differs slightly."
+                        "Score 1.0 if the semantic meaning is the same, even if the phrasing differs slightly.",
                     ],
                     threshold=settings.EVAL_G_EVAL_THRESHOLD,
                     model=safe_model,
@@ -519,7 +523,8 @@ class EvaluationRunner:
                             v for k, v in scores.items() if "_score" in k and v is not None
                         )
                         / len([v for k, v in scores.items() if "_score" in k and v is not None])
-                        if scores else 0,
+                        if scores
+                        else 0,
                     },
                 },
             )
@@ -600,7 +605,9 @@ class EvaluationRunner:
         if "g_eval" in selected_metrics:
             pass_conditions.append(EvaluationResult.g_eval_score >= 0.7)
 
-        pass_res = await self.db.execute(select(func.count(EvaluationResult.id)).where(*pass_conditions))
+        pass_res = await self.db.execute(
+            select(func.count(EvaluationResult.id)).where(*pass_conditions)
+        )
         passed_count = pass_res.scalar_one()
         pass_rate = (passed_count / stats.total_count) if stats.total_count > 0 else 0.0
 

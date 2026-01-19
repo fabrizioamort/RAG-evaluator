@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
     Loader2,
@@ -77,6 +77,25 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
         }
     }
 
+    const filteredItems = useMemo(() => {
+        const items = results?.data?.items || []
+        const term = search.trim().toLowerCase()
+        if (!term) return items
+        return items.filter((result) => {
+            const haystack = [
+                result.question,
+                result.expected_answer,
+                result.generated_answer,
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase()
+            return haystack.includes(term)
+        })
+    }, [results?.data?.items, search])
+    const selectedMetricIds = evaluation?.data?.metric_config?.metrics || ['faithfulness', 'relevancy', 'precision', 'recall', 'g_eval'];
+    const activeMetrics = METRIC_DEFINITIONS.filter(m => selectedMetricIds.includes(m.id));
+
     if (isLoading || !evaluation) {
         return (
             <div className="flex justify-center py-20">
@@ -84,10 +103,6 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
             </div>
         )
     }
-
-    const items = results?.data?.items || []
-    const selectedMetricIds = evaluation?.data?.metric_config?.metrics || ['faithfulness', 'relevancy', 'precision', 'recall', 'g_eval'];
-    const activeMetrics = METRIC_DEFINITIONS.filter(m => selectedMetricIds.includes(m.id));
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
@@ -229,7 +244,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                 {/* Right Column: Difficulty Breakdown */}
                                 <div className="rounded-xl border border-border bg-card p-4">
                                     <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">Scores by Difficulty</h4>
-                                    <DifficultyChart results={items} />
+                                    <DifficultyChart results={filteredItems} />
                                 </div>
                             </div>
                         </div>
@@ -251,7 +266,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
 
                     {/* Results List */}
                     <div className="space-y-4">
-                        {items.map((result: EvaluationResult) => (
+                        {filteredItems.map((result: EvaluationResult) => (
                             <div
                                 key={result.id}
                                 className="rounded-xl border border-border bg-card overflow-hidden transition-all"
@@ -381,7 +396,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                             </div>
                         ))}
 
-                        {items.length === 0 && (
+                        {filteredItems.length === 0 && (
                             <div className="py-20 text-center text-muted-foreground">
                                 No results found matching your search.
                             </div>

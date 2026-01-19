@@ -127,7 +127,12 @@ def test_load_test_set_missing_file() -> None:
 def test_calculate_pass_rate_all_pass() -> None:
     """Test pass rate calculation when all tests pass."""
     evaluator = RAGEvaluator.__new__(RAGEvaluator)
-    evaluator.selected_metrics = ["faithfulness", "answer_relevancy", "contextual_precision", "contextual_recall"]
+    evaluator.selected_metrics = [
+        "faithfulness",
+        "answer_relevancy",
+        "contextual_precision",
+        "contextual_recall",
+    ]
 
     # Mock settings for thresholds
     with patch("rag_evaluator.evaluation.evaluator.settings") as mock_settings:
@@ -163,7 +168,12 @@ def test_calculate_pass_rate_all_pass() -> None:
 def test_calculate_pass_rate_partial_pass() -> None:
     """Test pass rate calculation with partial passes."""
     evaluator = RAGEvaluator.__new__(RAGEvaluator)
-    evaluator.selected_metrics = ["faithfulness", "answer_relevancy", "contextual_precision", "contextual_recall"]
+    evaluator.selected_metrics = [
+        "faithfulness",
+        "answer_relevancy",
+        "contextual_precision",
+        "contextual_recall",
+    ]
 
     with patch("rag_evaluator.evaluation.evaluator.settings") as mock_settings:
         mock_settings.eval_faithfulness_threshold = 0.7
@@ -206,7 +216,12 @@ def test_calculate_pass_rate_empty_results() -> None:
 def test_calculate_metrics_summary() -> None:
     """Test metrics summary calculation."""
     evaluator = RAGEvaluator.__new__(RAGEvaluator)
-    evaluator.selected_metrics = ["faithfulness", "answer_relevancy", "contextual_precision", "contextual_recall"]
+    evaluator.selected_metrics = [
+        "faithfulness",
+        "answer_relevancy",
+        "contextual_precision",
+        "contextual_recall",
+    ]
 
     # Create mock detailed results with metric scores
     detailed_results = []

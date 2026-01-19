@@ -114,7 +114,7 @@ class RAGEvaluator:
                         "Ignore minor formatting differences like trailing punctuation (e.g., 'McGill University' vs 'McGill University.')",
                         "Ignore stylistic variations or parenthetical additions that don't change meaning (e.g., 'Artificial Intelligence' vs 'Artificial Intelligence (AI)')",
                         "Check for any contradictory information that would make the answer factually incorrect.",
-                        "Score 1.0 if the semantic meaning is the same, even if the phrasing differs slightly."
+                        "Score 1.0 if the semantic meaning is the same, even if the phrasing differs slightly.",
                     ],
                     threshold=settings.eval_g_eval_threshold,
                     model=settings.openai_model,
@@ -224,7 +224,9 @@ class RAGEvaluator:
 
         if settings.eval_parallel_queries:
             if verbose:
-                print(f"Running RAG queries in parallel (max workers: {settings.eval_max_workers})...")
+                print(
+                    f"Running RAG queries in parallel (max workers: {settings.eval_max_workers})..."
+                )
             from concurrent.futures import ThreadPoolExecutor
 
             with ThreadPoolExecutor(max_workers=settings.eval_max_workers) as executor:
@@ -338,9 +340,7 @@ class RAGEvaluator:
         Returns:
             Dictionary with average scores for each metric
         """
-        metric_scores: dict[str, list[float]] = {
-            name: [] for name in self.selected_metrics
-        }
+        metric_scores: dict[str, list[float]] = {name: [] for name in self.selected_metrics}
 
         # Extract scores from detailed results
         for result in detailed_results:

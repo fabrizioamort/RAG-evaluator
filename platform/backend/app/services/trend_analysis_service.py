@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.evaluation import Evaluation
+from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.rag_config import RAGConfig
 from app.schemas.trend import ProjectTrends, RAGConfigTrend, TrendDataPoint
 from app.utils.logging_config import get_logger
@@ -30,7 +31,10 @@ class TrendAnalysisService:
                 Evaluation.project_id == project_id,
                 Evaluation.status == "completed",
             )
-            .options(selectinload(Evaluation.rag_config))
+            .options(
+                selectinload(Evaluation.rag_config),
+                selectinload(Evaluation.index).selectinload(KnowledgeBaseIndex.rag_config),
+            )
             .order_by(Evaluation.completed_at.asc())
         )
         result = await db.execute(query)
@@ -42,11 +46,13 @@ class TrendAnalysisService:
 
         for eval_model in evaluations:
             config_id = eval_model.rag_config_id
+            config = eval_model.rag_config
+            if config_id is None and eval_model.index:
+                config_id = eval_model.index.rag_config_id
+                config = eval_model.index.rag_config or config
             if config_id not in trends_map:
                 trends_map[config_id] = []
-                config_names[config_id] = (
-                    eval_model.rag_config.name if eval_model.rag_config else "Unknown Config"
-                )
+                config_names[config_id] = config.name if config else "Unknown Config"
 
             if eval_model.completed_at is None:
                 continue

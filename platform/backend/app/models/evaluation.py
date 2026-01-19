@@ -65,7 +65,6 @@ class Evaluation(BaseModelNoUpdate):
 
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-
     status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

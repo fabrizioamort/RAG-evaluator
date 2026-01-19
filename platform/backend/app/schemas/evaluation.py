@@ -123,7 +123,6 @@ class EvaluationBase(BaseSchema):
     tags: list[str] = Field(default_factory=list, description="Tags")
 
 
-
 class EvaluationCreate(EvaluationBase):
     """Schema for creating an evaluation."""
 
@@ -131,6 +130,10 @@ class EvaluationCreate(EvaluationBase):
     knowledge_base_index_id: UUID = Field(description="Knowledge Base Index to evaluate against")
     metric_names: list[str] | None = Field(
         default=None, description="List of metrics to calculate (default: all)"
+    )
+    include_reason: bool | None = Field(
+        default=None,
+        description="Whether to include metric reasoning (overrides global setting)",
     )
     # knowledge_base_id and rag_config_id are removed as they are derived from the index
 
