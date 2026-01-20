@@ -19,13 +19,19 @@ class RAGRegistry:
                     RAGTypeParameter(
                         name="collection_name",
                         type="string",
-                        description="ChromaDB collection name",
+                        description=(
+                            "ChromaDB collection name. The platform creates a per-index "
+                            "collection by default; set this only to reuse an existing collection."
+                        ),
                         default="rag_documents",
                     ),
                     RAGTypeParameter(
                         name="persist_directory",
                         type="string",
-                        description="Custom persistence directory",
+                        description=(
+                            "Filesystem path for Chroma persistence. Leave blank to use "
+                            "platform-managed storage or the core default."
+                        ),
                         required=False,
                     ),
                 ],
@@ -39,13 +45,19 @@ class RAGRegistry:
                     RAGTypeParameter(
                         name="collection_name",
                         type="string",
-                        description="Qdrant collection name",
+                        description=(
+                            "Qdrant collection name. The platform uses a per-index collection "
+                            "by default; leave blank unless reusing an existing collection."
+                        ),
                         required=False,
                     ),
                     RAGTypeParameter(
                         name="qdrant_url",
                         type="string",
-                        description="Qdrant server URL",
+                        description=(
+                            "Qdrant server URL. Leave blank to use QDRANT_URL from .env or the "
+                            "core default."
+                        ),
                         required=False,
                     ),
                 ],
@@ -59,25 +71,37 @@ class RAGRegistry:
                     RAGTypeParameter(
                         name="neo4j_uri",
                         type="string",
-                        description="Neo4j connection URI",
+                        description=(
+                            "Neo4j connection URI. Leave blank to use NEO4J_URI from .env "
+                            "or the core default."
+                        ),
                         required=False,
                     ),
                     RAGTypeParameter(
                         name="neo4j_username",
                         type="string",
-                        description="Neo4j username",
+                        description=(
+                            "Neo4j username. Leave blank to use NEO4J_USERNAME from .env "
+                            "or the core default."
+                        ),
                         required=False,
                     ),
                     RAGTypeParameter(
                         name="neo4j_password",
                         type="string",
-                        description="Neo4j password",
+                        description=(
+                            "Neo4j password. Leave blank to use NEO4J_PASSWORD from .env "
+                            "or the core default."
+                        ),
                         required=False,
                     ),
                     RAGTypeParameter(
                         name="vector_index_name",
                         type="string",
-                        description="Name of the vector index",
+                        description=(
+                            "Name of the Neo4j vector index. Keep the default unless you "
+                            "created a custom index."
+                        ),
                         default="chunk_embeddings",
                     ),
                 ],
@@ -91,37 +115,46 @@ class RAGRegistry:
                     RAGTypeParameter(
                         name="llm_model",
                         type="string",
-                        description="Model to use for agent navigation",
+                        description=(
+                            "Model used for agent navigation. In the platform, this is driven "
+                            "by the LLM Settings section; the default is usually fine."
+                        ),
                         default="gpt-4o-mini",
                     ),
                     RAGTypeParameter(
                         name="prepared_path",
                         type="string",
-                        description="Path for prepared filesystem output",
+                        description=(
+                            "Path for prepared filesystem output. The platform stores this under "
+                            "storage/indexes/<index_id>/filesystem_rag by default."
+                        ),
                         default="data/prepared/filesystem_rag",
                     ),
                     RAGTypeParameter(
                         name="word_threshold",
                         type="integer",
-                        description="Threshold for LLM vs heuristic analysis",
+                        description=(
+                            "Word count threshold for LLM vs heuristic analysis. Lower values "
+                            "use the LLM more (higher cost)."
+                        ),
                         default=1000,
                     ),
                     RAGTypeParameter(
                         name="max_iterations",
                         type="integer",
-                        description="Max agent iterations per query",
+                        description="Max agent iterations per query.",
                         default=10,
                     ),
                     RAGTypeParameter(
                         name="max_tool_calls",
                         type="integer",
-                        description="Max tool calls per query",
+                        description="Max tool calls per query.",
                         default=20,
                     ),
                     RAGTypeParameter(
                         name="max_file_reads",
                         type="integer",
-                        description="Max file reads per query",
+                        description="Max file reads per query.",
                         default=10,
                     ),
                 ],

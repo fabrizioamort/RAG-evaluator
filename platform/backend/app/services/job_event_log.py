@@ -17,6 +17,10 @@ logger = get_logger(__name__)
 class JobEventLog:
     """Service for persisting and streaming job events."""
 
+    def _to_sse_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize events for SSE streaming."""
+        return {"event": event.get("event_type", "message"), "data": event}
+
     def __init__(self, storage_path: Optional[Path] = None) -> None:
         """Initialize the job event log service.
 
@@ -97,12 +101,12 @@ class JobEventLog:
             # First, yield cached events to catch up
             # In a more robust implementation, we'd use last_event_id and the file on disk
             for cached_event in self._cache[eval_id_str]:
-                yield cached_event
+                yield self._to_sse_event(cached_event)
 
             # Then wait for new events
             while True:
                 event = await queue.get()
-                yield event
+                yield self._to_sse_event(event)
         finally:
             # Clean up on disconnect
             if eval_id_str in self._queues:

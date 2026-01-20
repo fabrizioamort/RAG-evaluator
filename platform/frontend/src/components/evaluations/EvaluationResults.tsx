@@ -32,11 +32,11 @@ const formatScore = (val: number | string | null | undefined, decimals: number =
 };
 
 const METRIC_DEFINITIONS = [
-    { id: 'faithfulness', label: 'Faithfulness', avgKey: 'faithfulness_avg', scoreKey: 'faithfulness_score', reasonKey: 'faithfulness_reason', color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20', short: 'F' },
-    { id: 'relevancy', label: 'Relevancy', avgKey: 'relevancy_avg', scoreKey: 'relevancy_score', reasonKey: 'relevancy_reason', color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/20', short: 'R' },
-    { id: 'precision', label: 'Precision', avgKey: 'precision_avg', scoreKey: 'precision_score', reasonKey: 'precision_reason', color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20', short: 'P' },
-    { id: 'recall', label: 'Recall', avgKey: 'recall_avg', scoreKey: 'recall_score', reasonKey: 'recall_reason', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/20', short: 'C' },
-    { id: 'g_eval', label: 'Correctness', avgKey: 'g_eval_avg', scoreKey: 'g_eval_score', reasonKey: 'g_eval_reason', color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/20', short: 'G' },
+    { id: 'faithfulness', label: 'Faithfulness', avgKey: 'faithfulness_avg', scoreKey: 'faithfulness_score', reasonKey: 'faithfulness_reason', color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20', short: 'F', group: 'retrieval' },
+    { id: 'relevancy', label: 'Relevancy', avgKey: 'relevancy_avg', scoreKey: 'relevancy_score', reasonKey: 'relevancy_reason', color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/20', short: 'R', group: 'retrieval' },
+    { id: 'precision', label: 'Precision', avgKey: 'precision_avg', scoreKey: 'precision_score', reasonKey: 'precision_reason', color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20', short: 'P', group: 'retrieval' },
+    { id: 'recall', label: 'Recall', avgKey: 'recall_avg', scoreKey: 'recall_score', reasonKey: 'recall_reason', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/20', short: 'C', group: 'retrieval' },
+    { id: 'g_eval', label: 'Correctness', avgKey: 'g_eval_avg', scoreKey: 'g_eval_score', reasonKey: 'g_eval_reason', color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/20', short: 'G', group: 'answer' },
 ] as const;
 
 export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsProps) {
@@ -47,6 +47,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
     const [activeTopTab, setActiveTopTab] = useState<'results' | 'manifest'>('results')
     const [isSettingBaseline, setIsSettingBaseline] = useState(false)
     const [baselineReason, setBaselineReason] = useState('')
+    const [committedSearch, setCommittedSearch] = useState('')
 
     const { data: evaluation } = useQuery({
         queryKey: ['evaluation', evaluationId],
@@ -54,7 +55,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
     })
 
     const { data: results, isLoading } = useQuery({
-        queryKey: ['evaluation-results', evaluationId, page, search],
+        queryKey: ['evaluation-results', evaluationId, page],
         queryFn: () => api.evaluations.getResults(evaluationId, { limit: 50, offset: (page - 1) * 50 }),
     })
 
@@ -79,7 +80,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
 
     const filteredItems = useMemo(() => {
         const items = results?.data?.items || []
-        const term = search.trim().toLowerCase()
+        const term = committedSearch.trim().toLowerCase()
         if (!term) return items
         return items.filter((result) => {
             const haystack = [
@@ -92,9 +93,17 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                 .toLowerCase()
             return haystack.includes(term)
         })
-    }, [results?.data?.items, search])
+    }, [results?.data?.items, committedSearch])
     const selectedMetricIds = evaluation?.data?.metric_config?.metrics || ['faithfulness', 'relevancy', 'precision', 'recall', 'g_eval'];
     const activeMetrics = METRIC_DEFINITIONS.filter(m => selectedMetricIds.includes(m.id));
+    const correctnessMetric = activeMetrics.find(m => m.id === 'g_eval');
+    const retrievalMetrics = activeMetrics.filter(m => m.group === 'retrieval');
+    const otherMetrics = activeMetrics.filter(m => m.id !== 'g_eval' && m.group !== 'retrieval');
+    const orderedMetrics = [
+        correctnessMetric,
+        ...retrievalMetrics,
+        ...otherMetrics,
+    ].filter(Boolean) as typeof METRIC_DEFINITIONS[number][];
 
     if (isLoading || !evaluation) {
         return (
@@ -206,21 +215,52 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                 {/* Left Column: Metrics & Performance */}
                                 <div className="lg:col-span-2 space-y-4">
                                     {!baseline?.data && (
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                                            {activeMetrics.map((m) => (
-                                                <div key={m.label} className={cn("rounded-xl border p-4", m.bg, m.border)}>
-                                                    <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
-                                                    <p className={cn("text-xl sm:text-2xl font-black mt-1", m.color)}>
-                                                        {formatScore(evaluation.data.summary_metrics?.[m.avgKey as keyof typeof evaluation.data.summary_metrics])}
+                                        <div className="space-y-4">
+                                            {correctnessMetric && (
+                                                <div className={cn("rounded-xl border-2 p-4 sm:p-5", correctnessMetric.bg, correctnessMetric.border)}>
+                                                    <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Primary Metric</p>
+                                                    <p className="text-lg sm:text-xl font-bold uppercase tracking-wider">{correctnessMetric.label}</p>
+                                                    <p className={cn("text-2xl sm:text-3xl font-black mt-1", correctnessMetric.color)}>
+                                                        {formatScore(evaluation.data.summary_metrics?.[correctnessMetric.avgKey as keyof typeof evaluation.data.summary_metrics])}
                                                     </p>
                                                 </div>
-                                            ))}
-                                            <div className="rounded-xl border bg-primary/10 border-primary/20 p-4">
-                                                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Overall</p>
-                                                <p className="text-xl sm:text-2xl font-black mt-1 text-primary">
-                                                    {formatScore(evaluation.data.summary_metrics?.overall_avg)}
-                                                </p>
-                                            </div>
+                                            )}
+                                            {retrievalMetrics.length > 0 && (
+                                                <div className="space-y-2">
+                                                    <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground">Retrieval Phase Metrics</p>
+                                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                                        {retrievalMetrics.map((m) => (
+                                                            <div key={m.label} className={cn("rounded-xl border p-4", m.bg, m.border)}>
+                                                                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
+                                                                <p className={cn("text-xl sm:text-2xl font-black mt-1", m.color)}>
+                                                                    {formatScore(evaluation.data.summary_metrics?.[m.avgKey as keyof typeof evaluation.data.summary_metrics])}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                        <div className="rounded-xl border bg-primary/10 border-primary/20 p-4">
+                                                            <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Overall</p>
+                                                            <p className="text-xl sm:text-2xl font-black mt-1 text-primary">
+                                                                {formatScore(evaluation.data.summary_metrics?.overall_avg)}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {otherMetrics.length > 0 && (
+                                                <div className="space-y-2">
+                                                    <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground">Other Metrics</p>
+                                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                                        {otherMetrics.map((m) => (
+                                                            <div key={m.label} className={cn("rounded-xl border p-4", m.bg, m.border)}>
+                                                                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
+                                                                <p className={cn("text-xl sm:text-2xl font-black mt-1", m.color)}>
+                                                                    {formatScore(evaluation.data.summary_metrics?.[m.avgKey as keyof typeof evaluation.data.summary_metrics])}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
@@ -256,9 +296,14 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <input
                                 type="text"
-                                placeholder="Search questions..."
+                                placeholder="Search questions... (press Enter)"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        setCommittedSearch(search)
+                                    }
+                                }}
                                 className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-4 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             />
                         </div>
@@ -303,7 +348,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
 
                                     {/* Mini Score Badges */}
                                     <div className="flex items-center gap-1 sm:gap-2">
-                                        {activeMetrics.map(m => (
+                                        {orderedMetrics.map(m => (
                                             <ScoreBadge key={m.id} label={m.short} value={result[m.scoreKey as keyof EvaluationResult] as number} />
                                         ))}
                                     </div>
@@ -377,7 +422,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                                 <div className="space-y-4">
                                                     <h4 className="text-sm font-semibold mb-2">Metric Analysis</h4>
                                                     <div className="space-y-3">
-                                                        {activeMetrics.map(m => (
+                                                        {orderedMetrics.map(m => (
                                                             <MetricExplainability
                                                                 key={m.id}
                                                                 label={m.label}

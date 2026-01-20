@@ -25,16 +25,41 @@ const COLORS = [
 ]
 
 const METRICS = [
-    { key: 'faithfulness_avg', label: 'Faithfulness' },
-    { key: 'relevancy_avg', label: 'Relevancy' },
-    { key: 'precision_avg', label: 'Precision' },
-    { key: 'recall_avg', label: 'Recall' },
-    { key: 'g_eval_avg', label: 'Correctness' },
-    { key: 'overall_avg', label: 'Overall' },
+    { key: 'faithfulness_avg', label: 'Faithfulness', group: 'retrieval' },
+    { key: 'relevancy_avg', label: 'Relevancy', group: 'retrieval' },
+    { key: 'precision_avg', label: 'Precision', group: 'retrieval' },
+    { key: 'recall_avg', label: 'Recall', group: 'retrieval' },
+    { key: 'g_eval_avg', label: 'Correctness', group: 'answer' },
+    { key: 'overall_avg', label: 'Overall', group: 'other' },
+    { key: 'avg_latency_seconds', label: 'Avg Latency (s)', group: 'performance' },
+    { key: 'total_cost_usd', label: 'Total Cost (USD)', group: 'performance' },
 ]
+
+const SCORE_METRIC_KEYS = new Set([
+    'faithfulness_avg',
+    'relevancy_avg',
+    'precision_avg',
+    'recall_avg',
+    'g_eval_avg',
+    'overall_avg',
+])
 
 export const TrendChart: React.FC<TrendChartProps> = ({ trends }) => {
     const [selectedMetric, setSelectedMetric] = React.useState('overall_avg')
+    const correctnessMetric = METRICS.find((m) => m.key === 'g_eval_avg')
+    const retrievalMetrics = METRICS.filter((m) => m.group === 'retrieval')
+    const otherMetrics = METRICS.filter((m) => m.group === 'other')
+    const performanceMetrics = METRICS.filter((m) => m.group === 'performance')
+
+    const formatMetricValue = (metricKey: string, value: number) => {
+        if (metricKey === 'avg_latency_seconds') {
+            return `${value.toFixed(2)}s`
+        }
+        if (metricKey === 'total_cost_usd') {
+            return `$${value.toFixed(4)}`
+        }
+        return value.toFixed(2)
+    }
 
     // Prepare data for the chart
     const chartData = useMemo(() => {
@@ -57,7 +82,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ trends }) => {
                 minute: '2-digit',
             }).format(date)
 
-            const dataPoint: Record<string, string | number> = {
+            const dataPoint: Record<string, string | number | null> = {
                 timestamp,
                 formattedDate,
             }
@@ -66,7 +91,8 @@ export const TrendChart: React.FC<TrendChartProps> = ({ trends }) => {
                 const dp = trend.data_points.find((p) => p.timestamp === timestamp)
                 if (dp) {
                     const configName = trend.rag_config_name || 'Generic'
-                    dataPoint[configName] = dp.metrics[selectedMetric] || 0
+                    const metricValue = dp.metrics[selectedMetric]
+                    dataPoint[configName] = typeof metricValue === 'number' ? metricValue : null
                 }
             })
 
@@ -88,19 +114,69 @@ export const TrendChart: React.FC<TrendChartProps> = ({ trends }) => {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-wrap gap-2">
-                {METRICS.map((metric) => (
-                    <button
-                        key={metric.key}
-                        onClick={() => setSelectedMetric(metric.key)}
-                        className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all shadow-sm ${selectedMetric === metric.key
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted text-muted-foreground hover:bg-secondary hover:text-foreground'
-                            }`}
-                    >
-                        {metric.label}
-                    </button>
-                ))}
+            <div className="space-y-3">
+                {correctnessMetric && (
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Primary</span>
+                        <button
+                            key={correctnessMetric.key}
+                            onClick={() => setSelectedMetric(correctnessMetric.key)}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all shadow-sm border ${selectedMetric === correctnessMetric.key
+                                ? 'bg-primary text-primary-foreground border-primary/40'
+                                : 'bg-muted text-muted-foreground hover:bg-secondary hover:text-foreground border-transparent'
+                                }`}
+                        >
+                            {correctnessMetric.label}
+                        </button>
+                    </div>
+                )}
+                <div className="flex flex-wrap gap-2 items-center">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Retrieval Phase</span>
+                    {retrievalMetrics.map((metric) => (
+                        <button
+                            key={metric.key}
+                            onClick={() => setSelectedMetric(metric.key)}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all shadow-sm ${selectedMetric === metric.key
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted text-muted-foreground hover:bg-secondary hover:text-foreground'
+                                }`}
+                        >
+                            {metric.label}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex flex-wrap gap-2 items-center">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Other</span>
+                    {otherMetrics.map((metric) => (
+                        <button
+                            key={metric.key}
+                            onClick={() => setSelectedMetric(metric.key)}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all shadow-sm ${selectedMetric === metric.key
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted text-muted-foreground hover:bg-secondary hover:text-foreground'
+                                }`}
+                        >
+                            {metric.label}
+                        </button>
+                    ))}
+                </div>
+                {performanceMetrics.length > 0 && (
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Performance & Cost</span>
+                        {performanceMetrics.map((metric) => (
+                            <button
+                                key={metric.key}
+                                onClick={() => setSelectedMetric(metric.key)}
+                                className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all shadow-sm ${selectedMetric === metric.key
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-muted text-muted-foreground hover:bg-secondary hover:text-foreground'
+                                    }`}
+                            >
+                                {metric.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
             <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
@@ -122,10 +198,22 @@ export const TrendChart: React.FC<TrendChartProps> = ({ trends }) => {
                                     stroke="#9ca3af"
                                 />
                                 <YAxis
-                                    domain={[0, 1]}
+                                    domain={SCORE_METRIC_KEYS.has(selectedMetric) ? [0, 1] : ['auto', 'auto']}
                                     tick={{ fontSize: 11, fontWeight: 500 }}
                                     stroke="#9ca3af"
-                                    label={{ value: 'Score', angle: -90, position: 'insideLeft', fontSize: 11, fontWeight: 600, offset: -5 }}
+                                    tickFormatter={(value) =>
+                                        SCORE_METRIC_KEYS.has(selectedMetric)
+                                            ? Number(value).toFixed(2)
+                                            : formatMetricValue(selectedMetric, Number(value))
+                                    }
+                                    label={{
+                                        value: SCORE_METRIC_KEYS.has(selectedMetric) ? 'Score' : 'Value',
+                                        angle: -90,
+                                        position: 'insideLeft',
+                                        fontSize: 11,
+                                        fontWeight: 600,
+                                        offset: -5,
+                                    }}
                                 />
                                 <Tooltip
                                     contentStyle={{
@@ -135,6 +223,10 @@ export const TrendChart: React.FC<TrendChartProps> = ({ trends }) => {
                                         boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
                                         fontSize: '12px',
                                         fontWeight: '500'
+                                    }}
+                                    formatter={(value) => {
+                                        if (value === null || value === undefined) return 'N/A'
+                                        return formatMetricValue(selectedMetric, Number(value))
                                     }}
                                 />
                                 <Legend iconType="circle" wrapperStyle={{ paddingTop: '24px', fontSize: '12px', fontWeight: '600' }} />

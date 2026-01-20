@@ -2,6 +2,12 @@
 
 This guide details the four distinct Retrieval-Augmented Generation (RAG) strategies available in the RAG Evaluator Platform. Each implementation represents a different approach to information retrieval, ranging from standard semantic search to advanced agentic systems.
 
+## RAG Parameters (Platform UI)
+
+When you create a RAG configuration in the web UI, the "RAG Parameters" section shows the fields that are specific to the selected implementation. Defaults are pre-filled and are usually safe to keep. If you leave a parameter blank, the backend will fall back to the corresponding environment setting (for example `.env`) or an internal default.
+
+The platform also manages storage paths and per-index isolation automatically when you build a Knowledge Base index. This means storage-related parameters are typically optional unless you are using the CLI or a custom integration.
+
 ## 1. Vector Semantic Search (Baseline)
 
 ### Overview
@@ -26,6 +32,13 @@ The standard baseline for modern RAG systems. It uses dense vector embeddings to
 - General-purpose Q&A
 - Semantic matching (e.g., matching "car" to "vehicle")
 - Speed and simplicity
+
+### Configuration Parameters (Platform UI)
+
+| Parameter | Default | How to fill |
+| --- | --- | --- |
+| `collection_name` | `rag_documents` | Name of the ChromaDB collection. In the platform, indexes use a generated collection name per index, so you can usually leave the default. Set this only if you are reusing an existing collection outside the platform. |
+| `persist_directory` | (empty) | Filesystem path for Chroma persistence. The platform stores indexes under `storage/indexes/<index_id>/chroma`, so leave this blank unless you need a custom path for CLI or custom runs. |
 
 ---
 
@@ -58,6 +71,13 @@ Combines the semantic understanding of dense vectors with the precise keyword ma
 - Queries requiring both conceptual understanding and exact keyword matches
 - Reducing "lost in the middle" phenomena
 
+### Configuration Parameters (Platform UI)
+
+| Parameter | Default | How to fill |
+| --- | --- | --- |
+| `collection_name` | (empty) | Qdrant collection name. The platform isolates each index with its own collection name, so you can usually leave this blank unless you need to reuse an existing collection. |
+| `qdrant_url` | (empty) | Qdrant server URL, for example `http://localhost:6333`. If blank, the backend uses `QDRANT_URL` from `.env` or the core default. |
+
 ---
 
 ## 3. Graph RAG (Knowledge Graph)
@@ -86,6 +106,15 @@ Uses a Neo4j knowledge graph to understand relationships between entities. This 
 - Complex reasoning tasks
 - Questions about relationships or structure (e.g., "How does module A interact with module B?")
 - Multi-document synthesis
+
+### Configuration Parameters (Platform UI)
+
+| Parameter | Default | How to fill |
+| --- | --- | --- |
+| `neo4j_uri` | (empty) | Neo4j connection URI, for example `bolt://localhost:7687`. If blank, the backend uses `NEO4J_URI` from `.env` or the core default. |
+| `neo4j_username` | (empty) | Neo4j username. If blank, the backend uses `NEO4J_USERNAME` from `.env` or the core default (`neo4j`). |
+| `neo4j_password` | (empty) | Neo4j password. If blank, the backend uses `NEO4J_PASSWORD` from `.env` or the core default (empty). |
+| `vector_index_name` | `chunk_embeddings` | Name of the Neo4j vector index. Keep the default unless you are integrating with an existing Neo4j index. |
 
 ---
 
@@ -127,3 +156,14 @@ The agent receives a question and autonomously decides how to answer it:
 - "Needle in a haystack" problems
 - Broad research questions ("Give me an overview of X")
 - When context window usage needs to be minimized (agent selects only what it needs)
+
+### Configuration Parameters (Platform UI)
+
+| Parameter | Default | How to fill |
+| --- | --- | --- |
+| `llm_model` | `gpt-4o-mini` | Model used by the agent for navigation and analysis. In the platform, this is driven by the LLM Settings section, so you can keep this default. |
+| `prepared_path` | `data/prepared/filesystem_rag` | Path to the prepared filesystem output. The platform stores this under `storage/indexes/<index_id>/filesystem_rag`, so you can leave the default unless you need a custom path for CLI or custom runs. |
+| `word_threshold` | `1000` | Word count threshold for LLM analysis vs heuristic analysis. Lower values increase LLM usage (higher cost), higher values favor heuristics (lower cost). |
+| `max_iterations` | `10` | Maximum ReAct loop iterations per query. Increase for deeper exploration, decrease for faster responses. |
+| `max_tool_calls` | `20` | Maximum tool calls per query. Increase if the agent needs more steps to find context. |
+| `max_file_reads` | `10` | Maximum file reads per query. Increase if answers often require reading many files. |

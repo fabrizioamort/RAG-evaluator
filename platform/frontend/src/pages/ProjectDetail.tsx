@@ -30,6 +30,8 @@ import { StartEvaluationWizard } from '@/components/evaluations/StartEvaluationW
 import { EvaluationProgress } from '@/components/evaluations/EvaluationProgress'
 import { EvaluationResults } from '@/components/evaluations/EvaluationResults'
 import { TrendChart } from '@/components/trends/TrendChart'
+import { EfficiencyMap } from '@/components/trends/EfficiencyMap'
+import { EditProjectDialog } from '@/components/projects/EditProjectDialog'
 
 function KnowledgeBasesTab({ projectId }: { projectId: string }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -487,6 +489,7 @@ function EvaluationsTab({
 }
 
 function TrendsTab({ projectId }: { projectId: string }) {
+    const [activeTrendView, setActiveTrendView] = useState<'metrics' | 'efficiency'>('metrics')
     const { data, isLoading, isError } = useQuery({
         queryKey: ['project-trends', projectId],
         queryFn: () => api.trends.getProjectTrends(projectId),
@@ -519,7 +522,35 @@ function TrendsTab({ projectId }: { projectId: string }) {
                 <h2 className="text-xl font-semibold">Trend Analysis</h2>
                 <p className="text-sm text-muted-foreground">Visualize RAG performance improvements over time.</p>
             </div>
-            <TrendChart trends={data.data} />
+            <div className="flex gap-8 border-b border-border">
+                <button
+                    onClick={() => setActiveTrendView('metrics')}
+                    className={cn(
+                        "pb-4 text-sm font-bold border-b-2 transition-all",
+                        activeTrendView === 'metrics'
+                            ? "border-primary text-primary"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                >
+                    Metric Trends
+                </button>
+                <button
+                    onClick={() => setActiveTrendView('efficiency')}
+                    className={cn(
+                        "pb-4 text-sm font-bold border-b-2 transition-all",
+                        activeTrendView === 'efficiency'
+                            ? "border-primary text-primary"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                >
+                    Efficiency Map
+                </button>
+            </div>
+            {activeTrendView === 'metrics' ? (
+                <TrendChart trends={data.data} />
+            ) : (
+                <EfficiencyMap trends={data.data} />
+            )}
         </div>
     )
 }
@@ -537,6 +568,9 @@ export function ProjectDetail() {
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
     const [activeTab, setActiveTab] = useState('kb')
+    const [isEditOpen, setIsEditOpen] = useState(false)
+    const queryClient = useQueryClient()
+    const { success, error } = useToast()
 
     const { data: project, isLoading, isError } = useQuery({
         queryKey: ['project', id],
@@ -554,6 +588,24 @@ export function ProjectDetail() {
             setActiveTab(tabParam)
         }
     }, [tabParam])
+
+    const updateMutation = useMutation({
+        mutationFn: (data: Parameters<typeof api.projects.update>[1]) => {
+            if (!id) {
+                return Promise.reject(new Error('Project id is missing'))
+            }
+            return api.projects.update(id, data)
+        },
+        onSuccess: (response) => {
+            queryClient.invalidateQueries({ queryKey: ['project', id] })
+            queryClient.invalidateQueries({ queryKey: ['projects'] })
+            success('Project updated', `"${response.data.name}" has been updated.`)
+            setIsEditOpen(false)
+        },
+        onError: () => {
+            error('Failed to update project', 'Please try again.')
+        },
+    })
 
     if (isLoading) {
         return (
@@ -612,7 +664,10 @@ export function ProjectDetail() {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
+                    <button
+                        onClick={() => setIsEditOpen(true)}
+                        className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
+                    >
                         Edit Project
                     </button>
                     <button className="rounded-lg bg-destructive/10 text-destructive border border-destructive/20 px-4 py-2 text-sm font-medium hover:bg-destructive/20 transition-colors">
@@ -657,6 +712,15 @@ export function ProjectDetail() {
                 )}
                 {activeTab === 'trends' && <TrendsTab projectId={p.id} />}
             </div>
+
+            <EditProjectDialog
+                isOpen={isEditOpen}
+                project={p}
+                onClose={() => setIsEditOpen(false)}
+                onSubmit={async (data) => {
+                    await updateMutation.mutateAsync(data)
+                }}
+            />
         </div>
     )
 }

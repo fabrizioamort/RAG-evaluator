@@ -57,10 +57,19 @@ class TrendAnalysisService:
             if eval_model.completed_at is None:
                 continue
 
+            summary_metrics = eval_model.summary_metrics or {}
+            performance_metrics = eval_model.performance_metrics or {}
+            cost_metrics = eval_model.cost_metrics or {}
+            combined_metrics = {
+                **summary_metrics,
+                "avg_latency_seconds": float(performance_metrics.get("avg_latency_seconds", 0) or 0),
+                "total_cost_usd": float(cost_metrics.get("total_cost_usd", 0) or 0),
+            }
+
             data_point = TrendDataPoint(
                 timestamp=eval_model.completed_at,
                 evaluation_id=eval_model.id,
-                metrics=eval_model.summary_metrics or {},
+                metrics=combined_metrics,
                 pass_rate=eval_model.pass_rate,
             )
             trends_map[config_id].append(data_point)
@@ -100,12 +109,20 @@ class TrendAnalysisService:
         for eval_model in evaluations:
             if eval_model.completed_at is None:
                 continue
+            summary_metrics = eval_model.summary_metrics or {}
+            performance_metrics = eval_model.performance_metrics or {}
+            cost_metrics = eval_model.cost_metrics or {}
+            combined_metrics = {
+                **summary_metrics,
+                "avg_latency_seconds": float(performance_metrics.get("avg_latency_seconds", 0) or 0),
+                "total_cost_usd": float(cost_metrics.get("total_cost_usd", 0) or 0),
+            }
 
             data_points.append(
                 TrendDataPoint(
                     timestamp=eval_model.completed_at,
                     evaluation_id=eval_model.id,
-                    metrics=eval_model.summary_metrics or {},
+                    metrics=combined_metrics,
                     pass_rate=eval_model.pass_rate,
                 )
             )

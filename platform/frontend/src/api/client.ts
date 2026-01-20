@@ -393,7 +393,7 @@ export interface RunManifest {
 export interface TrendDataPoint {
   timestamp: string
   evaluation_id: string
-  metrics: Record<string, number>
+  metrics: Record<string, number | null>
   pass_rate: number | null
 }
 
