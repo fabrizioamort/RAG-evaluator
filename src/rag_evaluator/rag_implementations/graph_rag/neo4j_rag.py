@@ -30,6 +30,7 @@ class Neo4jGraphRAG(BaseRAG):
         neo4j_password: str | None = None,
         vector_index_name: str = "chunk_embeddings",
         config: RAGConfig | None = None,
+        label_prefix: str | None = None,
     ) -> None:
         """Initialize Neo4j Graph RAG.
 
@@ -39,6 +40,7 @@ class Neo4jGraphRAG(BaseRAG):
             neo4j_password: Neo4j password (defaults to settings)
             vector_index_name: Name of the vector index to use
             config: Optional RAGConfig for LLM and embedding configuration
+            label_prefix: Optional prefix for Neo4j labels and index names for isolation
         """
         super().__init__("Neo4j Graph RAG", config=config)
 
@@ -46,7 +48,11 @@ class Neo4jGraphRAG(BaseRAG):
         self.neo4j_uri = neo4j_uri or settings.neo4j_uri
         self.neo4j_username = neo4j_username or settings.neo4j_username
         self.neo4j_password = neo4j_password or settings.neo4j_password
-        self.vector_index_name = vector_index_name
+        self.label_prefix = label_prefix
+        if label_prefix and not vector_index_name.startswith(f"{label_prefix}_"):
+            self.vector_index_name = f"{label_prefix}_{vector_index_name}"
+        else:
+            self.vector_index_name = vector_index_name
 
         # Initialize Neo4j driver
         self.driver = GraphDatabase.driver(
@@ -138,6 +144,8 @@ class Neo4jGraphRAG(BaseRAG):
             neo4j_password=self.neo4j_password,
             llm_model=llm_model,
             embedding_model=embedding_model,
+            vector_index_name=self.vector_index_name,
+            label_prefix=self.label_prefix,
         )
 
         print(f"\nIndexing documents from: {documents_path}")
@@ -462,12 +470,28 @@ Answer:"""
         """
         try:
             with self.driver.session() as session:
-                # Count nodes
-                node_result = session.run("MATCH (n) RETURN count(n) as count")
-                node_count = node_result.single()["count"]  # type: ignore[index]
+                if self.label_prefix:
+                    params = {"label_prefix": self.label_prefix}
+                    node_result = session.run(
+                        "MATCH (n) "
+                        "WHERE any(label IN labels(n) WHERE label STARTS WITH $label_prefix) "
+                        "RETURN count(n) as count",
+                        params,
+                    )
+                    rel_result = session.run(
+                        "MATCH (n)-[r]->(m) "
+                        "WHERE any(label IN labels(n) WHERE label STARTS WITH $label_prefix) "
+                        "AND any(label IN labels(m) WHERE label STARTS WITH $label_prefix) "
+                        "RETURN count(r) as count",
+                        params,
+                    )
+                else:
+                    # Count nodes
+                    node_result = session.run("MATCH (n) RETURN count(n) as count")
+                    # Count relationships
+                    rel_result = session.run("MATCH ()-[r]->() RETURN count(r) as count")
 
-                # Count relationships
-                rel_result = session.run("MATCH ()-[r]->() RETURN count(r) as count")
+                node_count = node_result.single()["count"]  # type: ignore[index]
                 rel_count = rel_result.single()["count"]  # type: ignore[index]
 
                 return {

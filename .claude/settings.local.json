@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(Select-Object FullName)"
+      "Bash(Select-Object FullName)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

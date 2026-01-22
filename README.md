@@ -1,255 +1,327 @@
-# RAG Evaluator Platform
+<p align="center">
+  <img src="docs/images/logo.png" alt="RAG Evaluator Logo" width="120"/>
+</p>
+<!-- PLACEHOLDER: logo.png - A professional logo for the RAG Evaluator Platform (recommended: 120x120px PNG with transparent background) -->
 
-[![Tests](https://github.com/fabrizioamort/RAG-evaluator/workflows/Tests/badge.svg)](https://github.com/fabrizioamort/RAG-evaluator/actions)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
+<h1 align="center">RAG Evaluator Platform</h1>
 
-**The comprehensive platform for designing, testing, and evaluating Retrieval Augmented Generation (RAG) systems.**
+<p align="center">
+  <strong>The comprehensive platform for designing, testing, and evaluating Retrieval Augmented Generation systems.</strong>
+</p>
 
-RAG Evaluator provides a unified environment to experiment with different retrieval strategies, manage knowledge bases, and rigorously benchmark performance using the [DeepEval](https://github.com/confident-ai/deepeval) framework.
+<p align="center">
+  <a href="https://github.com/fabrizioamort/RAG-evaluator/actions"><img src="https://github.com/fabrizioamort/RAG-evaluator/workflows/Tests/badge.svg" alt="Tests"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/badge/code%20style-ruff-000000.svg" alt="Code style: ruff"></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker"></a>
+</p>
 
----
-
-## 🚀 Features
-
-### 🏢 Enterprise-Grade Platform
-
-- **Project Management:** Organize evaluations by project and use case.
-- **Knowledge Base Management:** Upload and index documents (PDF, DOCX, TXT) with ease.
-- **Visual Analytics:** Interactive dashboards to track performance trends over time.
-- **Metric Explainability:** Understand *why* a score is low with detailed reasoning from the LLM judge.
-
-### 🧠 Advanced RAG Architectures
-
-Compare multiple implementation strategies out-of-the-box (see [RAG Strategies Guide](docs/rag_strategies.md) for details):
-
-1. **Vector Semantic Search:** Baseline RAG using ChromaDB and OpenAI embeddings.
-2. **Hybrid Search:** Combines dense (semantic) and sparse (keyword/SPLADE) vectors using Qdrant and RRF fusion.
-3. **Graph RAG:** Leverages Neo4j knowledge graphs for structured, relationship-aware retrieval.
-4. **Filesystem RAG:** An agentic approach that navigates file structures like a human developer.
-
-### 📊 Rigorous Evaluation
-
-Powered by [DeepEval](https://github.com/confident-ai/deepeval), evaluations are fully configurable. You can select any combination of the following metrics for each run:
-
-- **Faithfulness:** Checks for "hallucinations" (information not present in your documents).
-- **Answer Relevancy:** Assesses if the answer actually addresses the prompt.
-- **Contextual Precision:** Measures the quality of the ranking in your retrieval.
-- **Contextual Recall:** Checks if the retrieval system found all the necessary information.
-- **Correctness (G-Eval):** Uses "LLM-as-a-judge" to verify semantic equivalence between the generated answer and the ground truth, ignoring minor phrasing differences.
-
-👉 **[Read the Full Metrics Guide](docs/metrics.md)** for detailed definitions and usage strategies.
+<p align="center">
+  <a href="#-features">Features</a> &bull;
+  <a href="#-quick-start">Quick Start</a> &bull;
+  <a href="#-documentation">Documentation</a> &bull;
+  <a href="#-architecture">Architecture</a> &bull;
+  <a href="#-contributing">Contributing</a>
+</p>
 
 ---
 
-## 🏗️ Architecture
+<p align="center">
+  <img src="docs/images/hero-screenshot.png" alt="RAG Evaluator Dashboard" width="800"/>
+</p>
+<!-- PLACEHOLDER: hero-screenshot.png - Main dashboard screenshot showing the platform UI (recommended: 1600x900px) -->
 
-The project consists of two main components that share the same core RAG logic:
+---
 
-1. **The Platform (Web UI):** A modern Full-Stack application (FastAPI + React) for teams and production use cases.
-2. **The CLI Tool:** A powerful command-line interface for local development, debugging, and CI/CD integration.
+## Overview
+
+RAG Evaluator Platform provides a unified environment to experiment with different retrieval strategies, manage knowledge bases, and rigorously benchmark performance using the [DeepEval](https://github.com/confident-ai/deepeval) framework.
+
+Whether you're building a chatbot, a search engine, or an AI assistant, this platform helps you:
+
+- **Compare** different RAG architectures side-by-side
+- **Measure** quality with industry-standard metrics
+- **Debug** issues with detailed explainability
+- **Track** improvements over time
+
+---
+
+## Features
+
+### Enterprise-Grade Platform
+
+<table>
+<tr>
+<td width="50%">
+
+**Project Management**
+
+Organize evaluations by project and use case. Track multiple experiments with version-controlled test sets and configurations.
+
+</td>
+<td width="50%">
+
+**Knowledge Base Management**
+
+Upload and index documents (PDF, DOCX, TXT) with ease. Build multiple indexes with different RAG strategies for comparison.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Visual Analytics**
+
+Interactive dashboards to track performance trends over time. Identify regressions early and celebrate improvements.
+
+</td>
+<td width="50%">
+
+**Metric Explainability**
+
+Understand *why* a score is low with detailed reasoning from the LLM judge. Get actionable recommendations for improvement.
+
+</td>
+</tr>
+</table>
+
+### Advanced RAG Architectures
+
+Compare multiple implementation strategies out-of-the-box:
+
+| Strategy | Database | Best For |
+|----------|----------|----------|
+| **Vector Semantic** | ChromaDB | General Q&A, semantic matching |
+| **Hybrid Search** | Qdrant | Technical docs, keyword + semantic |
+| **Graph RAG** | Neo4j | Relationship queries, multi-hop reasoning |
+| **Filesystem RAG** | Agentic | Large doc sets, "needle in haystack" |
+
+> See the [RAG Strategies Guide](docs/rag_strategies.md) for detailed architecture and configuration.
+
+### Rigorous Evaluation
+
+Powered by [DeepEval](https://github.com/confident-ai/deepeval), evaluations use LLM-as-judge methodology:
+
+| Metric | What It Measures | Key Question |
+|--------|------------------|--------------|
+| **Faithfulness** | Hallucinations | Is the answer grounded in context? |
+| **Answer Relevancy** | Utility | Does it address the question? |
+| **Contextual Precision** | Ranking | Are relevant chunks ranked first? |
+| **Contextual Recall** | Completeness | Did we find all needed info? |
+| **Correctness (G-Eval)** | Accuracy | Is it semantically correct? |
+
+> See the [Metrics Guide](docs/metrics.md) for detailed definitions and usage strategies.
+
+---
+
+## Quick Start
+
+### Option A: Web Platform (Recommended)
+
+The full-stack application for teams and production use.
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/fabrizioamort/RAG-evaluator.git
+cd RAG-evaluator
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env and set your OPENAI_API_KEY
+
+# 3. Launch with Docker
+docker-compose up -d
+```
+
+**Access:**
+- **Dashboard:** [http://localhost:3000](http://localhost:3000)
+- **API Docs:** [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs)
+
+### Option B: CLI Tool
+
+For developers and CI/CD integration.
+
+```bash
+# 1. Install dependencies
+uv sync
+
+# 2. Configure environment
+cp .env.example .env
+
+# 3. Prepare and evaluate
+uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
+uv run rag-eval evaluate --rag-type vector_semantic
+```
+
+> See the [Getting Started Guide](docs/guides/getting-started.md) for detailed tutorials.
+
+---
+
+## Architecture
+
+The platform consists of three tiers sharing a common core engine:
 
 ```mermaid
 graph TD
     User[User] -->|Web Browser| Frontend[React Frontend]
     User -->|Terminal| CLI[CLI Tool]
-    
-    Frontend -->|API| Backend[FastAPI Backend]
-    
-    subgraph "Core Engine"
+
+    Frontend -->|REST API| Backend[FastAPI Backend]
+
+    subgraph Core["Core Engine"]
         Backend --> RAG[RAG Implementations]
         CLI --> RAG
         RAG --> Eval[DeepEval Framework]
     end
-    
-    subgraph "Storage & Infrastructure"
-        RAG --> Chroma[ChromaDB]
-        RAG --> Qdrant[Qdrant]
-        RAG --> Neo4j[Neo4j]
-        Backend --> DB[(PostgreSQL/SQLite)]
+
+    subgraph Storage["Storage Layer"]
+        RAG --> Chroma[(ChromaDB)]
+        RAG --> Qdrant[(Qdrant)]
+        RAG --> Neo4j[(Neo4j)]
+        Backend --> DB[(PostgreSQL)]
     end
 ```
 
----
-
-## ⚡ Quick Start
-
-### Option A: The Platform (Recommended)
-
-Run the full stack (Frontend, Backend, Databases) using Docker.
-
-**Prerequisites:** Docker & Docker Compose.
-
-1. **Clone the repository:**
-
-    ```bash
-    git clone https://github.com/fabrizioamort/RAG-evaluator.git
-    cd RAG-evaluator
-    ```
-
-2. **Configure Environment:**
-
-    ```bash
-    cp .env.example .env
-    # Edit .env and set your OPENAI_API_KEY
-    ```
-
-3. **Launch:**
-
-    ```bash
-    docker-compose up -d
-    ```
-
-4. **Access:**
-    - **Dashboard:** [http://localhost:3000](http://localhost:3000)
-    - **API Docs:** [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs)
-
-### Option B: The CLI (For Developers)
-
-Run evaluations directly from your terminal.
-
-**Prerequisites:** Python 3.11+ and [uv](https://github.com/astral-sh/uv).
-
-1. **Install Dependencies:**
-
-    ```bash
-    uv sync
-    ```
-
-2. **Prepare Data:**
-
-    ```bash
-    # Index documents for semantic search
-    uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
-    ```
-
-3. **Run Evaluation:**
-
-    ```bash
-    uv run rag-eval evaluate --rag-type vector_semantic
-    ```
-
-See the [CLI Reference](docs/cli.md) for advanced usage.
+> See the [Architecture Documentation](docs/ARCHITECTURE.md) for detailed component diagrams and data flows.
 
 ---
 
-## 📚 Documentation
+## Documentation
 
-- **[Deployment Guide](docs/deployment.md):** Detailed production setup instructions.
-- **[RAG Strategies Guide](docs/rag_strategies.md):** Deep dive into Vector, Hybrid, Graph, and Filesystem RAG architectures.
-- **[Custom RAG Integration](docs/custom_rag_integration.md):** How to develop and integrate your own RAG system for evaluation.
-- **[API Reference](docs/api.md):** Comprehensive API documentation for the backend.
-- **[CLI Reference](docs/cli.md):** Command-line usage, flags, and advanced RAG setup (Graph, Hybrid, etc.).
-- **[Contributing](CONTRIBUTING.md):** Guide for developers wanting to add new features or RAG types.
+### Guides
+
+| Guide | Description |
+|-------|-------------|
+| [Getting Started](docs/guides/getting-started.md) | Your first evaluation in 10 minutes |
+| [Evaluation Guide](docs/guides/evaluation-guide.md) | Test design and result interpretation |
+| [UI Guide](docs/guides/ui-guide.md) | Complete walkthrough of the web interface |
+| [Configuration](docs/guides/configuration.md) | All environment variables explained |
+| [Troubleshooting](docs/guides/troubleshooting.md) | Common issues and solutions |
+| [Security](docs/guides/security.md) | Production deployment best practices |
+
+### Reference
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/ARCHITECTURE.md) | System design and component relationships |
+| [RAG Strategies](docs/rag_strategies.md) | Detailed guide to each RAG implementation |
+| [Metrics](docs/metrics.md) | Evaluation metrics deep dive |
+| [API Reference](docs/api.md) | Complete REST API documentation |
+| [CLI Reference](docs/cli.md) | Command-line usage and options |
+| [Custom RAG](docs/custom_rag_integration.md) | Build and integrate your own RAG |
+| [Deployment](docs/deployment.md) | Production deployment instructions |
 
 ---
 
-## 🔧 Configuration
-
-The system is configured via the `.env` file. Key settings include:
-
-- **LLM:** `OPENAI_API_KEY`, `OPENAI_MODEL` (default: `gpt-4-turbo-preview`)
-- **Databases:** `QDRANT_URL`, `NEO4J_URI`
-- **Evaluation:** `EVAL_FAITHFULNESS_THRESHOLD`, `DEEPEVAL_ASYNC_MODE`
-
-See `.env.example` for all available options.
-
----
-
-## 🛠️ Development
+## Development
 
 ### Prerequisites
 
 - Python 3.11+
+- Node.js 18+
 - [uv](https://github.com/astral-sh/uv) (Python package manager)
-- Node.js 18+ and npm
-- Make (optional, but recommended)
-- Docker & Docker Compose (for infrastructure)
+- Docker & Docker Compose
 
 ### Setup
 
 ```bash
-# Install all dependencies (core + backend + frontend)
+# Install all dependencies
 make install
 
-# Or install individually:
+# Or install individually
 uv sync --all-extras              # Core library
 cd platform/backend && uv sync    # Backend
 cd platform/frontend && npm install  # Frontend
 ```
 
-### Running Tests
+### Running Locally
+
+```bash
+# Start databases
+make dev-infra
+
+# Start backend (separate terminal)
+make dev-backend
+
+# Start frontend (separate terminal)
+make dev-frontend
+```
+
+### Testing
 
 ```bash
 # Run all tests
 make test
 
-# Run specific test suites
-make test-core      # Core library tests (pytest)
-make test-backend   # Backend API tests (pytest)
-make test-frontend  # Frontend tests (vitest)
+# Run specific suites
+make test-core      # Core library (pytest)
+make test-backend   # Backend API (pytest)
+make test-frontend  # Frontend (vitest)
 ```
 
-### Linting & Formatting
+### Code Quality
 
 ```bash
 # Run all linters
 make lint
 
-# Run specific linters
-make lint-core      # ruff + mypy on src/rag_evaluator
-make lint-backend   # ruff on platform/backend
-make lint-frontend  # eslint on platform/frontend
-
 # Format code
 make format
+
+# Pre-push check
+make check          # format → lint → test
 ```
 
-### Pre-Push Check
+> See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development guidelines.
 
-Run all checks before pushing:
+---
+
+## Configuration
+
+Key configuration via `.env`:
 
 ```bash
-make check          # Sequential: format → lint → test
+# Required
+OPENAI_API_KEY=sk-your-api-key
 
-# Or run in parallel (faster):
-make check-parallel -j3
+# LLM Settings
+OPENAI_MODEL=gpt-4o-mini
+EMBEDDING_MODEL=text-embedding-3-small
+
+# Database (optional - defaults to SQLite)
+DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
+
+# Vector Stores
+QDRANT_URL=http://localhost:6333
+NEO4J_URI=bolt://localhost:7687
 ```
 
-### Development Servers
+> See [Configuration Reference](docs/guides/configuration.md) for all options.
 
-```bash
-# Start infrastructure (databases)
-make dev-infra
+---
 
-# Start backend (in separate terminal)
-make dev-backend
+## Contributing
 
-# Start frontend (in separate terminal)
-make dev-frontend
-```
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for:
 
-### Available Make Targets
-
-Run `make help` to see all available commands:
-
-```
-make install          - Install all dependencies
-make test             - Run all tests
-make lint             - Run all linters
-make format           - Format code with ruff
-make check            - Run all checks (format + lint + test)
-make check-parallel   - Run independent checks in parallel
-make dev-backend      - Start backend server
-make dev-frontend     - Start frontend dev server
-make dev-infra        - Start infrastructure containers
-make clean            - Clean generated files
-```
+- Code quality standards
+- Testing requirements
+- Adding new RAG implementations
+- Pull request process
 
 ---
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+<p align="center">
+  Made with care for the RAG community
+</p>
+
+<p align="center">
+  <a href="https://github.com/fabrizioamort/RAG-evaluator/stargazers">Star us on GitHub</a>
+</p>

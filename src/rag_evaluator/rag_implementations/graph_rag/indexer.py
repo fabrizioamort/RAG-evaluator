@@ -6,6 +6,11 @@ from typing import Any
 
 from neo4j import GraphDatabase
 from neo4j_graphrag.embeddings.openai import OpenAIEmbeddings
+from neo4j_graphrag.experimental.components.types import (
+    DEFAULT_CHUNK_NODE_LABEL,
+    DEFAULT_DOCUMENT_NODE_LABEL,
+    LexicalGraphConfig,
+)
 from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
 from neo4j_graphrag.indexes import create_vector_index
 from neo4j_graphrag.llm.openai_llm import OpenAILLM
@@ -23,6 +28,8 @@ class GraphIndexer:
         neo4j_password: str,
         llm_model: str,
         embedding_model: str,
+        vector_index_name: str = "chunk_embeddings",
+        label_prefix: str | None = None,
     ) -> None:
         """Initialize the graph indexer.
 
@@ -32,12 +39,18 @@ class GraphIndexer:
             neo4j_password: Neo4j password
             llm_model: LLM model name for entity extraction
             embedding_model: Embedding model name
+            vector_index_name: Name of the Neo4j vector index
+            label_prefix: Optional prefix for Neo4j labels for isolation
         """
         self.neo4j_uri = neo4j_uri
         self.neo4j_username = neo4j_username
         self.neo4j_password = neo4j_password
         self.llm_model = llm_model
         self.embedding_model = embedding_model
+        self.vector_index_name = vector_index_name
+        self.label_prefix = label_prefix
+        self.chunk_label = self._prefix_label(DEFAULT_CHUNK_NODE_LABEL)
+        self.document_label = self._prefix_label(DEFAULT_DOCUMENT_NODE_LABEL)
 
         # Initialize Neo4j driver
         self.driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_username, neo4j_password))
@@ -47,6 +60,66 @@ class GraphIndexer:
         if hasattr(self, "driver"):
             self.driver.close()
 
+    def _prefix_label(self, label: str) -> str:
+        if not self.label_prefix:
+            return label
+        if label.startswith(f"{self.label_prefix}_"):
+            return label
+        return f"{self.label_prefix}_{label}"
+
+    def _build_schema(self) -> dict[str, Any]:
+        base_node_types = [
+            "Entity",
+            "Concept",
+            "Person",
+            "Organization",
+            "Location",
+            "Event",
+        ]
+        node_types = [self._prefix_label(node_type) for node_type in base_node_types]
+        relationship_types = [
+            "RELATED_TO",
+            "MENTIONS",
+            "PART_OF",
+            "ASSOCIATED_WITH",
+            "OCCURS_IN",
+        ]
+        patterns = [
+            (
+                self._prefix_label("Entity"),
+                "RELATED_TO",
+                self._prefix_label("Entity"),
+            ),
+            (
+                self._prefix_label("Concept"),
+                "RELATED_TO",
+                self._prefix_label("Concept"),
+            ),
+            (
+                self._prefix_label("Person"),
+                "ASSOCIATED_WITH",
+                self._prefix_label("Organization"),
+            ),
+            (
+                self._prefix_label("Event"),
+                "OCCURS_IN",
+                self._prefix_label("Location"),
+            ),
+        ]
+        return {
+            "node_types": node_types,
+            "relationship_types": relationship_types,
+            "patterns": patterns,
+        }
+
+    def _build_lexical_graph_config(self) -> LexicalGraphConfig | None:
+        if not self.label_prefix:
+            return None
+        return LexicalGraphConfig(
+            document_node_label=self.document_label,
+            chunk_node_label=self.chunk_label,
+        )
+
     def _create_vector_indexes(self) -> None:
         """Create vector indexes for semantic search on Chunk nodes."""
         try:
@@ -55,14 +128,17 @@ class GraphIndexer:
 
             create_vector_index(
                 self.driver,
-                name="chunk_embeddings",
-                label="Chunk",
+                name=self.vector_index_name,
+                label=self.chunk_label,
                 embedding_property="embedding",
                 dimensions=dimensions,
                 similarity_fn="cosine",
                 fail_if_exists=False,
             )
-            print(f"Created vector index 'chunk_embeddings' with {dimensions} dimensions")
+            print(
+                f"Created vector index '{self.vector_index_name}' "
+                f"for label '{self.chunk_label}' with {dimensions} dimensions"
+            )
         except Exception as e:
             print(f"Warning: Could not create vector index: {e}")
 
@@ -146,28 +222,15 @@ class GraphIndexer:
 
         embedder = OpenAIEmbeddings(model=self.embedding_model)
 
-        schema = {
-            "node_types": ["Entity", "Concept", "Person", "Organization", "Location", "Event"],
-            "relationship_types": [
-                "RELATED_TO",
-                "MENTIONS",
-                "PART_OF",
-                "ASSOCIATED_WITH",
-                "OCCURS_IN",
-            ],
-            "patterns": [
-                ("Entity", "RELATED_TO", "Entity"),
-                ("Concept", "RELATED_TO", "Concept"),
-                ("Person", "ASSOCIATED_WITH", "Organization"),
-                ("Event", "OCCURS_IN", "Location"),
-            ],
-        }
+        schema = self._build_schema()
+        lexical_graph_config = self._build_lexical_graph_config()
 
         kg_builder = SimpleKGPipeline(
             llm=llm,
             driver=self.driver,
             embedder=embedder,
             schema=schema,  # type: ignore[arg-type]
+            lexical_graph_config=lexical_graph_config,
             from_pdf=False,
             on_error="IGNORE",
             perform_entity_resolution=True,
@@ -215,22 +278,46 @@ class GraphIndexer:
             Dictionary with graph statistics
         """
         with self.driver.session() as session:
-            # Count nodes
-            node_result = session.run("MATCH (n) RETURN count(n) as count")
+            if self.label_prefix:
+                params = {"label_prefix": self.label_prefix}
+                node_result = session.run(
+                    "MATCH (n) "
+                    "WHERE any(label IN labels(n) WHERE label STARTS WITH $label_prefix) "
+                    "RETURN count(n) as count",
+                    params,
+                )
+                rel_result = session.run(
+                    "MATCH (n)-[r]->(m) "
+                    "WHERE any(label IN labels(n) WHERE label STARTS WITH $label_prefix) "
+                    "AND any(label IN labels(m) WHERE label STARTS WITH $label_prefix) "
+                    "RETURN count(r) as count",
+                    params,
+                )
+                label_result = session.run(
+                    """
+                    MATCH (n)
+                    WHERE any(label IN labels(n) WHERE label STARTS WITH $label_prefix)
+                    RETURN labels(n)[0] as label, count(*) as count
+                    ORDER BY count DESC
+                    """,
+                    params,
+                )
+            else:
+                # Count nodes
+                node_result = session.run("MATCH (n) RETURN count(n) as count")
+                # Count relationships
+                rel_result = session.run("MATCH ()-[r]->() RETURN count(r) as count")
+                # Get node labels distribution
+                label_result = session.run(
+                    """
+                    MATCH (n)
+                    RETURN labels(n)[0] as label, count(*) as count
+                    ORDER BY count DESC
+                    """
+                )
+
             node_count = node_result.single()["count"]  # type: ignore[index]
-
-            # Count relationships
-            rel_result = session.run("MATCH ()-[r]->() RETURN count(r) as count")
             rel_count = rel_result.single()["count"]  # type: ignore[index]
-
-            # Get node labels distribution
-            label_result = session.run(
-                """
-                MATCH (n)
-                RETURN labels(n)[0] as label, count(*) as count
-                ORDER BY count DESC
-                """
-            )
             label_dist = {record["label"]: record["count"] for record in label_result}
 
             return {
@@ -242,5 +329,14 @@ class GraphIndexer:
     def clear_graph(self) -> None:
         """Clear all nodes and relationships from the graph database."""
         with self.driver.session() as session:
-            session.run("MATCH (n) DETACH DELETE n")
-            print("Graph database cleared")
+            if self.label_prefix:
+                session.run(
+                    "MATCH (n) "
+                    "WHERE any(label IN labels(n) WHERE label STARTS WITH $label_prefix) "
+                    "DETACH DELETE n",
+                    {"label_prefix": self.label_prefix},
+                )
+                print(f"Graph database cleared for prefix: {self.label_prefix}")
+            else:
+                session.run("MATCH (n) DETACH DELETE n")
+                print("Graph database cleared")
