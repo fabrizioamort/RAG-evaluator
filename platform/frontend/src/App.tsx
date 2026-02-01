@@ -6,6 +6,7 @@ import { ProjectDetail } from './pages/ProjectDetail'
 import { KBDetail } from './pages/KBDetail'
 import { Indexes } from './pages/Indexes'
 import { IndexDetail } from './pages/IndexDetail'
+import { Playground } from './pages/Playground'
 import { NotFound } from './pages/NotFound'
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
         <Route path="knowledge-bases/:id" element={<KBDetail />} />
         <Route path="indexes" element={<Indexes />} />
         <Route path="indexes/:id" element={<IndexDetail />} />
+        <Route path="playground" element={<Playground />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

@@ -18,6 +18,7 @@ from app.models.test_case import TestCase
 from app.models.test_generation_job import TestGenerationJob
 from app.models.test_set import TestSet
 from app.models.test_template import TestTemplate
+from app.models.playground_query import PlaygroundQuery
 from app.models.webhook import Webhook
 
 __all__ = [
@@ -41,4 +42,5 @@ __all__ = [
     "EvaluationResult",
     "Comparison",
     "Webhook",
+    "PlaygroundQuery",
 ]

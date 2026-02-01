@@ -17,6 +17,7 @@ from app.api import (
     health,
     indexes,
     knowledge_bases,
+    playground,
     projects,
     rag_configs,
     test_sets,
@@ -189,6 +190,7 @@ app.include_router(evaluations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(comparisons.router, prefix=settings.API_V1_PREFIX)
 app.include_router(trends.router, prefix=settings.API_V1_PREFIX)
 app.include_router(webhooks.router, prefix=settings.API_V1_PREFIX)
+app.include_router(playground.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/")

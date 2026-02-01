@@ -27,23 +27,41 @@
 
 ---
 
-<p align="center">
-  <img src="docs/images/hero-screenshot.png" alt="RAG Evaluator Dashboard" width="800"/>
-</p>
 <!-- PLACEHOLDER: hero-screenshot.png - Main dashboard screenshot showing the platform UI (recommended: 1600x900px) -->
 
 ---
 
 ## Overview
 
-RAG Evaluator Platform provides a unified environment to experiment with different retrieval strategies, manage knowledge bases, and rigorously benchmark performance using the [DeepEval](https://github.com/confident-ai/deepeval) framework.
+RAG Evaluator Platform answers a practical question: which RAG approach is best for *your* documents and goals? There is no single "best" RAG. Performance depends on document type, query patterns, and the trade-offs you need between accuracy, latency, and cost. This platform lets you evaluate multiple RAG strategies on your own corpus, compare results side-by-side, and choose the most suitable implementation with evidence.
+
+It is designed for cross-industry use cases and supports teams that must hit real-world KPIs and SLAs: **accuracy/faithfulness targets**, **latency budgets**, and **cost-per-query constraints**. By evaluating under consistent conditions, you can make clear trade-offs and defend architectural decisions.
+
+Out of the box, it evaluates four RAG types (vector semantic, hybrid search, graph RAG, and filesystem/agentic) and supports adding custom RAG implementations. That means teams can test what already works, plug in what they want to try next, and make decisions grounded in data rather than assumptions.
+
+Key differentiators include a **production-ready web platform** plus **CLI/CI workflows**, **standardized DeepEval metrics** for repeatability, **side-by-side comparisons** across multiple retrieval strategies, and **extensibility** for custom RAG pipelines.
 
 Whether you're building a chatbot, a search engine, or an AI assistant, this platform helps you:
 
-- **Compare** different RAG architectures side-by-side
-- **Measure** quality with industry-standard metrics
-- **Debug** issues with detailed explainability
-- **Track** improvements over time
+- **Compare** different RAG architectures under consistent conditions
+- **Measure** quality, speed, and cost trade-offs with industry-standard metrics
+- **Debug** failures with detailed explainability and traceable evidence
+- **Track** improvements over time and justify architecture decisions
+
+### Who It's For
+
+- **Engineering teams** validating architectures and performance budgets
+- **Data/ML teams** optimizing accuracy, grounding, and retrieval quality
+- **Product and business leaders** deciding which approach meets cost, speed, and reliability goals
+
+> **Business Value:** Reduce time-to-decision on RAG architecture, lower operational risk, and align AI performance with cost and latency targets before scaling to production.
+
+```mermaid
+flowchart LR
+    A[Your Documents] --> B[Multiple RAG Strategies]
+    B --> C[Standardized Evaluation]
+    C --> D[Best-Fit Decision]
+```
 
 ---
 
@@ -135,6 +153,7 @@ docker-compose up -d
 ```
 
 **Access:**
+
 - **Dashboard:** [http://localhost:3000](http://localhost:3000)
 - **API Docs:** [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs)
 

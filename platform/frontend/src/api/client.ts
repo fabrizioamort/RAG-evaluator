@@ -481,6 +481,115 @@ export interface BulkReviewRequest {
   action: 'approve' | 'reject'
 }
 
+// Playground types
+export interface PlaygroundIndexInfo {
+  id: string
+  name: string
+  rag_type: string
+  knowledge_base_id: string
+  knowledge_base_name: string
+  project_id: string
+  project_name: string
+  document_count: number
+  chunk_count: number
+  status: string
+}
+
+export interface PlaygroundIndexList {
+  indexes: PlaygroundIndexInfo[]
+}
+
+export interface RetrievedChunkDetail {
+  content: string
+  document_id: string
+  chunk_id: string
+  score: number
+  rank: number
+  source: string
+  metadata: Record<string, unknown>
+}
+
+export interface RetrievalTraceStepDetail {
+  step_type: string
+  duration_ms: number
+  input_data: unknown
+  output_summary: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface RetrievalTraceDetail {
+  strategy: string
+  steps: RetrievalTraceStepDetail[]
+  total_duration_ms: number
+  fusion_details: Record<string, unknown> | null
+}
+
+export interface RetrievedContextDetail {
+  chunks: string[]
+  chunk_details: RetrievedChunkDetail[]
+}
+
+export interface QueryMetrics {
+  retrieval_time_ms: number
+  generation_time_ms: number
+  total_time_ms: number
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cost_usd: string | null
+}
+
+export interface PlaygroundQueryResult {
+  index_id: string
+  index_name: string
+  rag_type: string
+  knowledge_base_name: string
+  answer: string | null
+  retrieved_context: RetrievedContextDetail | null
+  trace: RetrievalTraceDetail | null
+  metrics: QueryMetrics | null
+  error: string | null
+  success: boolean
+}
+
+export interface PlaygroundQueryResponse {
+  query_id: string
+  question: string
+  results: PlaygroundQueryResult[]
+  created_at: string
+}
+
+export interface PlaygroundQueryRequest {
+  question: string
+  index_ids: string[]
+  top_k?: number
+}
+
+export interface PlaygroundQueryHistoryItem {
+  id: string
+  created_at: string
+  question: string
+  index_count: number
+  index_names: string[]
+  success_count: number
+  total_time_ms: number | null
+}
+
+export interface PlaygroundQueryHistoryList {
+  items: PlaygroundQueryHistoryItem[]
+  total: number
+  offset: number
+  limit: number
+}
+
+export interface PlaygroundQueryDetail {
+  id: string
+  created_at: string
+  question: string
+  top_k: number
+  results: PlaygroundQueryResult[]
+}
+
 // API functions
 export const api = {
   health: {
@@ -612,5 +721,17 @@ export const api = {
       apiClient.get<ProjectTrends>(`/projects/${projectId}/trends`),
     getRagConfigTrends: (ragConfigId: string) =>
       apiClient.get<RAGConfigTrend>(`/rag-configs/${ragConfigId}/trends`),
+  },
+  playground: {
+    getIndexes: (params?: { project_id?: string; kb_id?: string }) =>
+      apiClient.get<PlaygroundIndexList>('/playground/indexes', { params }),
+    executeQuery: (data: PlaygroundQueryRequest) =>
+      apiClient.post<PlaygroundQueryResponse>('/playground/query', data),
+    getHistory: (params?: { limit?: number; offset?: number }) =>
+      apiClient.get<PlaygroundQueryHistoryList>('/playground/history', { params }),
+    getQueryDetail: (queryId: string) =>
+      apiClient.get<PlaygroundQueryDetail>(`/playground/history/${queryId}`),
+    deleteQuery: (queryId: string) =>
+      apiClient.delete(`/playground/history/${queryId}`),
   },
 }

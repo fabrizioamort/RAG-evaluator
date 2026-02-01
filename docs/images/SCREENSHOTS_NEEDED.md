@@ -3,6 +3,7 @@
 > **Complete list of screenshots and images needed for the RAG Evaluator Platform documentation.**
 
 This document lists all the visual assets required to complete the documentation. Each entry includes:
+
 - **Filename**: Where to save the image
 - **Description**: What the image should show
 - **Dimensions**: Recommended size
@@ -13,11 +14,13 @@ This document lists all the visual assets required to complete the documentation
 ## How to Capture Screenshots
 
 ### Recommended Tools
+
 - **macOS**: Built-in Screenshot (Cmd+Shift+4) or CleanShot X
 - **Windows**: Snipping Tool (Win+Shift+S) or ShareX
 - **Linux**: Flameshot or GNOME Screenshot
 
 ### Best Practices
+
 1. Use a clean browser profile (no extensions visible)
 2. Use light mode for consistency
 3. Ensure no sensitive data is visible (API keys, passwords)
@@ -39,7 +42,7 @@ This document lists all the visual assets required to complete the documentation
 
 | # | Filename | Description | Dimensions |
 |---|----------|-------------|------------|
-| 3 | `getting-started-dashboard.png` | Empty dashboard with "Create your first project" prompt | 1200x700px |
+| 3 | `getting-started-dashboard.png` | Initial dashboard  | 1200x700px |
 | 4 | `getting-started-create-project.png` | Create project dialog with fields filled | 600x400px |
 | 5 | `getting-started-upload-docs.png` | Document upload interface with drag-drop zone active | 800x500px |
 | 6 | `getting-started-build-index.png` | Index building progress bar at ~50% | 800x400px |
@@ -163,6 +166,7 @@ For technical diagrams, consider using:
 ## File Organization
 
 Save all images to:
+
 ```
 docs/images/
 ├── logo.png
@@ -181,6 +185,7 @@ docs/images/
 Use this checklist to track progress:
 
 ### High Priority (17 images)
+
 - [ ] logo.png
 - [ ] hero-screenshot.png
 - [ ] getting-started-dashboard.png
@@ -198,6 +203,7 @@ Use this checklist to track progress:
 - [ ] getting-started-trends.png
 
 ### Medium Priority - Architecture (9 images)
+
 - [ ] architecture-overview.png
 - [ ] core-engine-architecture.png
 - [ ] backend-architecture.png
@@ -209,6 +215,7 @@ Use this checklist to track progress:
 - [ ] evaluation-pipeline.png
 
 ### Medium Priority - Eval Guide (13 images)
+
 - [ ] eval-guide-test-composition.png
 - [ ] eval-guide-test-generation.png
 - [ ] eval-guide-wizard.png
@@ -224,6 +231,7 @@ Use this checklist to track progress:
 - [ ] eval-guide-trends.png
 
 ### Medium Priority - UI Guide (39 images)
+
 - [ ] ui-dashboard-overview.png
 - [ ] ui-create-project.png
 - [ ] ui-project-detail.png
@@ -265,11 +273,13 @@ Use this checklist to track progress:
 - [ ] ui-trend-filters.png
 
 ### Low Priority (1 image)
+
 - [ ] security-network-architecture.png
 
 ---
 
 **Total: 77 images**
+
 - High Priority: 15 screenshots + 2 branding
 - Medium Priority: 61 screenshots/diagrams
 - Low Priority: 1 diagram

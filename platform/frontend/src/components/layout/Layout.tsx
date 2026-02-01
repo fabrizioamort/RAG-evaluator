@@ -6,7 +6,8 @@ import {
   GitCompare,
   TrendingUp,
   Settings,
-  Database
+  Database,
+  Beaker
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -14,6 +15,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Projects', href: '/projects', icon: FolderOpen },
   { name: 'Indexes', href: '/indexes', icon: Database },
+  { name: 'Playground', href: '/playground', icon: Beaker },
   { name: 'Evaluations', href: '/evaluations', icon: FlaskConical },
   { name: 'Comparisons', href: '/comparisons', icon: GitCompare },
   { name: 'Trends', href: '/trends', icon: TrendingUp },
