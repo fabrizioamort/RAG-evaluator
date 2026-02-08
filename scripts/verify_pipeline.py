@@ -25,7 +25,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-# ── paths (relative to project root) ────────────────────────────────────────
+# -- paths (relative to project root) ----------------------------------------
 ROOT = Path(__file__).parent.parent
 FULL_TEST_SET = ROOT / "data" / "test_set_multihop.json"
 MINI_CORPUS_DIR = ROOT / "data" / "raw" / "multihop_verify"
@@ -40,7 +40,7 @@ OPENAI_USAGE_URL = "https://platform.openai.com/usage"
 PASS_THRESHOLD = 0.60   # 60% = 3 of 5 questions
 
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+# -- helpers ------------------------------------------------------------------
 
 def confirm(prompt: str) -> bool:
     """Ask yes/no question. Returns True for 'y', exits on 'n' or Ctrl+C."""
@@ -67,9 +67,9 @@ def pause(message: str) -> None:
 
 
 def section(title: str) -> None:
-    print(f"\n{'─' * 60}")
+    print(f"\n{'-' * 60}")
     print(f"  {title}")
-    print(f"{'─' * 60}")
+    print(f"{'-' * 60}")
 
 
 def build_mini_dataset() -> None:
@@ -127,3 +127,62 @@ def build_mini_dataset() -> None:
 
     print(f"  Created corpus:   {MINI_CORPUS_DIR}/ ({len(all_sources)} articles)")
     print(f"  Created test set: {MINI_TEST_SET} (5 questions)")
+
+
+def check_qdrant_reachable() -> bool:
+    """Return True if Qdrant HTTP API responds."""
+    try:
+        req = urllib.request.Request(f"{QDRANT_URL}/healthz")
+        with urllib.request.urlopen(req, timeout=5):
+            return True
+    except Exception:
+        return False
+
+
+def check_neo4j_reachable() -> bool:
+    """Return True if Neo4j Bolt port is open."""
+    import socket
+    try:
+        host = NEO4J_URI.replace("bolt://", "").split(":")[0]
+        port = int(NEO4J_URI.split(":")[-1])
+        with socket.create_connection((host, port), timeout=5):
+            return True
+    except Exception:
+        return False
+
+
+def preflight_check(rag_type: str) -> None:
+    """Run pre-flight checks for a RAG type. Exits if checks fail."""
+    section("PRE-FLIGHT CHECK")
+
+    if rag_type == "vector_semantic":
+        print("  ChromaDB runs in-process - no Docker needed.")
+        print("  OK")
+
+    elif rag_type == "vector_hybrid":
+        print("  Qdrant requires Docker.")
+        print(f"  Start it with: docker-compose up -d qdrant")
+        confirm("  Is Qdrant running?")
+        print(f"  Checking connection to {QDRANT_URL}...")
+        if not check_qdrant_reachable():
+            print(f"  ERROR: Qdrant not reachable at {QDRANT_URL}")
+            print("  Make sure Docker is running and run: docker-compose up -d qdrant")
+            sys.exit(1)
+        print("  OK - Qdrant is reachable.")
+
+    elif rag_type == "graph_rag":
+        print("  Neo4j requires Docker.")
+        print(f"  Start it with: docker-compose up -d neo4j")
+        confirm("  Is Neo4j running?")
+        print(f"  Checking connection to {NEO4J_URI}...")
+        if not check_neo4j_reachable():
+            print(f"  ERROR: Neo4j not reachable at {NEO4J_URI}")
+            print("  Make sure Docker is running and run: docker-compose up -d neo4j")
+            sys.exit(1)
+        print("  OK - Neo4j is reachable.")
+
+    elif rag_type == "filesystem_rag":
+        print("  Filesystem RAG runs in-process - no Docker needed.")
+        print("  NOTE: This RAG makes LLM calls DURING indexing (not just evaluation).")
+        print("  Indexing 10 articles will cost ~$0.05-0.10 in OpenAI calls.")
+        print("  OK")
