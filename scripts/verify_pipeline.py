@@ -186,3 +186,51 @@ def preflight_check(rag_type: str) -> None:
         print("  NOTE: This RAG makes LLM calls DURING indexing (not just evaluation).")
         print("  Indexing 10 articles will cost ~$0.05-0.10 in OpenAI calls.")
         print("  OK")
+
+
+def run_cleanup(rag_type: str) -> None:
+    """Clean the target database for the given RAG type."""
+    section("STEP 1 - CLEANUP")
+
+    if rag_type == "vector_semantic":
+        print(f"  Will DELETE directory: {CHROMA_DIR}")
+        print("  This removes all previously indexed documents from ChromaDB.")
+        confirm("  Proceed with cleanup?")
+        if CHROMA_DIR.exists():
+            shutil.rmtree(CHROMA_DIR)
+            print(f"  Deleted: {CHROMA_DIR}")
+        else:
+            print("  Nothing to clean - directory did not exist.")
+
+    elif rag_type == "vector_hybrid":
+        print("  Qdrant auto-clears all points at the start of prepare_documents().")
+        print("  No manual cleanup needed.")
+        print("  OK - skipping cleanup step.")
+
+    elif rag_type == "graph_rag":
+        print("  Will run: MATCH (n) DETACH DELETE n  (clears all Neo4j nodes)")
+        confirm("  Proceed with cleanup?")
+        try:
+            # Import here to avoid loading heavy deps at startup
+            from rag_evaluator.config import settings
+            from rag_evaluator.rag_implementations.graph_rag.indexer import GraphIndexer
+            indexer = GraphIndexer(
+                settings.neo4j_uri,
+                settings.neo4j_username,
+                settings.neo4j_password,
+            )
+            indexer.clear_graph()
+            print("  Neo4j graph cleared.")
+        except Exception as e:
+            print(f"  ERROR during Neo4j cleanup: {e}")
+            sys.exit(1)
+
+    elif rag_type == "filesystem_rag":
+        print(f"  Will DELETE directory: {FILESYSTEM_PREPARED_DIR}")
+        print("  FilesystemRAG rebuilds this from scratch on every prepare run.")
+        confirm("  Proceed with cleanup?")
+        if FILESYSTEM_PREPARED_DIR.exists():
+            shutil.rmtree(FILESYSTEM_PREPARED_DIR)
+            print(f"  Deleted: {FILESYSTEM_PREPARED_DIR}")
+        else:
+            print("  Nothing to clean - directory did not exist.")
