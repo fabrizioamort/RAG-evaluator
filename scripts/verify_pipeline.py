@@ -234,3 +234,85 @@ def run_cleanup(rag_type: str) -> None:
             print(f"  Deleted: {FILESYSTEM_PREPARED_DIR}")
         else:
             print("  Nothing to clean - directory did not exist.")
+
+
+def run_prepare(rag_type: str) -> None:
+    """Index the mini corpus into the target RAG database."""
+    section("STEP 2 - PREPARE (index 10 articles)")
+    print(f"  Corpus:   {MINI_CORPUS_DIR}/")
+    print(f"  RAG type: {rag_type}")
+    print("  This will make OpenAI embedding API calls.")
+    if rag_type == "filesystem_rag":
+        print("  NOTE: Filesystem RAG also calls the LLM during indexing (~$0.05-0.10).")
+    confirm("  Proceed with indexing?")
+
+    cmd = [
+        "uv", "run", "rag-eval", "prepare",
+        "--rag-type", rag_type,
+        "--input-dir", str(MINI_CORPUS_DIR),
+    ]
+    print(f"\n  Running: {' '.join(cmd)}\n")
+    result = subprocess.run(cmd, cwd=ROOT)
+
+    if result.returncode != 0:
+        print(f"\n  ERROR: prepare failed (exit code {result.returncode})")
+        print("  Fix the issue above and re-run with --skip-cleanup --skip-prepare")
+        sys.exit(1)
+
+    print("\n  Prepare completed successfully.")
+    pause(
+        f"  CHECK YOUR OPENAI USAGE: {OPENAI_USAGE_URL}\n"
+        "  Note down the cost of indexing before continuing."
+    )
+
+
+def run_evaluate(rag_type: str) -> dict:
+    """Run the 5-question evaluation and return the results dict."""
+    section("STEP 3 - EVALUATE (5 questions)")
+    print(f"  Test set: {MINI_TEST_SET}")
+    print(f"  RAG type: {rag_type}")
+    print("  This will make OpenAI LLM + DeepEval API calls (~$0.02-0.05).")
+    confirm("  Proceed with evaluation?")
+
+    report_dir = ROOT / "reports" / "verify"
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        "uv", "run", "rag-eval", "evaluate",
+        "--rag-type", rag_type,
+        "--test-set", str(MINI_TEST_SET),
+        "--output", str(report_dir),
+    ]
+    print(f"\n  Running: {' '.join(cmd)}\n")
+    result = subprocess.run(cmd, cwd=ROOT)
+
+    if result.returncode != 0:
+        print(f"\n  ERROR: evaluate failed (exit code {result.returncode})")
+        print("  Fix the issue above and re-run with --skip-cleanup --skip-prepare")
+        sys.exit(1)
+
+    print("\n  Evaluation completed.")
+    pause(
+        f"  CHECK YOUR OPENAI USAGE: {OPENAI_USAGE_URL}\n"
+        "  Note down the cost of evaluation before continuing."
+    )
+
+    # Load the latest report for this RAG type from verify dir
+    import glob as _glob
+    import os
+    type_file_map = {
+        "vector_semantic": "chromadb_semantic_search",
+        "vector_hybrid": "hybrid_search",
+        "graph_rag": "neo4j_graph_rag",
+        "filesystem_rag": "filesystem_rag",
+    }
+    pattern = str(report_dir / f"eval_{type_file_map.get(rag_type, rag_type)}*.json")
+    files = _glob.glob(pattern)
+    if not files:
+        # Fallback: any eval json
+        files = _glob.glob(str(report_dir / "eval_*.json"))
+    if files:
+        latest = max(files, key=os.path.getmtime)
+        with open(latest, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
