@@ -316,3 +316,105 @@ def run_evaluate(rag_type: str) -> dict:
         with open(latest, encoding="utf-8") as f:
             return json.load(f)
     return {}
+
+
+def print_summary(rag_type: str, results: dict) -> bool:
+    """Print pass/fail summary. Returns True if PASSED."""
+    section("STEP 4 - SUMMARY")
+
+    if not results:
+        print("  Could not load evaluation results.")
+        return False
+
+    pass_rate = results.get("pass_rate", 0) / 100
+    test_count = results.get("test_cases_count", 0)
+    passed_verdict = pass_rate >= PASS_THRESHOLD
+
+    metrics = results.get("metrics_summary", {})
+
+    verdict = "PASS" if passed_verdict else "FAIL"
+    print(f"\n  +{'-' * 45}+")
+    print(f"  |  {rag_type:<43}|")
+    print(f"  |  {test_count} questions{' ' * 35}|")
+    print(f"  |  Pass rate: {int(pass_rate * test_count)}/{test_count} ({pass_rate:.0%})  ->  {verdict:<12}|")
+    print(f"  +{'-' * 45}+")
+    for key, label in [
+        ("faithfulness_avg",         "Faithfulness      "),
+        ("answer_relevancy_avg",     "Answer Relevancy  "),
+        ("contextual_recall_avg",    "Contextual Recall "),
+        ("contextual_precision_avg", "Context Precision "),
+    ]:
+        val = metrics.get(key)
+        if val is not None:
+            bar = "#" * int(val * 10) + "." * (10 - int(val * 10))
+            print(f"  |  {label} {bar}  {val:.2f}  |")
+    print(f"  +{'-' * 45}+")
+
+    if passed_verdict:
+        print("\n  RESULT: PASS - pipeline is working correctly.")
+        print("  You can proceed to the next RAG type or run the full evaluation.")
+    else:
+        print("\n  RESULT: FAIL - pass rate is below 60%.")
+        print("  This may be expected with only 5 questions.")
+        print("  Check the report in reports/verify/ for details.")
+        print("  If errors occurred (not just low scores), fix them before the full run.")
+
+    return passed_verdict
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Interactive pipeline verification for RAG Evaluator",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--rag-type",
+        required=True,
+        choices=["vector_semantic", "vector_hybrid", "graph_rag", "filesystem_rag"],
+        help="RAG type to verify",
+    )
+    parser.add_argument("--skip-cleanup", action="store_true", help="Skip cleanup step")
+    parser.add_argument("--skip-prepare", action="store_true", help="Skip prepare step")
+    parser.add_argument("--cleanup-only", action="store_true", help="Only run cleanup then exit")
+    args = parser.parse_args()
+
+    print("=" * 60)
+    print("  RAG Pipeline Verification")
+    print(f"  RAG type: {args.rag_type}")
+    print("=" * 60)
+
+    # Phase 1: build mini dataset
+    section("MINI DATASET")
+    build_mini_dataset()
+
+    # Phase 2: pre-flight
+    preflight_check(args.rag_type)
+
+    # Phase 3: cleanup
+    if not args.skip_cleanup and not args.skip_prepare:
+        run_cleanup(args.rag_type)
+    elif args.skip_cleanup:
+        print("\n  [--skip-cleanup] Skipping cleanup step.")
+
+    if args.cleanup_only:
+        print("\n  [--cleanup-only] Done.")
+        return 0
+
+    # Phase 4: prepare
+    if not args.skip_prepare:
+        run_prepare(args.rag_type)
+    else:
+        print("\n  [--skip-prepare] Skipping prepare step.")
+
+    # Phase 5: evaluate
+    results = run_evaluate(args.rag_type)
+
+    # Phase 6: summary
+    passed = print_summary(args.rag_type, results)
+
+    pause("  Review the summary above and take any notes.")
+    return 0 if passed else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
