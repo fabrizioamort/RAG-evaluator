@@ -71,3 +71,6 @@ platform/backend/storage/
 
 # Storage directories
 storage/
+
+# Git worktrees
+.worktrees/
