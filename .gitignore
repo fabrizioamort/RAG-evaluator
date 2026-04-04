@@ -24,6 +24,7 @@ data/prepared/*
 !data/prepared/.gitkeep
 data/*.json
 !data/test_set.json
+!data/test_set_verify.json
 
 # Reports
 reports/*
