@@ -653,7 +653,7 @@ export const api = {
     update: (id: string, data: Partial<TestSetCreate>) =>
       apiClient.put<TestSet>(`/test-sets/${id}`, data),
     delete: (id: string) => apiClient.delete(`/test-sets/${id}`),
-    import: (id: string, data: unknown) => apiClient.post(`/test-sets/${id}/import`, data),
+    import: (projectId: string, data: unknown) => apiClient.post(`/projects/${projectId}/test-sets/import`, data),
     export: (id: string) => apiClient.get(`/test-sets/${id}/export`, { responseType: 'blob' }),
     addCase: (testSetId: string, data: TestCaseCreate) =>
       apiClient.post<TestCase>(`/test-sets/${testSetId}/cases`, data),
