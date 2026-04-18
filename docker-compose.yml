@@ -1,27 +1,54 @@
-version: "3.8"
-
 services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: rag-evaluator-qdrant
-    ports:
-      - "6333:6333"  # HTTP API
-      - "6334:6334"  # GRPC
-    volumes:
-      - ./data/qdrant_storage:/qdrant/storage
+  postgres:
+    image: postgres:15-alpine
     environment:
-      - QDRANT__LOG_LEVEL=INFO
-    restart: unless-stopped
+      POSTGRES_USER: ${POSTGRES_USER:-rageval}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rageval}
+      POSTGRES_DB: ${POSTGRES_DB:-rageval}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rageval}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.8.4
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   neo4j:
-    image: neo4j:5-community
-    container_name: rag-evaluator-neo4j
-    ports:
-      - "7474:7474"  # HTTP
-      - "7687:7687"  # Bolt
-    volumes:
-      - ./data/neo4j_data:/data
+    image: neo4j:5.18-community
     environment:
-      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD}
-      - NEO4J_PLUGINS=["apoc"]
-    restart: unless-stopped
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/password}
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p ${NEO4J_PASSWORD:-password} 'RETURN 1' || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  neo4j_data:
