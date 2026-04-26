@@ -5,27 +5,20 @@ based on database configuration models, enabling the platform to work with all
 supported RAG types.
 """
 
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.models.rag_config import RAGConfig as RAGConfigModel
 from app.utils.logging_config import get_logger
-
-if TYPE_CHECKING:
-    from app.models.knowledge_base_index import KnowledgeBaseIndex
-
-# Add src to path for importing rag_evaluator
-src_path = Path(__file__).parent.parent.parent.parent.parent / "src"
-if str(src_path) not in sys.path:
-    sys.path.insert(0, str(src_path))
-
-from rag_evaluator.common.base_rag import BaseRAG, RAGConfig  # noqa: E402
-from rag_evaluator.common.provider_interfaces import (  # noqa: E402
+from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
+from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievedContext,
 )
+
+if TYPE_CHECKING:
+    from app.models.knowledge_base_index import KnowledgeBaseIndex
 
 logger = get_logger(__name__)
 
