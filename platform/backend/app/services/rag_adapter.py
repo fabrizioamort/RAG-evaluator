@@ -16,96 +16,16 @@ from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievedContext,
 )
+from rag_evaluator.rag_implementations.registry import (
+    RAG_TYPES,
+    RAG_TYPE_PARAMETERS,
+    get_rag_class,
+)
 
 if TYPE_CHECKING:
     from app.models.knowledge_base_index import KnowledgeBaseIndex
 
 logger = get_logger(__name__)
-
-
-# Registry of RAG types to their implementation classes
-RAG_TYPE_REGISTRY: dict[str, str] = {
-    "vector_semantic": "rag_evaluator.rag_implementations.vector_semantic.chroma_rag.ChromaSemanticRAG",
-    "vector_hybrid": "rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag.HybridSearchRAG",
-    "graph_rag": "rag_evaluator.rag_implementations.graph_rag.neo4j_rag.Neo4jGraphRAG",
-    "filesystem_rag": "rag_evaluator.rag_implementations.filesystem_rag.filesystem_rag.FilesystemRAG",
-}
-
-
-# Parameter schemas for each RAG type
-RAG_TYPE_PARAMETERS: dict[str, dict[str, Any]] = {
-    "vector_semantic": {
-        "properties": {
-            "chunk_size": {
-                "type": "integer",
-                "default": 1000,
-                "description": "Size of text chunks for indexing",
-            },
-            "chunk_overlap": {
-                "type": "integer",
-                "default": 200,
-                "description": "Overlap between chunks",
-            },
-            "collection_name": {
-                "type": "string",
-                "default": "rag_documents",
-                "description": "ChromaDB collection name",
-            },
-        },
-    },
-    "vector_hybrid": {
-        "properties": {
-            "chunk_size": {
-                "type": "integer",
-                "default": 500,
-                "description": "Size of text chunks for indexing",
-            },
-            "chunk_overlap": {
-                "type": "integer",
-                "default": 50,
-                "description": "Overlap between chunks",
-            },
-            "collection_name": {
-                "type": "string",
-                "default": "hybrid_rag",
-                "description": "Qdrant collection name",
-            },
-        },
-    },
-    "graph_rag": {
-        "properties": {
-            "vector_index_name": {
-                "type": "string",
-                "default": "chunk_embeddings",
-                "description": "Name of the Neo4j vector index",
-            },
-        },
-    },
-    "filesystem_rag": {
-        "properties": {
-            "word_threshold": {
-                "type": "integer",
-                "default": 1000,
-                "description": "Word count threshold for LLM vs heuristic analysis",
-            },
-            "max_iterations": {
-                "type": "integer",
-                "default": 10,
-                "description": "Maximum ReAct loop iterations per query",
-            },
-            "max_tool_calls": {
-                "type": "integer",
-                "default": 20,
-                "description": "Maximum tool calls per query",
-            },
-            "max_file_reads": {
-                "type": "integer",
-                "default": 10,
-                "description": "Maximum file reads per query",
-            },
-        },
-    },
-}
 
 
 class RAGAdapterService:
@@ -129,26 +49,8 @@ class RAGAdapterService:
             List of RAG type info dictionaries.
         """
         return [
-            {
-                "type": "vector_semantic",
-                "name": "Vector Semantic Search",
-                "description": "ChromaDB-based semantic vector search using embeddings",
-            },
-            {
-                "type": "vector_hybrid",
-                "name": "Hybrid Search",
-                "description": "Qdrant-based hybrid search combining dense and sparse vectors with RRF fusion",
-            },
-            {
-                "type": "graph_rag",
-                "name": "Graph RAG",
-                "description": "Neo4j-based graph RAG with entity relationships and vector search",
-            },
-            {
-                "type": "filesystem_rag",
-                "name": "Filesystem RAG",
-                "description": "LLM-guided agent that navigates a prepared filesystem structure",
-            },
+            {"type": k, "name": v["name"], "description": v["description"]}
+            for k, v in RAG_TYPES.items()
         ]
 
     def get_parameter_schema(self, rag_type: str) -> dict[str, Any]:
@@ -180,21 +82,7 @@ class RAGAdapterService:
             ValueError: If the RAG type is not supported.
             ImportError: If the RAG class cannot be imported.
         """
-        if rag_type not in RAG_TYPE_REGISTRY:
-            raise ValueError(f"Unknown RAG type: {rag_type}")
-
-        module_path = RAG_TYPE_REGISTRY[rag_type]
-        module_name, class_name = module_path.rsplit(".", 1)
-
-        try:
-            import importlib
-
-            module = importlib.import_module(module_name)
-            rag_class: type[BaseRAG] = getattr(module, class_name)
-            return rag_class
-        except (ImportError, AttributeError) as e:
-            logger.error(f"Failed to import RAG class: {module_path}", error=str(e))
-            raise ImportError(f"Failed to import RAG class: {module_path}") from e
+        return get_rag_class(rag_type)
 
     def create_rag_from_config(
         self,
@@ -351,7 +239,7 @@ class RAGAdapterService:
         )
 
         rag_type = config_snapshot.get("rag_type", "")
-        if rag_type not in RAG_TYPE_REGISTRY:
+        if rag_type not in RAG_TYPES:
             raise ValueError(f"Unknown RAG type: {rag_type}")
 
         # Get the RAG class

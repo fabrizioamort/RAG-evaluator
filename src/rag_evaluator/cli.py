@@ -10,37 +10,12 @@ from rag_evaluator.common.base_rag import BaseRAG
 from rag_evaluator.config import settings
 from rag_evaluator.evaluation.evaluator import RAGEvaluator
 from rag_evaluator.evaluation.report_generator import ReportGenerator
-from rag_evaluator.rag_implementations.filesystem_rag.filesystem_rag import FilesystemRAG
-from rag_evaluator.rag_implementations.graph_rag import Neo4jGraphRAG
-from rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag import HybridSearchRAG
-from rag_evaluator.rag_implementations.vector_semantic.chroma_rag import ChromaSemanticRAG
+from rag_evaluator.rag_implementations.registry import RAG_TYPES, get_rag_class
 
 
 def get_rag_implementation(rag_type: str) -> BaseRAG:
-    """Get RAG implementation instance by type.
-
-    Args:
-        rag_type: Type of RAG to instantiate
-
-    Returns:
-        RAG implementation instance
-
-    Raises:
-        ValueError: If rag_type is not supported
-    """
-    if rag_type == "vector_semantic":
-        return ChromaSemanticRAG()
-    elif rag_type == "vector_hybrid":
-        return HybridSearchRAG()
-    elif rag_type == "graph_rag":
-        return Neo4jGraphRAG()
-    elif rag_type == "filesystem_rag":
-        return FilesystemRAG()
-    else:
-        raise ValueError(
-            f"RAG type '{rag_type}' not yet implemented. "
-            f"Currently supported: vector_semantic, vector_hybrid, graph_rag, filesystem_rag"
-        )
+    """Get RAG implementation instance by type."""
+    return get_rag_class(rag_type)()
 
 
 def load_latest_results(reports_dir: Path, exclude_types: list[str]) -> dict[str, Any]:
@@ -350,7 +325,7 @@ Examples:
     )
     prepare_parser.add_argument(
         "--rag-type",
-        choices=["vector_semantic", "vector_hybrid", "graph_rag", "filesystem_rag"],
+        choices=list(RAG_TYPES),
         default="vector_semantic",
         help="RAG implementation type",
     )
@@ -368,7 +343,7 @@ Examples:
     )
     eval_parser.add_argument(
         "--rag-type",
-        choices=["vector_semantic", "vector_hybrid", "graph_rag", "filesystem_rag", "all"],
+        choices=list(RAG_TYPES) + ["all"],
         default="vector_semantic",
         help="RAG implementation to evaluate",
     )
