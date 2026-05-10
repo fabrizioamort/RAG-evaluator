@@ -40,7 +40,7 @@ docker-compose up -d postgres qdrant neo4j
 
 # Run Backend
 cd platform/backend
-uv run uvicorn app.main:app --reload --port 8000
+uv run python dev_server.py
 
 # Run Frontend
 cd platform/frontend

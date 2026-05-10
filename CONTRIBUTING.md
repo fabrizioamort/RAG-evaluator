@@ -101,7 +101,7 @@ docker-compose up -d postgres qdrant neo4j
 
 ```bash
 cd platform/backend
-uv run uvicorn app.main:app --reload --port 8000
+uv run python dev_server.py
 ```
 API docs will be at: `http://localhost:8000/api/v1/docs`
 

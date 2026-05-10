@@ -2,7 +2,7 @@
         test test-core test-backend test-frontend \
         lint lint-core lint-backend lint-frontend \
         format clean check check-parallel \
-        dev-backend dev-frontend dev-infra
+        dev-backend kill-backend dev-frontend dev-infra
 
 # =============================================================================
 # Help
@@ -34,7 +34,8 @@ help:
 	@echo "    make check-parallel   - Run independent checks in parallel"
 	@echo ""
 	@echo "  Development:"
-	@echo "    make dev-backend      - Start backend server (uvicorn)"
+	@echo "    make dev-backend      - Start backend server (Windows-safe launcher)"
+	@echo "    make kill-backend     - Kill the backend listener on port 8000"
 	@echo "    make dev-frontend     - Start frontend dev server (vite)"
 	@echo "    make dev-infra        - Start infrastructure (postgres, qdrant, neo4j)"
 	@echo ""
@@ -112,7 +113,10 @@ check-parallel: lint-core lint-backend lint-frontend test-core test-backend
 # =============================================================================
 
 dev-backend:
-	cd platform/backend && uv run uvicorn app.main:app --reload --port 8000
+	cd platform/backend && uv run python dev_server.py
+
+kill-backend:
+	cd platform/backend && uv run python dev_server.py --kill-port 8000
 
 dev-frontend:
 	cd platform/frontend && npm run dev

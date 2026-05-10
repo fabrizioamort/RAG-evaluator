@@ -22,7 +22,7 @@ cp .env.example .env
 # Edit .env with your API keys
 
 # Run the development server
-uv run uvicorn app.main:app --reload --port 8000
+uv run python dev_server.py
 
 # The API will be available at http://localhost:8000
 # OpenAPI docs at http://localhost:8000/api/v1/docs
