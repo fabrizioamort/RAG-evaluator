@@ -22,7 +22,7 @@ dependencies = [
     "sentence-transformers>=2.2.0",
     "deepeval>=0.21.0",
     "chromadb>=0.4.22",
-    "qdrant-client>=1.7.0",
+    "qdrant-client>=1.12.0,<1.15.0",  # Must stay within 1 minor version of Qdrant server v1.13.6
     "neo4j>=5.16.0",
     "neo4j-graphrag>=0.1.0",
     "fastembed>=0.2.0",
@@ -36,9 +36,6 @@ dependencies = [
     "unstructured>=0.12.0",
     "rag-evaluator",
 ]
-
-[tool.uv.sources]
-rag-evaluator = { path = "../../", editable = true }
 
 [project.optional-dependencies]
 dev = [
@@ -80,3 +77,6 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
+
+[tool.uv.sources]
+rag-evaluator = { path = "../../", editable = true }

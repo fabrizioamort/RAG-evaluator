@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import {
     ArrowLeft,
     Database,
@@ -192,6 +193,19 @@ function RAGConfigsTab({ projectId }: { projectId: string }) {
     const queryClient = useQueryClient()
     const { success, error } = useToast()
 
+    const getApiDetail = (err: unknown): string => {
+        if (isAxiosError(err)) {
+            const detail = err.response?.data?.detail
+            if (typeof detail === 'string' && detail.trim()) {
+                return detail
+            }
+        }
+        if (err instanceof Error && err.message) {
+            return err.message
+        }
+        return 'Please try again.'
+    }
+
     const { data, isLoading } = useQuery({
         queryKey: ['rag-configs', projectId],
         queryFn: () => api.ragConfigs.list(projectId),
@@ -205,8 +219,8 @@ function RAGConfigsTab({ projectId }: { projectId: string }) {
             success('RAG Config created', `"${response.data.name}" configuration saved.`)
             setIsDialogOpen(false)
         },
-        onError: () => {
-            error('Failed to create config', 'Please try again.')
+        onError: (err) => {
+            error('Failed to create config', getApiDetail(err))
         },
     })
 
@@ -217,8 +231,8 @@ function RAGConfigsTab({ projectId }: { projectId: string }) {
             success('Config updated', 'Configuration changes saved.')
             setIsDialogOpen(false)
         },
-        onError: () => {
-            error('Failed to update', 'Please try again.')
+        onError: (err) => {
+            error('Failed to update', getApiDetail(err))
         },
     })
 

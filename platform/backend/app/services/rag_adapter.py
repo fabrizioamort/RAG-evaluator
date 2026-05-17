@@ -8,19 +8,23 @@ supported RAG types.
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from app.config import settings
-from app.models.rag_config import RAGConfig as RAGConfigModel
-from app.utils.logging_config import get_logger
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievedContext,
 )
+from rag_evaluator.rag_implementations.graph_rag.neo4j_connection import (
+    resolve_neo4j_connection_params,
+)
 from rag_evaluator.rag_implementations.registry import (
-    RAG_TYPES,
     RAG_TYPE_PARAMETERS,
+    RAG_TYPES,
     get_rag_class,
 )
+
+from app.config import settings
+from app.models.rag_config import RAGConfig as RAGConfigModel
+from app.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
     from app.models.knowledge_base_index import KnowledgeBaseIndex
@@ -84,6 +88,20 @@ class RAGAdapterService:
         """
         return get_rag_class(rag_type)
 
+    def _resolve_graph_neo4j_connection(
+        self, params: dict[str, Any] | None
+    ) -> tuple[str, str, str]:
+        """Resolve graph_rag Neo4j params with backend settings fallback."""
+        parameters = params or {}
+        return resolve_neo4j_connection_params(
+            parameters.get("neo4j_uri"),
+            parameters.get("neo4j_username"),
+            parameters.get("neo4j_password"),
+            default_uri=settings.NEO4J_URI,
+            default_username=settings.NEO4J_USERNAME,
+            default_password=settings.NEO4J_PASSWORD,
+        )
+
     def create_rag_from_config(
         self,
         config_model: RAGConfigModel,
@@ -134,10 +152,12 @@ class RAGAdapterService:
             kwargs["vector_index_name"] = config_model.parameters.get(
                 "vector_index_name", "chunk_embeddings"
             )
-            # Neo4j connection from settings or parameters
-            kwargs["neo4j_uri"] = config_model.parameters.get("neo4j_uri")
-            kwargs["neo4j_username"] = config_model.parameters.get("neo4j_username")
-            kwargs["neo4j_password"] = config_model.parameters.get("neo4j_password")
+            neo4j_uri, neo4j_username, neo4j_password = self._resolve_graph_neo4j_connection(
+                config_model.parameters
+            )
+            kwargs["neo4j_uri"] = neo4j_uri
+            kwargs["neo4j_username"] = neo4j_username
+            kwargs["neo4j_password"] = neo4j_password
 
         elif config_model.rag_type == "filesystem_rag":
             kwargs["llm_model"] = config_model.llm_model
@@ -264,11 +284,13 @@ class RAGAdapterService:
             )
             # Add label prefix for node isolation
             kwargs["label_prefix"] = index.physical_id
-            # Neo4j connection from parameters
             params = config_snapshot.get("parameters", {})
-            kwargs["neo4j_uri"] = params.get("neo4j_uri")
-            kwargs["neo4j_username"] = params.get("neo4j_username")
-            kwargs["neo4j_password"] = params.get("neo4j_password")
+            neo4j_uri, neo4j_username, neo4j_password = self._resolve_graph_neo4j_connection(
+                params
+            )
+            kwargs["neo4j_uri"] = neo4j_uri
+            kwargs["neo4j_username"] = neo4j_username
+            kwargs["neo4j_password"] = neo4j_password
 
         elif rag_type == "filesystem_rag":
             kwargs["llm_model"] = rag_config.llm_model

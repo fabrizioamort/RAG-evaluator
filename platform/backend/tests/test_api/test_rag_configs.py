@@ -1,11 +1,13 @@
 """Tests for RAG configurations API endpoints."""
 
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.api.rag_configs as rag_configs_api
 from app.models.project import Project
 from app.models.rag_config import RAGConfig
 
@@ -126,6 +128,35 @@ class TestRAGConfigCRUD:
         assert data["llm_provider"] == "anthropic"
 
     @pytest.mark.asyncio
+    async def test_create_graph_rag_config_blank_params_use_env_fallback(
+        self, client: AsyncClient, sample_project: Project, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Blank Neo4j params should fallback to backend settings values."""
+        monkeypatch.setattr(rag_configs_api.settings, "NEO4J_URI", "bolt://env-host:7687")
+        monkeypatch.setattr(rag_configs_api.settings, "NEO4J_USERNAME", "env-user")
+        monkeypatch.setattr(rag_configs_api.settings, "NEO4J_PASSWORD", "env-pass")
+
+        payload = {
+            "name": "Graph Config",
+            "rag_type": "graph_rag",
+            "parameters": {
+                "neo4j_uri": "   ",
+                "neo4j_username": "",
+                "neo4j_password": "   ",
+            },
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+        }
+
+        with patch("app.api.rag_configs._test_neo4j_connection") as mock_connection_test:
+            response = await client.post(
+                f"/api/v1/projects/{sample_project.id}/rag-configs", json=payload
+            )
+
+        assert response.status_code == 201
+        mock_connection_test.assert_called_once_with("bolt://env-host:7687", "env-user", "env-pass")
+
+    @pytest.mark.asyncio
     async def test_create_rag_config_invalid_project(self, client: AsyncClient) -> None:
         """Test creating a RAG config for a non-existent project."""
         fake_id = uuid4()
@@ -207,6 +238,46 @@ class TestRAGConfigCRUD:
         assert data["llm_model"] == "gpt-4o"
         # Others should be unchanged
         assert data["rag_type"] == sample_rag_config.rag_type
+
+    @pytest.mark.asyncio
+    async def test_update_graph_rag_config_validates_neo4j_connection(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        sample_project: Project,
+    ) -> None:
+        """Updating graph_rag connection params should validate connectivity."""
+        graph_config = RAGConfig(
+            project_id=sample_project.id,
+            name="Graph Config",
+            rag_type="graph_rag",
+            parameters={},
+            llm_provider="openai",
+            llm_model="gpt-4o-mini",
+        )
+        db_session.add(graph_config)
+        await db_session.commit()
+        await db_session.refresh(graph_config)
+
+        payload = {
+            "parameters": {
+                "neo4j_uri": "bolt://bad-host:7687",
+                "neo4j_username": "neo4j",
+                "neo4j_password": "wrong-password",
+            }
+        }
+
+        with patch(
+            "app.api.rag_configs._test_neo4j_connection",
+            side_effect=RuntimeError("connection refused"),
+        ) as mock_connection_test:
+            response = await client.put(f"/api/v1/rag-configs/{graph_config.id}", json=payload)
+
+        assert response.status_code == 422
+        assert "cannot connect to neo4j" in response.json()["detail"].lower()
+        mock_connection_test.assert_called_once_with(
+            "bolt://bad-host:7687", "neo4j", "wrong-password"
+        )
 
     @pytest.mark.asyncio
     async def test_delete_rag_config_success(

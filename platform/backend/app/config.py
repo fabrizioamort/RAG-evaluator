@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=[".env", "../../.env"],
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # DeepEval Parallel Evaluation
     DEEPEVAL_ASYNC_MODE: bool = False
     DEEPEVAL_MAX_CONCURRENCY: int = 5
+
+    # Neo4j settings (used for graph_rag connection validation)
+    NEO4J_URI: str = "bolt://localhost:7687"
+    NEO4J_USERNAME: str = "neo4j"
+    NEO4J_PASSWORD: str = ""
 
     # Webhook settings
     WEBHOOK_MAX_PER_PROJECT: int = 3

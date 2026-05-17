@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Request, status
+from fastapi import APIRouter, BackgroundTasks, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from sse_starlette.sse import EventSourceResponse
@@ -201,17 +201,17 @@ async def get_index(
 async def delete_index(
     db: DbSession,
     index_id: UUID,
+    force: bool = Query(False, description="Delete even if evaluations reference this index"),
 ) -> None:
     """Delete an index."""
     event_log = get_job_event_log()
     service = IndexBuildService(db, event_log)
 
     try:
-        await service.delete_index(index_id)
+        await service.delete_index(index_id, force=force)
     except ValueError as e:
-        # Check if it's the dependency error
         if "evaluations" in str(e):
-            raise BadRequestError(detail=str(e))  # Should be 409 Conflict ideally
+            raise BadRequestError(detail=str(e))
         raise NotFoundError(detail=str(e))
 
 

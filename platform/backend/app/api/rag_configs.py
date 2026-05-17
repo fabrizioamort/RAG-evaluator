@@ -1,11 +1,19 @@
 """RAG configurations API endpoints."""
 
+import asyncio
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
+from rag_evaluator.rag_implementations.graph_rag.neo4j_connection import (
+    Neo4jConnectionError,
+    resolve_neo4j_connection_params,
+    test_neo4j_connection,
+)
 from sqlalchemy import func, select
 
 from app.api.deps import DbSession, Pagination
+from app.config import settings
 from app.models.project import Project
 from app.models.rag_config import RAGConfig
 from app.schemas.rag_config import (
@@ -23,6 +31,24 @@ from app.utils.logging_config import get_logger
 # We use two routers: one for project-nested resources and one for direct resource access
 router = APIRouter(tags=["RAG Configs"])
 logger = get_logger(__name__)
+
+
+def _test_neo4j_connection(uri: str, username: str, password: str) -> None:
+    """Test Neo4j connectivity and authentication. Raises on failure."""
+    test_neo4j_connection(uri, username, password)
+
+
+def _resolve_graph_neo4j_params(params: dict[str, Any] | None) -> tuple[str, str, str]:
+    """Resolve graph_rag Neo4j params using backend settings fallback."""
+    parameters = params or {}
+    return resolve_neo4j_connection_params(
+        parameters.get("neo4j_uri"),
+        parameters.get("neo4j_username"),
+        parameters.get("neo4j_password"),
+        default_uri=settings.NEO4J_URI,
+        default_username=settings.NEO4J_USERNAME,
+        default_password=settings.NEO4J_PASSWORD,
+    )
 
 
 # --- Discovery Endpoints ---
@@ -142,6 +168,24 @@ async def create_rag_config(
             detail=f"Invalid RAG type '{config_data.rag_type}'. Valid types are: {', '.join(valid_types)}",
         )
 
+    # Verify Neo4j connectivity for graph_rag configs
+    if config_data.rag_type == "graph_rag":
+        neo4j_uri, neo4j_username, neo4j_password = _resolve_graph_neo4j_params(
+            config_data.parameters
+        )
+        try:
+            await asyncio.to_thread(_test_neo4j_connection, neo4j_uri, neo4j_username, neo4j_password)
+        except Neo4jConnectionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Cannot connect to Neo4j at '{neo4j_uri}': {exc}",
+            ) from exc
+
     config = RAGConfig(
         project_id=project_id,
         name=config_data.name,
@@ -206,6 +250,25 @@ async def update_rag_config(
 
     # Update only provided fields
     update_data = config_data.model_dump(exclude_unset=True)
+
+    # Re-validate Neo4j connectivity on graph_rag parameter updates.
+    if config.rag_type == "graph_rag" and "parameters" in update_data:
+        neo4j_uri, neo4j_username, neo4j_password = _resolve_graph_neo4j_params(
+            update_data.get("parameters")
+        )
+        try:
+            await asyncio.to_thread(_test_neo4j_connection, neo4j_uri, neo4j_username, neo4j_password)
+        except Neo4jConnectionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Cannot connect to Neo4j at '{neo4j_uri}': {exc}",
+            ) from exc
+
     for field, value in update_data.items():
         setattr(config, field, value)
 

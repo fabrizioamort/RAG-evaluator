@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Any, Callable, Coroutine
 from uuid import UUID, uuid4
 
+from rag_evaluator.rag_implementations.graph_rag.neo4j_connection import (
+    resolve_neo4j_connection_params,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -271,7 +274,7 @@ class IndexBuildService:
 
             # Update index with results
             index.status = "ready"
-            index.chunk_count = metrics.get("chunk_count", 0)
+            index.chunk_count = metrics.get("chunk_count", metrics.get("total_chunks", 0))
             index.embedding_model = metrics.get("embedding_model")
             index.build_completed_at = datetime.now(timezone.utc)
 
@@ -456,23 +459,27 @@ class IndexBuildService:
             # This requires running Cypher to delete all nodes with the prefix
             try:
                 neo4j_params = index.config_snapshot.get("parameters", {})
-                neo4j_uri = neo4j_params.get("neo4j_uri")
-                neo4j_username = neo4j_params.get("neo4j_username")
-                neo4j_password = neo4j_params.get("neo4j_password")
+                neo4j_uri, neo4j_username, neo4j_password = resolve_neo4j_connection_params(
+                    neo4j_params.get("neo4j_uri"),
+                    neo4j_params.get("neo4j_username"),
+                    neo4j_params.get("neo4j_password"),
+                    default_uri=settings.NEO4J_URI,
+                    default_username=settings.NEO4J_USERNAME,
+                    default_password=settings.NEO4J_PASSWORD,
+                )
 
-                if neo4j_uri and neo4j_username and neo4j_password:
-                    from neo4j import GraphDatabase
+                from neo4j import GraphDatabase
 
-                    driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_username, neo4j_password))
-                    with driver.session() as session:
-                        # Delete all nodes with the physical_id label prefix
-                        # Note: This assumes nodes are labeled with the physical_id
-                        session.run(
-                            f"MATCH (n) WHERE any(label IN labels(n) WHERE label STARTS WITH '{index.physical_id}') "
-                            "DETACH DELETE n"
-                        )
-                    driver.close()
-                    logger.info("Deleted Neo4j nodes", prefix=index.physical_id)
+                driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_username, neo4j_password))
+                with driver.session() as session:
+                    session.run(
+                        "MATCH (n) "
+                        "WHERE any(label IN labels(n) WHERE label STARTS WITH $label_prefix) "
+                        "DETACH DELETE n",
+                        {"label_prefix": index.physical_id},
+                    )
+                driver.close()
+                logger.info("Deleted Neo4j nodes", prefix=index.physical_id)
             except ImportError:
                 logger.warning("neo4j driver not installed, cannot cleanup Neo4j nodes")
             except Exception as e:

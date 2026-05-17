@@ -18,6 +18,11 @@ from rag_evaluator.common.provider_interfaces import (
 )
 from rag_evaluator.config import settings
 from rag_evaluator.rag_implementations.graph_rag.indexer import GraphIndexer
+from rag_evaluator.rag_implementations.graph_rag.neo4j_connection import (
+    Neo4jConnectionError,
+    format_neo4j_connection_error,
+    resolve_neo4j_connection_params,
+)
 
 
 class Neo4jGraphRAG(BaseRAG):
@@ -44,20 +49,40 @@ class Neo4jGraphRAG(BaseRAG):
         """
         super().__init__("Neo4j Graph RAG", config=config)
 
-        # Use settings as defaults
-        self.neo4j_uri = neo4j_uri or settings.neo4j_uri
-        self.neo4j_username = neo4j_username or settings.neo4j_username
-        self.neo4j_password = neo4j_password or settings.neo4j_password
+        self.neo4j_uri, self.neo4j_username, self.neo4j_password = (
+            resolve_neo4j_connection_params(
+                neo4j_uri,
+                neo4j_username,
+                neo4j_password,
+                default_uri=settings.neo4j_uri,
+                default_username=settings.neo4j_username,
+                default_password=settings.neo4j_password,
+            )
+        )
         self.label_prefix = label_prefix
         if label_prefix and not vector_index_name.startswith(f"{label_prefix}_"):
             self.vector_index_name = f"{label_prefix}_{vector_index_name}"
         else:
             self.vector_index_name = vector_index_name
 
-        # Initialize Neo4j driver
+        # Initialize Neo4j driver and fail early with a clear message if unreachable.
         self.driver = GraphDatabase.driver(
-            self.neo4j_uri, auth=(self.neo4j_username, self.neo4j_password)
+            self.neo4j_uri,
+            auth=(self.neo4j_username, self.neo4j_password),
         )
+        try:
+            if hasattr(self.driver, "verify_connectivity"):
+                self.driver.verify_connectivity()
+            else:
+                with self.driver.session() as session:
+                    session.run("RETURN 1").consume()
+        except Exception as exc:
+            self.driver.close()
+            raise Neo4jConnectionError(
+                format_neo4j_connection_error(
+                    exc, uri=self.neo4j_uri, username=self.neo4j_username
+                )
+            ) from exc
 
         # Get model from config or settings
         embedding_model = self.config.embedding_model or settings.embedding_model

@@ -2,6 +2,9 @@
 
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
+
+import rag_evaluator.rag_implementations.graph_rag.neo4j_rag as neo4j_rag_module
 from rag_evaluator.rag_implementations.graph_rag import Neo4jGraphRAG
 
 
@@ -43,6 +46,67 @@ class TestNeo4jGraphRAG:
         mock_graph_db.driver.assert_called_once_with(
             "bolt://localhost:7687", auth=("neo4j", "password")
         )
+        mock_driver.verify_connectivity.assert_called_once()
+
+    @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.GraphDatabase")
+    @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.OpenAIEmbeddings")
+    @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.OpenAILLM")
+    @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.VectorCypherRetriever")
+    @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.GraphRAG")
+    def test_initialization_blank_connection_values_fallback_to_settings(
+        self,
+        mock_graph_rag: Mock,
+        mock_retriever: Mock,
+        mock_llm: Mock,
+        mock_embeddings: Mock,
+        mock_graph_db: Mock,
+    ) -> None:
+        """Blank connection params should fallback to settings values."""
+        mock_driver = MagicMock()
+        mock_graph_db.driver.return_value = mock_driver
+
+        with (
+            patch.object(neo4j_rag_module.settings, "neo4j_uri", "bolt://env-host:7687"),
+            patch.object(neo4j_rag_module.settings, "neo4j_username", "env-user"),
+            patch.object(neo4j_rag_module.settings, "neo4j_password", "env-pass"),
+        ):
+            rag = Neo4jGraphRAG(
+                neo4j_uri="   ",
+                neo4j_username="",
+                neo4j_password="   ",
+            )
+
+        assert rag.neo4j_uri == "bolt://env-host:7687"
+        assert rag.neo4j_username == "env-user"
+        assert rag.neo4j_password == "env-pass"
+        mock_graph_db.driver.assert_called_once_with(
+            "bolt://env-host:7687", auth=("env-user", "env-pass")
+        )
+
+    @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.GraphDatabase")
+    @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.OpenAIEmbeddings")
+    @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.OpenAILLM")
+    @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.VectorCypherRetriever")
+    @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.GraphRAG")
+    def test_initialization_raises_clear_error_when_neo4j_unreachable(
+        self,
+        mock_graph_rag: Mock,
+        mock_retriever: Mock,
+        mock_llm: Mock,
+        mock_embeddings: Mock,
+        mock_graph_db: Mock,
+    ) -> None:
+        """Connection failures should raise a clear Neo4j-specific error."""
+        mock_driver = MagicMock()
+        mock_driver.verify_connectivity.side_effect = RuntimeError("connection refused")
+        mock_graph_db.driver.return_value = mock_driver
+
+        with pytest.raises(RuntimeError, match="Cannot connect to Neo4j"):
+            Neo4jGraphRAG(
+                neo4j_uri="bolt://localhost:7687",
+                neo4j_username="neo4j",
+                neo4j_password="password",
+            )
 
     @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.GraphDatabase")
     @patch("rag_evaluator.rag_implementations.graph_rag.neo4j_rag.OpenAIEmbeddings")

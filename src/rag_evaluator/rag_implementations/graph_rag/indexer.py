@@ -4,7 +4,6 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from neo4j import GraphDatabase
 from neo4j_graphrag.embeddings.openai import OpenAIEmbeddings
 from neo4j_graphrag.experimental.components.types import (
     DEFAULT_CHUNK_NODE_LABEL,
@@ -16,6 +15,9 @@ from neo4j_graphrag.indexes import create_vector_index
 from neo4j_graphrag.llm.openai_llm import OpenAILLM
 
 from rag_evaluator.common.document_loaders import create_loader
+from rag_evaluator.rag_implementations.graph_rag.neo4j_connection import (
+    create_verified_neo4j_driver,
+)
 
 
 class GraphIndexer:
@@ -52,8 +54,8 @@ class GraphIndexer:
         self.chunk_label = self._prefix_label(DEFAULT_CHUNK_NODE_LABEL)
         self.document_label = self._prefix_label(DEFAULT_DOCUMENT_NODE_LABEL)
 
-        # Initialize Neo4j driver
-        self.driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_username, neo4j_password))
+        # Initialize Neo4j driver and validate connectivity/auth immediately.
+        self.driver = create_verified_neo4j_driver(neo4j_uri, neo4j_username, neo4j_password)
 
     def __del__(self) -> None:
         """Close Neo4j driver on cleanup."""

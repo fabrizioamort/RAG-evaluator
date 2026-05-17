@@ -40,9 +40,20 @@ class HybridSearchRAG(BaseRAG):
         """
         super().__init__("Hybrid Search (Semantic + Keyword)", config=config)
 
-        # Initialize Qdrant client
+        # Initialize Qdrant client — raise on version incompatibility instead of silently warning
+        import warnings
+
         self.qdrant_url = qdrant_url or settings.qdrant_url
-        self.client = QdrantClient(url=self.qdrant_url)
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            self.client = QdrantClient(url=self.qdrant_url)
+        for w in caught_warnings:
+            if "incompatible" in str(w.message).lower():
+                raise ConnectionError(
+                    f"Qdrant version mismatch: {w.message}. "
+                    "Update qdrant-client in pyproject.toml or the server image in docker-compose.yml "
+                    "so that minor versions differ by at most 1."
+                )
 
         # Initialize OpenAI client for dense embeddings
         self.openai_client = OpenAI(
