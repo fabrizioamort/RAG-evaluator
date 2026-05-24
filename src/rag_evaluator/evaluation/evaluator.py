@@ -5,19 +5,85 @@ import time
 from pathlib import Path
 from typing import Any
 
-from deepeval import evaluate
-from deepeval.evaluate import AsyncConfig
-from deepeval.metrics import (
-    AnswerRelevancyMetric,
-    ContextualPrecisionMetric,
-    ContextualRecallMetric,
-    FaithfulnessMetric,
-    GEval,
-)
-from deepeval.test_case import LLMTestCase, LLMTestCaseParams
-
 from rag_evaluator.common.base_rag import BaseRAG
 from rag_evaluator.config import settings
+
+# DeepEval is imported lazily to avoid import-time side effects during pytest collection.
+evaluate: Any | None = None
+AsyncConfig: Any | None = None
+AnswerRelevancyMetric: Any | None = None
+ContextualPrecisionMetric: Any | None = None
+ContextualRecallMetric: Any | None = None
+FaithfulnessMetric: Any | None = None
+GEval: Any | None = None
+LLMTestCase: Any | None = None
+LLMTestCaseParams: Any | None = None
+
+
+def _ensure_deepeval_loaded() -> None:
+    """Import DeepEval symbols on demand.
+
+    Imports are assigned only when the symbol is still None, so existing test patches
+    (e.g. patching FaithfulnessMetric) are preserved.
+    """
+    global evaluate
+    global AsyncConfig
+    global AnswerRelevancyMetric
+    global ContextualPrecisionMetric
+    global ContextualRecallMetric
+    global FaithfulnessMetric
+    global GEval
+    global LLMTestCase
+    global LLMTestCaseParams
+
+    if all(
+        symbol is not None
+        for symbol in (
+            evaluate,
+            AsyncConfig,
+            AnswerRelevancyMetric,
+            ContextualPrecisionMetric,
+            ContextualRecallMetric,
+            FaithfulnessMetric,
+            GEval,
+            LLMTestCase,
+            LLMTestCaseParams,
+        )
+    ):
+        return
+
+    from deepeval import evaluate as deepeval_evaluate
+    from deepeval.evaluate import AsyncConfig as deepeval_async_config
+    from deepeval.metrics import (
+        AnswerRelevancyMetric as deepeval_answer_relevancy_metric,
+        ContextualPrecisionMetric as deepeval_contextual_precision_metric,
+        ContextualRecallMetric as deepeval_contextual_recall_metric,
+        FaithfulnessMetric as deepeval_faithfulness_metric,
+        GEval as deepeval_g_eval,
+    )
+    from deepeval.test_case import (
+        LLMTestCase as deepeval_test_case,
+        LLMTestCaseParams as deepeval_test_case_params,
+    )
+
+    if evaluate is None:
+        evaluate = deepeval_evaluate
+    if AsyncConfig is None:
+        AsyncConfig = deepeval_async_config
+    if AnswerRelevancyMetric is None:
+        AnswerRelevancyMetric = deepeval_answer_relevancy_metric
+    if ContextualPrecisionMetric is None:
+        ContextualPrecisionMetric = deepeval_contextual_precision_metric
+    if ContextualRecallMetric is None:
+        ContextualRecallMetric = deepeval_contextual_recall_metric
+    if FaithfulnessMetric is None:
+        FaithfulnessMetric = deepeval_faithfulness_metric
+    if GEval is None:
+        GEval = deepeval_g_eval
+    if LLMTestCase is None:
+        LLMTestCase = deepeval_test_case
+    if LLMTestCaseParams is None:
+        LLMTestCaseParams = deepeval_test_case_params
 
 
 class RAGEvaluator:
@@ -53,6 +119,14 @@ class RAGEvaluator:
 
     def _initialize_metrics(self) -> list[Any]:
         """Initialize selected DeepEval metrics."""
+        _ensure_deepeval_loaded()
+        assert FaithfulnessMetric is not None
+        assert AnswerRelevancyMetric is not None
+        assert ContextualPrecisionMetric is not None
+        assert ContextualRecallMetric is not None
+        assert GEval is not None
+        assert LLMTestCaseParams is not None
+
         metrics: list[Any] = []
 
         if "faithfulness" in self.selected_metrics:
@@ -169,8 +243,13 @@ class RAGEvaluator:
             print(f"Test cases: {len(self.test_cases)}")
             print(f"{'=' * 60}\n")
 
+        _ensure_deepeval_loaded()
+        assert LLMTestCase is not None
+        assert AsyncConfig is not None
+        assert evaluate is not None
+
         start_time = time.time()
-        deepeval_test_cases: list[LLMTestCase] = []
+        deepeval_test_cases: list[Any] = []
         detailed_results: list[dict[str, Any]] = []
 
         def process_test_case(i_test_case: tuple[int, dict[str, Any]]) -> dict[str, Any]:

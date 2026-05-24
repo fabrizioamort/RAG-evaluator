@@ -53,6 +53,7 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+.pytest_tmp/
 .mypy_cache/
 .ruff_cache/
 .deepeval/

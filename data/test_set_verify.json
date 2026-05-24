@@ -1,0 +1,99 @@
+{
+  "metadata": {
+    "description": "Mini verification test set (5 questions) from MultiHop-RAG",
+    "source": "C:\\Users\\fabri\\projects\\RAG-evaluator\\data\\test_set_multihop.json",
+    "corpus_directory": "C:\\Users\\fabri\\projects\\RAG-evaluator\\data\\raw\\multihop_verify"
+  },
+  "test_cases": [
+    {
+      "id": "mhrag_0001",
+      "question": "Do the TechCrunch article on software companies and the Hacker News article on The Epoch Times both report an increase in revenue related to payment and subscription models, respectively?",
+      "expected_answer": "Yes",
+      "ground_truth_context": [
+        "They really just want to be able to accept payments and generate more revenue from being able to do so.",
+        "The group reported $76 million in subscription revenue in 2021, compared to nearly $7 million in 2019."
+      ],
+      "difficulty": "medium",
+      "category": "comparison",
+      "requires_multihop": true,
+      "question_type": "comparison_query",
+      "num_evidence_docs": 2,
+      "evidence_sources": [
+        "data\\raw\\multihop_rag\\075_Heres_how_Rainforest_a_budding_Stripe_rival_aims_to_win_over_software_companies.txt",
+        "data\\raw\\multihop_rag\\076_How_the_conspiracy-fueled_Epoch_Times_went_mainstream_and_made_millions.txt"
+      ]
+    },
+    {
+      "id": "mhrag_0002",
+      "question": "Does the TechCrunch article on Twitch's subscription revenue split policy indicate a different monetization strategy compared to the TechCrunch article on Beeper's plans for Beeper Mini subscriptions?",
+      "expected_answer": "Yes",
+      "ground_truth_context": [
+        "Last year, the company announced that it would end the 70/30 subscription revenue split deal that it had offered select streamers in favor of prioritizing ad revenue.",
+        "“As soon as things stabilize (we hope they will), we’ll look at turning on subscriptions again,” the blog post reads."
+      ],
+      "difficulty": "medium",
+      "category": "comparison",
+      "requires_multihop": true,
+      "question_type": "comparison_query",
+      "num_evidence_docs": 2,
+      "evidence_sources": [
+        "data\\raw\\multihop_rag\\401_Twitchs_money_guy_talks_about_the_revenue_split_controversy_and_its_monetization.txt",
+        "data\\raw\\multihop_rag\\402_Beeper_Mini_is_back_in_operation_after_Apples_attempt_to_shut_it_down.txt"
+      ]
+    },
+    {
+      "id": "mhrag_0003",
+      "question": "Does 'The New York Times' article attribute the success of the Buffalo Bills' defense to the contributions of Jordan Poyer, while the 'Sporting News' article suggests that the Baltimore Ravens' defense needs to improve before their game against the Cincinnati Bengals?",
+      "expected_answer": "Yes",
+      "ground_truth_context": [
+        "What he has done, according to former Bills defensive coordinator Les Frazier, now an analyst for NFL Network, is enable his defense to be the best it can by lifting others through versatility, sacrifice, toughness and communication.",
+        "The defense needs to pick up the pieces, too, stat, ahead of facing the Bengals on a short week."
+      ],
+      "difficulty": "medium",
+      "category": "comparison",
+      "requires_multihop": true,
+      "question_type": "comparison_query",
+      "num_evidence_docs": 2,
+      "evidence_sources": [
+        "data\\raw\\multihop_rag\\322_Alcoholism_Ayahuasca_and_the_Enlightenment_of_an_NFL_Player.txt",
+        "data\\raw\\multihop_rag\\119_NFL_power_rankings_Lions_49ers_level_up_Texans_jump_Bengals_Bills_Jets_Patriots_.txt"
+      ]
+    },
+    {
+      "id": "mhrag_0004",
+      "question": "Does 'The Age' article suggest that Australia's Davis Cup team is aiming for an improvement in their performance compared to the previous year, while the 'Sporting News' article indicates that the South Africa national rugby team has already achieved an improvement to reach the Rugby World Cup semi-finals?",
+      "expected_answer": "Yes",
+      "ground_truth_context": [
+        "“Hopefully we can go one better this year,” he added, recalling the 2-0 defeat by Canada in 2022.",
+        "England will no doubt be looking to echo the spirit of 2019, when they beat the All Blacks 19-7 to reach the final, but in South Africa, they face a side who have taken their game to new heights just to reach the semis."
+      ],
+      "difficulty": "medium",
+      "category": "comparison",
+      "requires_multihop": true,
+      "question_type": "comparison_query",
+      "num_evidence_docs": 2,
+      "evidence_sources": [
+        "data\\raw\\multihop_rag\\451_Biggest_win_of_my_career_De_Minaur_Popyrin_power_Australia_into_Davis_Cup_final.txt",
+        "data\\raw\\multihop_rag\\167_Where_to_watch_England_vs_South_Africa_Live_stream_TV_channel_lineups_odds_for_2.txt"
+      ]
+    },
+    {
+      "id": "mhrag_0005",
+      "question": "Does 'The Independent - Life and Style' article suggesting Prince William's emotional state regarding Princess Diana's death align with the same publication's depiction of the events leading up to her death in 'The Crown season six'?",
+      "expected_answer": "Yes",
+      "ground_truth_context": [
+        "After learning of Diana’s death from his father at the royal residence of Balmoral in Scotland, William (Rufus Kampa) is left heartbroken with grief and angry at his family’s response to it.",
+        "The latest installment takes place between the late 1990s to mid-2000s, and includes the lead-up to Princess Diana’s fatal Paris car crash in 1997."
+      ],
+      "difficulty": "medium",
+      "category": "comparison",
+      "requires_multihop": true,
+      "question_type": "comparison_query",
+      "num_evidence_docs": 2,
+      "evidence_sources": [
+        "data\\raw\\multihop_rag\\265_The_Crown_What_is_fact_and_what_is_fiction_on_season_6.txt",
+        "data\\raw\\multihop_rag\\266_Fans_react_to_most_heartbreaking_scene_in_The_Crown.txt"
+      ]
+    }
+  ]
+}

@@ -103,7 +103,8 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=src/rag_evaluator --cov-report=term-missing"
+addopts = "-v --cov=src/rag_evaluator --cov-report=term-missing --basetemp=.pytest_tmp -p no:deepeval -p no:langsmith_plugin"
+cache_dir = ".pytest_tmp/.pytest_cache"
 
 [dependency-groups]
 dev = [

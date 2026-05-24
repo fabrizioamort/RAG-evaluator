@@ -1,6 +1,10 @@
 """FastAPI application entrypoint."""
 
 import uuid
+import warnings
+
+# Suppress pydantic serialization warnings from litellm internal response models
+warnings.filterwarnings("ignore", message="Pydantic serializer warnings", category=UserWarning)
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
