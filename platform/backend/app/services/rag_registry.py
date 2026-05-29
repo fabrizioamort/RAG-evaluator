@@ -159,6 +159,126 @@ class RAGRegistry:
                     ),
                 ],
             ),
+            RAGTypeInfo(
+                name="rlm_rag",
+                display_name="RLM-RAG",
+                description=(
+                    "Recursive language-model RAG that explores a prepared filesystem "
+                    "with Python tools."
+                ),
+                requires_index=True,
+                parameters=[
+                    RAGTypeParameter(
+                        name="security_mode",
+                        type="string",
+                        description=(
+                            "Execution security mode. Use lite for trusted corpora; use full "
+                            "for subprocess isolation with stricter path controls."
+                        ),
+                        default="lite",
+                        choices=["lite", "full"],
+                    ),
+                    RAGTypeParameter(
+                        name="orchestrator_model",
+                        type="string",
+                        description=(
+                            "Model used for main reasoning and code generation. Leave blank "
+                            "to use the LLM Settings model."
+                        ),
+                        required=False,
+                    ),
+                    RAGTypeParameter(
+                        name="worker_model",
+                        type="string",
+                        description="Model used for summaries, topics, and sub-LLM calls.",
+                        default="gpt-5-nano",
+                    ),
+                    RAGTypeParameter(
+                        name="max_repl_steps",
+                        type="integer",
+                        description="Maximum Python exploration steps per query.",
+                        default=15,
+                        min_value=1,
+                        max_value=50,
+                    ),
+                    RAGTypeParameter(
+                        name="repl_timeout",
+                        type="float",
+                        description="Timeout in seconds for each REPL step.",
+                        default=5.0,
+                        min_value=0.1,
+                        max_value=60,
+                    ),
+                    RAGTypeParameter(
+                        name="max_file_reads",
+                        type="integer",
+                        description="Maximum file reads per query.",
+                        default=12,
+                    ),
+                    RAGTypeParameter(
+                        name="max_read_bytes",
+                        type="integer",
+                        description="Maximum bytes returned by a file read.",
+                        default=50000,
+                    ),
+                    RAGTypeParameter(
+                        name="max_read_lines",
+                        type="integer",
+                        description="Maximum lines returned by a file read.",
+                        default=1000,
+                    ),
+                    RAGTypeParameter(
+                        name="max_sub_calls",
+                        type="integer",
+                        description="Maximum recursive worker-model calls per query.",
+                        default=8,
+                    ),
+                    RAGTypeParameter(
+                        name="max_recursion_depth",
+                        type="integer",
+                        description="Maximum nested sub-LLM call depth.",
+                        default=2,
+                    ),
+                    RAGTypeParameter(
+                        name="small_corpus_threshold",
+                        type="integer",
+                        description=(
+                            "Use the simple-context fallback at or below this document count."
+                        ),
+                        default=10,
+                    ),
+                    RAGTypeParameter(
+                        name="chunk_size",
+                        type="integer",
+                        description="Preparation chunk size.",
+                        default=1000,
+                    ),
+                    RAGTypeParameter(
+                        name="chunk_overlap",
+                        type="integer",
+                        description="Preparation chunk overlap.",
+                        default=200,
+                    ),
+                    RAGTypeParameter(
+                        name="use_llm_summaries",
+                        type="boolean",
+                        description="Generate LLM summaries during preparation.",
+                        default=True,
+                    ),
+                    RAGTypeParameter(
+                        name="use_llm_topics",
+                        type="boolean",
+                        description="Extract LLM topics during preparation.",
+                        default=True,
+                    ),
+                    RAGTypeParameter(
+                        name="max_topics_per_doc",
+                        type="integer",
+                        description="Maximum topics extracted per document.",
+                        default=5,
+                    ),
+                ],
+            ),
         ]
 
     @staticmethod

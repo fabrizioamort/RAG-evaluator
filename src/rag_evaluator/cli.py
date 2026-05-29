@@ -35,6 +35,7 @@ def load_latest_results(reports_dir: Path, exclude_types: list[str]) -> dict[str
         "vector_hybrid": "hybrid_search_(semantic_+_keyword)",
         "graph_rag": "neo4j_graph_rag",
         "filesystem_rag": "filesystem_rag",
+        "rlm_rag": "rlm_filesystem_rag",
     }
 
     loaded_results = {}
@@ -147,7 +148,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
         # Handle 'all' option
         if args.rag_type == "all":
-            rag_types = ["vector_semantic", "vector_hybrid", "graph_rag", "filesystem_rag"]
+            rag_types = list(RAG_TYPES)
             print(f"\nEvaluating all RAG types: {', '.join(rag_types)}")
         else:
             rag_types = [args.rag_type]
@@ -281,6 +282,9 @@ Examples:
   # Prepare documents for Filesystem RAG
   rag-eval prepare --rag-type filesystem_rag --input-dir data/raw
 
+  # Prepare documents for RLM-RAG
+  rag-eval prepare --rag-type rlm_rag --input-dir data/raw
+
   # Evaluate ChromaDB RAG
   rag-eval evaluate --rag-type vector_semantic
 
@@ -295,6 +299,9 @@ Examples:
 
   # Evaluate Filesystem RAG
   rag-eval evaluate --rag-type filesystem_rag
+
+  # Evaluate RLM-RAG
+  rag-eval evaluate --rag-type rlm_rag
 
   # Evaluate all RAG types
   rag-eval evaluate --rag-type all

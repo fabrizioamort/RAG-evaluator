@@ -1,5 +1,6 @@
 """Tests for Neo4j parameter resolution in RAGAdapterService."""
 
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -16,6 +17,19 @@ def _graph_config_model(parameters: dict[str, object]) -> SimpleNamespace:
         parameters=parameters,
         llm_provider="openai",
         llm_model="gpt-4o-mini",
+        llm_base_url=None,
+    )
+
+
+def _rlm_config_model(parameters: dict[str, object]) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=uuid4(),
+        project_id=uuid4(),
+        name="RLM Config",
+        rag_type="rlm_rag",
+        parameters=parameters,
+        llm_provider="openai",
+        llm_model="gpt-main",
         llm_base_url=None,
     )
 
@@ -90,3 +104,77 @@ def test_create_rag_for_index_graph_uses_env_for_blank_connection_values(
     assert captured_kwargs["neo4j_username"] == "env-user"
     assert captured_kwargs["neo4j_password"] == "env-pass"
 
+
+def test_create_rag_from_config_rlm_builds_config_and_prepared_path(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """RLM configs should receive typed RLMConfig and platform-managed path."""
+    service = RAGAdapterService()
+    captured_kwargs: dict[str, object] = {}
+
+    class FakeRLMRAG:
+        def __init__(self, **kwargs: object) -> None:
+            captured_kwargs.update(kwargs)
+
+    index_path = tmp_path / "idx_123"
+    monkeypatch.setattr(service, "_get_rag_class", lambda _: FakeRLMRAG)
+
+    model = _rlm_config_model(
+        {
+            "security_mode": "full",
+            "worker_model": "gpt-worker",
+            "orchestrator_model": None,
+            "max_repl_steps": 9,
+        }
+    )
+
+    service.create_rag_from_config(model, index_path=str(index_path))
+
+    rlm_config = captured_kwargs["rlm_config"]
+    assert rlm_config.security_mode == "full"
+    assert rlm_config.orchestrator_model == "gpt-main"
+    assert rlm_config.worker_model == "gpt-worker"
+    assert rlm_config.max_repl_steps == 9
+    assert captured_kwargs["prepared_path"] == str(index_path / "rlm_rag")
+
+
+def test_create_rag_for_index_rlm_uses_physical_id_storage(
+    monkeypatch,
+) -> None:
+    """RLM index snapshots should be isolated under storage/indexes/<physical_id>/rlm_rag."""
+    service = RAGAdapterService()
+    captured_kwargs: dict[str, object] = {}
+
+    class FakeRLMRAG:
+        def __init__(self, **kwargs: object) -> None:
+            captured_kwargs.update(kwargs)
+
+    monkeypatch.setattr(service, "_get_rag_class", lambda _: FakeRLMRAG)
+    monkeypatch.setattr(rag_adapter_module.settings, "STORAGE_PATH", "storage")
+
+    index = SimpleNamespace(
+        id=uuid4(),
+        name="Index 1",
+        physical_id="idx_rlm_123",
+        config_snapshot={
+            "rag_type": "rlm_rag",
+            "parameters": {
+                "worker_model": "gpt-worker",
+                "max_file_reads": 6,
+            },
+            "llm_provider": "openai",
+            "llm_model": "gpt-main",
+            "llm_base_url": None,
+        },
+    )
+
+    service.create_rag_for_index(index)
+
+    rlm_config = captured_kwargs["rlm_config"]
+    assert rlm_config.orchestrator_model == "gpt-main"
+    assert rlm_config.worker_model == "gpt-worker"
+    assert rlm_config.max_file_reads == 6
+    assert captured_kwargs["prepared_path"] == str(
+        Path("storage") / "indexes" / "idx_rlm_123" / "rlm_rag"
+    )

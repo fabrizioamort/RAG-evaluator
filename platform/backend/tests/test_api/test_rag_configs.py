@@ -64,6 +64,14 @@ class TestDiscoveryEndpoints:
         assert "parameters" in rag_type
         assert isinstance(rag_type["parameters"], list)
 
+        rlm_type = next(t for t in data if t["name"] == "rlm_rag")
+        assert rlm_type["display_name"] == "RLM-RAG"
+        rlm_params = {p["name"]: p for p in rlm_type["parameters"]}
+        assert rlm_params["security_mode"]["choices"] == ["lite", "full"]
+        assert rlm_params["max_repl_steps"]["default"] == 15
+        assert rlm_params["max_repl_steps"]["min_value"] == 1
+        assert rlm_params["max_repl_steps"]["max_value"] == 50
+
     @pytest.mark.asyncio
     async def test_get_rag_type_parameters_success(self, client: AsyncClient) -> None:
         """Test getting parameters for a specific RAG type."""

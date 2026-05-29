@@ -24,6 +24,7 @@ const ragTypeColors: Record<string, string> = {
   vector_hybrid: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
   graph_rag: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
   filesystem_rag: 'bg-green-500/10 text-green-600 border-green-500/20',
+  rlm_rag: 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20',
 }
 
 const ragTypeLabels: Record<string, string> = {
@@ -31,6 +32,7 @@ const ragTypeLabels: Record<string, string> = {
   vector_hybrid: 'Hybrid Search',
   graph_rag: 'Graph RAG',
   filesystem_rag: 'Filesystem',
+  rlm_rag: 'RLM-RAG',
 }
 
 export function ResultCard({ result }: ResultCardProps) {

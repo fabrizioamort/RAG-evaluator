@@ -6,16 +6,10 @@ import {
   History,
   Send,
   AlertCircle,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Coins,
-  ChevronDown,
-  ChevronUp,
   Layers,
   X
 } from 'lucide-react'
-import { api, PlaygroundIndexInfo, PlaygroundQueryResult, PlaygroundQueryResponse } from '@/api/client'
+import { api, PlaygroundQueryResponse } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { IndexSelector } from '@/components/playground/IndexSelector'
 import { ResultCard } from '@/components/playground/ResultCard'
