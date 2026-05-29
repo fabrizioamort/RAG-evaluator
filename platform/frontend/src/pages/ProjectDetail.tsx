@@ -15,7 +15,8 @@ import {
     Plus,
     Play,
     ChevronRight,
-    TrendingUp
+    TrendingUp,
+    GitCompare
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, KnowledgeBaseCreate, Evaluation, RAGConfig } from '@/api/client'
@@ -32,6 +33,7 @@ import { EvaluationProgress } from '@/components/evaluations/EvaluationProgress'
 import { EvaluationResults } from '@/components/evaluations/EvaluationResults'
 import { TrendChart } from '@/components/trends/TrendChart'
 import { EfficiencyMap } from '@/components/trends/EfficiencyMap'
+import { ComparisonsTab } from '@/components/comparisons/ComparisonsTab'
 import { EditProjectDialog } from '@/components/projects/EditProjectDialog'
 
 function KnowledgeBasesTab({ projectId }: { projectId: string }) {
@@ -574,6 +576,7 @@ const tabs = [
     { id: 'tests', name: 'Test Sets', icon: FileText },
     { id: 'rags', name: 'RAG Configs', icon: Settings2 },
     { id: 'evals', name: 'Evaluations', icon: FlaskConical },
+    { id: 'compare', name: 'Comparisons', icon: GitCompare },
     { id: 'trends', name: 'Trends', icon: TrendingUp },
 ]
 
@@ -724,6 +727,7 @@ export function ProjectDetail() {
                         initialIndexId={initialIndexId}
                     />
                 )}
+                {activeTab === 'compare' && <ComparisonsTab projectId={p.id} />}
                 {activeTab === 'trends' && <TrendsTab projectId={p.id} />}
             </div>
 

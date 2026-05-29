@@ -590,6 +590,79 @@ export interface PlaygroundQueryDetail {
   results: PlaygroundQueryResult[]
 }
 
+// Comparisons
+export interface CostMetrics {
+  total_cost_usd?: number | string
+  total_prompt_tokens?: number
+  total_completion_tokens?: number
+  avg_cost_per_query?: number | string | null
+}
+
+export interface PerformanceMetrics {
+  avg_latency_seconds?: number | null
+  min_latency_seconds?: number | null
+  max_latency_seconds?: number | null
+  p95_latency_seconds?: number | null
+}
+
+export interface MetricDelta {
+  baseline_value: number | null
+  compared_value: number | null
+  absolute_delta: number | null
+  percentage_delta: number | null
+  improved: boolean | null
+}
+
+export interface EvaluationComparisonResult {
+  evaluation_id: string
+  evaluation_name?: string | null
+  rag_config_name?: string | null
+  summary_metrics?: SummaryMetrics | null
+  cost_metrics?: CostMetrics | null
+  performance_metrics?: PerformanceMetrics | null
+  pass_rate?: number | null
+}
+
+export interface PerQuestionDelta {
+  test_case_id: string
+  question?: string | null
+  baseline_result?: Record<string, unknown> | null
+  compared_results: Record<string, Record<string, unknown>>
+}
+
+export interface AggregateMetrics {
+  baseline_evaluation_id: string
+  baseline_evaluation_name?: string | null
+  baseline_rag_config_name?: string | null
+  baseline_summary?: SummaryMetrics | null
+  baseline_cost?: CostMetrics | null
+  baseline_performance?: PerformanceMetrics | null
+  baseline_pass_rate?: number | null
+  comparison_results: EvaluationComparisonResult[]
+}
+
+export interface ComparisonResponse {
+  id: string
+  project_id: string
+  name?: string | null
+  description?: string | null
+  baseline_evaluation_id: string
+  compared_evaluation_ids: string[]
+  aggregate_metrics?: AggregateMetrics | null
+  created_at: string
+}
+
+export interface ComparisonDetail extends ComparisonResponse {
+  per_question_deltas?: PerQuestionDelta[] | null
+}
+
+export interface ComparisonCreate {
+  name?: string
+  description?: string
+  baseline_evaluation_id: string
+  compared_evaluation_ids: string[]
+}
+
 // API functions
 export const api = {
   health: {
@@ -721,6 +794,15 @@ export const api = {
       apiClient.get<ProjectTrends>(`/projects/${projectId}/trends`),
     getRagConfigTrends: (ragConfigId: string) =>
       apiClient.get<RAGConfigTrend>(`/rag-configs/${ragConfigId}/trends`),
+  },
+  comparisons: {
+    list: (projectId: string, params?: { limit?: number; offset?: number }) =>
+      apiClient.get<PaginatedList<ComparisonResponse>>(`/projects/${projectId}/comparisons`, { params }),
+    get: (id: string) => apiClient.get<ComparisonDetail>(`/comparisons/${id}`),
+    create: (data: ComparisonCreate) => apiClient.post<ComparisonResponse>('/comparisons', data),
+    delete: (id: string) => apiClient.delete(`/comparisons/${id}`),
+    listForEvaluation: (evaluationId: string, params?: { limit?: number; offset?: number }) =>
+      apiClient.get<PaginatedList<ComparisonResponse>>(`/evaluations/${evaluationId}/comparisons`, { params }),
   },
   playground: {
     getIndexes: (params?: { project_id?: string; kb_id?: string }) =>
