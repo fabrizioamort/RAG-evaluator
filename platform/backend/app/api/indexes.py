@@ -1,5 +1,8 @@
 """Knowledge Base Index API endpoints."""
 
+import json
+from datetime import datetime, timezone
+from typing import Any, AsyncGenerator
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Query, Request, status
@@ -234,7 +237,15 @@ async def stream_index_build(
 
     event_log = get_job_event_log()
 
-    return EventSourceResponse(event_log.subscribe(index_id))
+    async def event_generator() -> AsyncGenerator[dict[str, Any], None]:
+        async for event in event_log.subscribe(index_id):
+            yield {
+                "event": event.get("event_type", "message"),
+                "id": str(datetime.now(timezone.utc).timestamp()),
+                "data": json.dumps(event),
+            }
+
+    return EventSourceResponse(event_generator())
 
 
 @router.post(

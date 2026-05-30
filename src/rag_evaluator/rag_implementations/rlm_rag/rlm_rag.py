@@ -399,6 +399,15 @@ class RLMFilesystemRAG(BaseRAG):
             },
         }
 
+    def query_with_trace(self, question: str, top_k: int = 5) -> dict[str, Any]:
+        result = self.query(question, top_k)
+        return {
+            "answer": result["answer"],
+            "context": result["context"],
+            "metadata": result["metadata"],
+            "retrieval_trace": result["metadata"].get("trace", {}),
+        }
+
     def query_stream(
         self, question: str, top_k: int = 5
     ) -> Generator[StreamEvent, None, dict[str, Any]]:

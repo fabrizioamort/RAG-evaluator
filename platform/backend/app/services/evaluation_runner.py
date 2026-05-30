@@ -270,6 +270,10 @@ class EvaluationRunner:
                 if index.status != "ready":
                     raise ValueError(f"Index is not ready: {index.status}")
                 rag = self.rag_adapter.create_rag_for_index(index)
+                documents_path = index.knowledge_base.storage_path
+                if not documents_path:
+                    raise ValueError("Knowledge base has no storage path")
+                await self.rag_adapter.prepare_documents(rag, documents_path)
                 llm_model = index.config_snapshot.get("llm_model", "gpt-4o-mini")
             else:
                 # Fallback to legacy KB + RAG config approach
