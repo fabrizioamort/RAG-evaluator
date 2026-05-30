@@ -166,7 +166,11 @@ class Neo4jGraphRAG(BaseRAG):
         Args:
             documents_path: Path to the directory containing documents
         """
-        llm_model = self.config.llm_model or settings.openai_model
+        llm_model = (
+            self.config.parameters.get("extraction_model")
+            or self.config.llm_model
+            or settings.openai_model
+        )
         embedding_model = self.config.embedding_model or settings.embedding_model
 
         indexer = GraphIndexer(

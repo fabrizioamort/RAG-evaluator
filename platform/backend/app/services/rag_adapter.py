@@ -5,6 +5,10 @@ based on database configuration models, enabling the platform to work with all
 supported RAG types.
 """
 
+import hashlib
+import json
+from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -13,13 +17,16 @@ from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievedContext,
 )
+from rag_evaluator.config import settings as core_settings
 from rag_evaluator.rag_implementations.graph_rag.neo4j_connection import (
     resolve_neo4j_connection_params,
 )
 from rag_evaluator.rag_implementations.registry import (
-    RAG_TYPE_PARAMETERS,
     RAG_TYPES,
+    get_parameter_schema,
     get_rag_class,
+    split_parameters,
+    validate_query_overrides,
 )
 from rag_evaluator.rag_implementations.rlm_rag.rlm_rag import rlm_config_from_rag_config
 
@@ -31,6 +38,17 @@ if TYPE_CHECKING:
     from app.models.knowledge_base_index import KnowledgeBaseIndex
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class EffectiveRAGConfig:
+    """Resolved configuration used to query an existing index."""
+
+    build_config_snapshot: dict[str, Any]
+    query_overrides: dict[str, Any]
+    effective_config_snapshot: dict[str, Any]
+    top_k: int
+    generation_model: str
 
 
 class RAGAdapterService:
@@ -70,9 +88,7 @@ class RAGAdapterService:
         Raises:
             ValueError: If the RAG type is not supported.
         """
-        if rag_type not in RAG_TYPE_PARAMETERS:
-            raise ValueError(f"Unknown RAG type: {rag_type}")
-        return RAG_TYPE_PARAMETERS[rag_type]
+        return get_parameter_schema(rag_type)
 
     def _get_rag_class(self, rag_type: str) -> type[BaseRAG]:
         """Dynamically import and return the RAG class for a type.
@@ -128,6 +144,7 @@ class RAGAdapterService:
             llm_provider=config_model.llm_provider,
             llm_model=config_model.llm_model,
             llm_base_url=config_model.llm_base_url,
+            embedding_model=getattr(config_model, "embedding_model", "text-embedding-3-small"),
         )
 
         # Get the RAG class
@@ -238,8 +255,12 @@ class RAGAdapterService:
                 instance.close()
             self._rag_instances.clear()
 
+    def create_rag_for_index_build(self, index: "KnowledgeBaseIndex") -> BaseRAG:
+        """Create a RAG instance for building a KnowledgeBaseIndex."""
+        return self._create_rag_for_index_snapshot(index, index.config_snapshot)
+
     def create_rag_for_index(self, index: "KnowledgeBaseIndex") -> BaseRAG:
-        """Create a RAG instance configured for a specific KnowledgeBaseIndex.
+        """Create a RAG instance from an index snapshot.
 
         Uses the index's physical_id for storage isolation and the
         config_snapshot for reproducibility.
@@ -252,9 +273,19 @@ class RAGAdapterService:
 
         Raises:
             ValueError: If the RAG type is not supported.
+
+        This compatibility method does not call ``load_index``. New build code
+        should call ``create_rag_for_index_build`` and query code should call
+        ``load_rag_for_index_query``.
         """
-        # Build RAGConfig from the frozen snapshot
-        config_snapshot = index.config_snapshot
+        return self._create_rag_for_index_snapshot(index, index.config_snapshot)
+
+    def _create_rag_for_index_snapshot(
+        self,
+        index: "KnowledgeBaseIndex",
+        config_snapshot: dict[str, Any],
+    ) -> BaseRAG:
+        """Create a RAG instance configured with a provided index config snapshot."""
         storage_path = self._get_index_storage_path(index)
 
         rag_config = RAGConfig(
@@ -264,6 +295,7 @@ class RAGAdapterService:
             llm_provider=config_snapshot.get("llm_provider", "openai"),
             llm_model=config_snapshot.get("llm_model", "gpt-4o-mini"),
             llm_base_url=config_snapshot.get("llm_base_url"),
+            embedding_model=config_snapshot.get("embedding_model", "text-embedding-3-small"),
         )
 
         rag_type = config_snapshot.get("rag_type", "")
@@ -321,6 +353,88 @@ class RAGAdapterService:
         )
 
         return rag_class(**kwargs)
+
+    def build_effective_config(
+        self,
+        index: "KnowledgeBaseIndex",
+        query_overrides: dict[str, Any] | None = None,
+    ) -> EffectiveRAGConfig:
+        """Build and validate the effective query config for an existing index."""
+        build_snapshot = deepcopy(index.config_snapshot or {})
+        rag_type = build_snapshot.get("rag_type")
+        if not rag_type:
+            raise ValueError("Index config snapshot is missing `rag_type`")
+
+        build_snapshot["parameters"] = dict(build_snapshot.get("parameters") or {})
+        build_snapshot.setdefault("llm_provider", "openai")
+        build_snapshot.setdefault("llm_model", "gpt-4o-mini")
+        build_snapshot.setdefault("llm_base_url", None)
+        build_snapshot.setdefault(
+            "embedding_model",
+            getattr(index, "embedding_model", None) or "text-embedding-3-small",
+        )
+        if rag_type == "graph_rag":
+            build_snapshot["parameters"].setdefault(
+                "extraction_model", build_snapshot["llm_model"]
+            )
+        if rag_type == "vector_hybrid":
+            build_snapshot["parameters"].setdefault(
+                "sparse_model_name", core_settings.sparse_model_name
+            )
+
+        normalized_overrides = validate_query_overrides(rag_type, query_overrides)
+        effective_snapshot = deepcopy(build_snapshot)
+
+        build_parameters, query_default_parameters = split_parameters(
+            rag_type, build_snapshot.get("parameters", {})
+        )
+        effective_parameters = {
+            **build_parameters,
+            **query_default_parameters,
+            **normalized_overrides.get("parameters", {}),
+        }
+        effective_snapshot["parameters"] = effective_parameters
+        effective_snapshot["build_parameters"] = build_parameters
+        effective_snapshot["query_default_parameters"] = query_default_parameters
+
+        if normalized_overrides.get("llm_model"):
+            effective_snapshot["llm_model"] = normalized_overrides["llm_model"]
+            if (
+                rag_type == "rlm_rag"
+                and "orchestrator_model" not in normalized_overrides.get("parameters", {})
+            ):
+                effective_parameters["orchestrator_model"] = normalized_overrides["llm_model"]
+
+        top_k = int(normalized_overrides.get("top_k", 5))
+        generation_model = effective_snapshot.get("llm_model", "gpt-4o-mini")
+        effective_snapshot["query_execution"] = {"top_k": top_k}
+
+        return EffectiveRAGConfig(
+            build_config_snapshot=build_snapshot,
+            query_overrides=normalized_overrides,
+            effective_config_snapshot=effective_snapshot,
+            top_k=top_k,
+            generation_model=generation_model,
+        )
+
+    def load_rag_for_index_query(
+        self,
+        index: "KnowledgeBaseIndex",
+        query_overrides: dict[str, Any] | None = None,
+    ) -> tuple[BaseRAG, EffectiveRAGConfig]:
+        """Load a ready index for querying without calling preparation methods."""
+        effective = self.build_effective_config(index, query_overrides)
+        rag = self._create_rag_for_index_snapshot(index, effective.effective_config_snapshot)
+        rag.load_index()
+        return rag, effective
+
+    def query_instance_cache_key(
+        self, index: "KnowledgeBaseIndex", effective: EffectiveRAGConfig
+    ) -> str:
+        """Return a stable cache key for an index/effective config pair."""
+        payload = json.dumps(effective.effective_config_snapshot, sort_keys=True, default=str)
+        digest = hashlib.sha256(payload.encode()).hexdigest()[:16]
+        return f"{index.physical_id}:{digest}"
 
     def _get_index_storage_path(self, index: "KnowledgeBaseIndex") -> Path:
         """Get the storage path for a KnowledgeBaseIndex.

@@ -19,7 +19,9 @@ function flattenManifest(manifest: RunManifest | undefined): Record<string, stri
     add('Generation model', manifest.generation_model)
     add('Judge model', manifest.eval_judge_model)
     add('Evaluator version', manifest.rag_evaluator_version)
-    Object.entries(manifest.rag_config_snapshot ?? {}).forEach(([k, v]) => add(`RAG: ${k}`, v))
+    Object.entries(manifest.build_config_snapshot ?? {}).forEach(([k, v]) => add(`Build: ${k}`, v))
+    Object.entries(manifest.query_overrides ?? {}).forEach(([k, v]) => add(`Override: ${k}`, v))
+    Object.entries(manifest.effective_config_snapshot ?? manifest.rag_config_snapshot ?? {}).forEach(([k, v]) => add(`Effective: ${k}`, v))
     Object.entries(manifest.kb_version_snapshot ?? {}).forEach(([k, v]) => add(`KB: ${k}`, v))
     return out
 }
@@ -71,7 +73,11 @@ export function ConfigDiff({ members }: ConfigDiffProps) {
                             <tr key={key} className={cn('border-b border-border/60 last:border-0', differs && 'bg-amber-500/5')}>
                                 <td className="sticky left-0 z-10 bg-card px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
                                     {key}
-                                    {differs && <span className="ml-1.5 rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-bold text-amber-600">diff</span>}
+                                    {differs && (
+                                        <span className="ml-1.5 rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-bold text-amber-600">
+                                            {key.startsWith('Build:') ? 'new index' : 'diff'}
+                                        </span>
+                                    )}
                                 </td>
                                 {values.map((v, i) => (
                                     <td key={members[i].id} className={cn('px-4 py-2.5 text-xs', differs ? 'font-semibold' : 'text-muted-foreground')}>

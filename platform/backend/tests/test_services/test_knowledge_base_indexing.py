@@ -130,6 +130,9 @@ async def test_create_index_success(
     assert index.physical_id.startswith("idx_")
     assert index.storage_type == "chroma"  # vector_semantic -> chroma
     assert "rag_type" in index.config_snapshot
+    assert index.config_snapshot["embedding_model"] == "text-embedding-3-small"
+    assert "build_parameters" in index.config_snapshot
+    assert "query_default_parameters" in index.config_snapshot
 
 
 @pytest.mark.asyncio
@@ -186,7 +189,7 @@ async def test_build_index_success(
     # Mock the RAG adapter
     mock_rag = MagicMock()
     mock_adapter = MagicMock()
-    mock_adapter.create_rag_for_index.return_value = mock_rag
+    mock_adapter.create_rag_for_index_build.return_value = mock_rag
     mock_adapter.prepare_documents = AsyncMock(return_value={"chunk_count": 10})
 
     with patch.object(service, "rag_adapter", mock_adapter):
@@ -222,7 +225,7 @@ async def test_build_index_failure(
     # Mock the RAG adapter to fail
     mock_rag = MagicMock()
     mock_adapter = MagicMock()
-    mock_adapter.create_rag_for_index.return_value = mock_rag
+    mock_adapter.create_rag_for_index_build.return_value = mock_rag
     mock_adapter.prepare_documents = AsyncMock(side_effect=Exception("Indexing failed"))
 
     with patch.object(service, "rag_adapter", mock_adapter):

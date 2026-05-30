@@ -161,8 +161,9 @@ database if you need to preserve evaluation history.
 
 ## Provider Selection In The Platform
 
-RAG configurations store provider, model, optional `llm_base_url`, and RAG-specific
-parameters. The platform currently exposes provider metadata for:
+RAG configurations store provider, default generation model, embedding model, optional
+`llm_base_url`, and RAG-specific parameters. The platform currently exposes provider
+metadata for:
 
 - OpenAI
 - OpenRouter
@@ -170,6 +171,21 @@ parameters. The platform currently exposes provider metadata for:
 - Ollama
 
 Actual availability depends on the matching environment variables and local services.
+
+For web-platform runs, build-time settings are copied into the index snapshot when an
+index is created. This includes `embedding_model` and any RAG-specific build parameters
+such as chunking, sparse model, graph extraction model, or preparation controls.
+Changing those values requires building a new index.
+
+Evaluation and playground requests may provide query-time overrides. Supported
+top-level overrides are:
+
+- `llm_model`: RAG generation or orchestration model.
+- `top_k`: retrieval count passed to query execution.
+- `parameters`: RAG-type-specific query-phase controls.
+
+The DeepEval judge model is configured separately on evaluations through
+`eval_judge_model`; it defaults to the effective RAG generation model when omitted.
 
 ## Common Local Profiles
 

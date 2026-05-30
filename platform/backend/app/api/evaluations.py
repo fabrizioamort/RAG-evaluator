@@ -32,6 +32,7 @@ from app.schemas.evaluation import (
 from app.services.artifact_store import get_artifact_store
 from app.services.evaluation_runner import EvaluationRunner, get_evaluation_runner
 from app.services.job_event_log import get_job_event_log
+from app.services.rag_adapter import get_rag_adapter_service
 from app.utils.logging_config import get_logger
 
 router = APIRouter(tags=["Evaluations"])
@@ -85,6 +86,8 @@ def _evaluation_to_response(eval_model: Evaluation, result_count: int = 0) -> Ev
         baseline_reason=eval_model.baseline_reason,
         notes=eval_model.notes,
         tags=eval_model.tags if isinstance(eval_model.tags, list) else [],
+        query_overrides=eval_model.query_overrides or {},
+        eval_judge_model=eval_model.eval_judge_model,
         error_message=eval_model.error_message,
         created_at=eval_model.created_at,
         metric_config=eval_model.metric_config,
@@ -145,26 +148,36 @@ async def create_evaluation(
     if not test_set:
         raise HTTPException(status_code=404, detail="Test Set not found in project")
 
-    # 3. Create Run Manifest (Snapshot)
-    # Get configuration from index snapshot
-    config_snapshot = index.config_snapshot
+    # 3. Validate overrides and create run manifest snapshots
+    rag_adapter = get_rag_adapter_service()
+    raw_query_overrides = (
+        evaluation_data.query_overrides.model_dump(exclude_none=True)
+        if evaluation_data.query_overrides
+        else {}
+    )
+    try:
+        effective = rag_adapter.build_effective_config(index, raw_query_overrides)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    eval_judge_model = evaluation_data.eval_judge_model or effective.generation_model
 
     manifest = RunManifest(
         rag_config_snapshot={
             "id": str(index.rag_config_id),
             "name": index.name,  # Using Index name as proxy for run config name context
-            "rag_type": config_snapshot.get("rag_type"),
-            "parameters": config_snapshot.get("parameters"),
-            "llm_provider": config_snapshot.get("llm_provider"),
-            "llm_model": config_snapshot.get("llm_model"),
+            **effective.effective_config_snapshot,
         },
+        build_config_snapshot=effective.build_config_snapshot,
+        query_overrides=effective.query_overrides,
+        effective_config_snapshot=effective.effective_config_snapshot,
         kb_version_snapshot={
             "kb_version_id": str(index.kb_version_id) if index.kb_version_id else None,
             "document_count": index.document_count,
             # We assume KB snapshot at index build time is what matters
         },
-        generation_model=config_snapshot.get("llm_model"),
-        eval_judge_model=config_snapshot.get("llm_model"),  # Using same model as judge for now
+        generation_model=effective.generation_model,
+        eval_judge_model=eval_judge_model,
         rag_evaluator_version="0.1.0",
         platform_version="0.1.0",
     )
@@ -203,6 +216,8 @@ async def create_evaluation(
         notes=evaluation_data.notes,
         tags=evaluation_data.tags,
         metric_config=metric_config,
+        query_overrides=effective.query_overrides,
+        eval_judge_model=eval_judge_model,
     )
     if not evaluation.test_set_id:
         evaluation.test_set_id = test_set.id
@@ -385,6 +400,9 @@ async def get_evaluation_manifest(
     return RunManifestResponse(
         id=manifest.id,
         rag_config_snapshot=manifest.rag_config_snapshot,
+        build_config_snapshot=manifest.build_config_snapshot,
+        query_overrides=manifest.query_overrides,
+        effective_config_snapshot=manifest.effective_config_snapshot,
         kb_version_snapshot=manifest.kb_version_snapshot,
         generation_model=manifest.generation_model,
         eval_judge_model=manifest.eval_judge_model,

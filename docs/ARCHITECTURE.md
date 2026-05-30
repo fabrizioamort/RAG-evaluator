@@ -78,6 +78,9 @@ def get_metrics(self) -> dict[str, Any]:
 
 Recommended optional methods:
 
+- `load_index()` attaches to an existing prepared index without mutating build
+  artifacts. The default implementation is a no-op for implementations that already
+  load lazily.
 - `retrieve()` returns `RetrievedContext` for retrieval-only operation.
 - `generate()` creates an answer from retrieved context.
 - `query_with_trace()` uses retrieval and generation to expose a full trace.
@@ -176,8 +179,10 @@ sequenceDiagram
     U->>F: Start evaluation
     F->>B: POST /api/v1/evaluations
     B->>D: Load ready index and test set
+    B->>B: Validate query overrides and build effective config
     B->>D: Create run manifest and evaluation
     B-->>F: Evaluation created
+    B->>C: Load existing index without rebuilding
     B->>C: Query RAG per test case
     C-->>B: Answer, context, trace, token usage
     B->>C: Run DeepEval metrics
@@ -199,7 +204,8 @@ sequenceDiagram
 
     F->>B: POST /knowledge-bases/{id}/indexes
     B->>D: Create index with physical_id and config snapshot
-    B->>C: Instantiate RAG for index
+    B->>B: Split build/query parameters and resolve build snapshot
+    B->>C: Instantiate RAG for index build
     C->>S: Build physical index data
     C-->>B: Build metrics
     B->>D: Mark index ready or failed
@@ -226,7 +232,10 @@ artifact IDs.
 
 Evaluations record a run manifest containing:
 
-- RAG config snapshot.
+- Legacy RAG config snapshot.
+- Immutable build config snapshot from the selected ready index.
+- Query overrides requested for the run.
+- Effective config snapshot used to instantiate the query RAG.
 - Knowledge base/index snapshot.
 - Generation model.
 - Judge model.
@@ -239,13 +248,17 @@ This lets users understand what was evaluated even after live project settings c
 
 - Root `.env` configures the CLI and shared core defaults.
 - `platform/backend/.env` can override backend runtime settings.
-- RAG configs in the database capture provider, model, base URL, and RAG parameters for
-  platform-managed runs.
+- RAG configs in the database capture provider, default generation model, embedding
+  model, base URL, and RAG parameters for platform-managed runs.
+- Index build snapshots freeze build-time choices such as embedding model, chunking,
+  sparse model, graph extraction model, and managed storage.
+- Evaluation and playground requests can provide query overrides for query-time
+  controls such as generation model, top-k, and agent limits.
 
 ## Development Notes
 
 - Run backend tests from `platform/backend`.
 - Add an Alembic migration when changing backend models.
-- Keep `src/rag_evaluator/rag_implementations/registry.py` and backend UI metadata in
-  sync when adding a RAG type.
+- Keep `src/rag_evaluator/rag_implementations/registry.py` as the source of truth for
+  RAG type metadata, including parameter phase and platform-managed flags.
 - Use index-specific storage paths to avoid collisions between experiments.

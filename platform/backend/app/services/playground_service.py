@@ -3,9 +3,7 @@
 import asyncio
 import time
 import uuid
-from dataclasses import asdict
 from datetime import datetime, timezone
-from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import func, select
@@ -19,8 +17,8 @@ from app.schemas.playground import (
     PlaygroundIndexInfo,
     PlaygroundQueryDetail,
     PlaygroundQueryHistoryItem,
-    PlaygroundQueryResult,
     PlaygroundQueryResponse,
+    PlaygroundQueryResult,
     QueryMetrics,
     RetrievalTraceResponse,
     RetrievalTraceStepResponse,
@@ -107,6 +105,7 @@ class PlaygroundService:
         question: str,
         index_ids: list[uuid.UUID],
         top_k: int = 5,
+        query_overrides: dict[str, Any] | None = None,
     ) -> PlaygroundQueryResponse:
         """Execute a query against multiple indexes in parallel.
 
@@ -142,9 +141,16 @@ class PlaygroundService:
             if indexes[idx_id].status != "ready":
                 raise ValueError(f"Index {indexes[idx_id].name} is not ready (status: {indexes[idx_id].status})")
 
+        effective_overrides = dict(query_overrides or {})
+        effective_overrides.setdefault("top_k", top_k)
+
+        # Validate overrides before launching parallel queries.
+        for idx_id in index_ids:
+            self.rag_adapter.build_effective_config(indexes[idx_id], effective_overrides)
+
         # Execute queries in parallel
         tasks = [
-            self._execute_single_query(indexes[idx_id], question, top_k)
+            self._execute_single_query(indexes[idx_id], question, effective_overrides)
             for idx_id in index_ids
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -180,6 +186,7 @@ class PlaygroundService:
             question=question,
             index_ids=index_ids,
             top_k=top_k,
+            query_overrides=effective_overrides,
             results=query_results,
             total_time_ms=total_time,
         )
@@ -195,7 +202,7 @@ class PlaygroundService:
         self,
         index: KnowledgeBaseIndex,
         question: str,
-        top_k: int,
+        query_overrides: dict[str, Any],
     ) -> PlaygroundQueryResult:
         """Execute a query against a single index.
 
@@ -207,12 +214,12 @@ class PlaygroundService:
         Returns:
             PlaygroundQueryResult with answer and trace.
         """
-        # Create RAG instance
-        rag = self.rag_adapter.create_rag_for_index(index)
+        # Load RAG instance without rebuilding the ready index.
+        rag, effective = self.rag_adapter.load_rag_for_index_query(index, query_overrides)
 
         try:
             # Execute query with trace
-            result = await self.rag_adapter.query_with_trace(rag, question, top_k)
+            result = await self.rag_adapter.query_with_trace(rag, question, effective.top_k)
 
             # Extract components from result
             # query_with_trace returns: answer, context, metadata, retrieval_trace
@@ -278,11 +285,10 @@ class PlaygroundService:
             generation_time = generation_time_sec * 1000
 
             # Calculate cost
-            llm_model = index.config_snapshot.get("llm_model", "gpt-4o-mini")
             cost_usd = None
             if prompt_tokens or completion_tokens:
                 cost_usd = self.cost_tracker.calculate_cost(
-                    llm_model, prompt_tokens, completion_tokens
+                    effective.generation_model, prompt_tokens, completion_tokens
                 )
 
             metrics = QueryMetrics(
@@ -304,6 +310,7 @@ class PlaygroundService:
                 retrieved_context=context_response,
                 trace=trace_response,
                 metrics=metrics,
+                effective_config_snapshot=effective.effective_config_snapshot,
                 success=True,
             )
 
@@ -334,6 +341,7 @@ class PlaygroundService:
         question: str,
         index_ids: list[uuid.UUID],
         top_k: int,
+        query_overrides: dict[str, Any],
         results: list[PlaygroundQueryResult],
         total_time_ms: float,
     ) -> None:
@@ -344,6 +352,7 @@ class PlaygroundService:
             question: The question asked.
             index_ids: List of index IDs queried.
             top_k: Top K parameter used.
+            query_overrides: Query-time overrides used.
             results: Results from each index.
             total_time_ms: Total execution time.
         """
@@ -361,6 +370,7 @@ class PlaygroundService:
             index_count=len(index_ids),
             success_count=success_count,
             total_time_ms=total_time_ms,
+            extra_data={"query_overrides": query_overrides},
         )
 
         self.db.add(query)
@@ -438,6 +448,7 @@ class PlaygroundService:
             created_at=q.created_at,
             question=q.question,
             top_k=q.top_k,
+            query_overrides=(q.extra_data or {}).get("query_overrides", {}),
             results=results,
         )
 

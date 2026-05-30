@@ -19,6 +19,7 @@ export function Playground() {
   const [selectedIndexIds, setSelectedIndexIds] = useState<string[]>([])
   const [question, setQuestion] = useState('')
   const [topK, setTopK] = useState(5)
+  const [queryModel, setQueryModel] = useState('')
   const [queryResults, setQueryResults] = useState<PlaygroundQueryResponse | null>(null)
   const [showHistory, setShowHistory] = useState(false)
 
@@ -38,6 +39,10 @@ export function Playground() {
         question,
         index_ids: selectedIndexIds,
         top_k: topK,
+        query_overrides: {
+          llm_model: queryModel || undefined,
+          top_k: topK,
+        },
       })
       return response.data
     },
@@ -213,6 +218,18 @@ export function Playground() {
                     <option key={k} value={k}>{k}</option>
                   ))}
                 </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label htmlFor="queryModel" className="text-sm font-medium">
+                  Model:
+                </label>
+                <input
+                  id="queryModel"
+                  value={queryModel}
+                  onChange={(e) => setQueryModel(e.target.value)}
+                  placeholder="Index default"
+                  className="w-44 rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
+                />
               </div>
               {selectedIndexes.length > 0 && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">

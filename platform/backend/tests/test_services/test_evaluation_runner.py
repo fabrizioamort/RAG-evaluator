@@ -6,6 +6,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.evaluation import Evaluation
+from app.models.knowledge_base import KnowledgeBase
+from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.project import Project
 from app.models.rag_config import RAGConfig
 from app.models.test_case import TestCase
@@ -190,3 +192,116 @@ async def test_evaluation_runner_cancellation(
         assert evaluation.status == "cancelled", (
             f"Evaluation status: {evaluation.status}, Error: {evaluation.error_message}"
         )
+
+
+@pytest.mark.asyncio
+async def test_evaluation_runner_ready_index_loads_without_prepare(
+    db_session: AsyncSession,
+) -> None:
+    """Ready index evaluation should use load path and pass effective top_k."""
+    project = Project(name="Indexed Project")
+    db_session.add(project)
+    await db_session.flush()
+
+    kb = KnowledgeBase(
+        project_id=project.id,
+        name="KB",
+        status="ready",
+        storage_path="./storage/documents",
+    )
+    db_session.add(kb)
+
+    rag_config = RAGConfig(
+        project_id=project.id,
+        name="RLM",
+        rag_type="rlm_rag",
+        llm_model="gpt-build",
+        parameters={"worker_model": "gpt-worker"},
+    )
+    db_session.add(rag_config)
+
+    test_set = TestSet(project_id=project.id, name="Test Set")
+    db_session.add(test_set)
+    await db_session.flush()
+
+    test_case = TestCase(
+        test_set_id=test_set.id,
+        question="What is indexed?",
+        expected_answer="The answer.",
+        ground_truth_context=[],
+    )
+    db_session.add(test_case)
+    await db_session.flush()
+
+    index = KnowledgeBaseIndex(
+        knowledge_base_id=kb.id,
+        rag_config_id=rag_config.id,
+        name="Ready Index",
+        status="ready",
+        physical_id="idx_runner_ready",
+        storage_type="filesystem",
+        config_snapshot={
+            "rag_type": "rlm_rag",
+            "parameters": {
+                "worker_model": "gpt-worker",
+                "orchestrator_model": "gpt-build",
+            },
+            "llm_provider": "openai",
+            "llm_model": "gpt-build",
+            "embedding_model": "text-embedding-3-small",
+        },
+        document_count=1,
+    )
+    db_session.add(index)
+    await db_session.flush()
+
+    evaluation = Evaluation(
+        project_id=project.id,
+        knowledge_base_id=kb.id,
+        knowledge_base_index_id=index.id,
+        rag_config_id=rag_config.id,
+        test_set_id=test_set.id,
+        status="pending",
+        query_overrides={
+            "llm_model": "gpt-query",
+            "top_k": 11,
+            "parameters": {"orchestrator_model": "gpt-query"},
+        },
+        eval_judge_model="gpt-judge",
+        metric_config={"metrics": []},
+    )
+    db_session.add(evaluation)
+    await db_session.commit()
+    await db_session.refresh(evaluation)
+
+    mock_rag = MagicMock()
+    mock_effective = MagicMock(top_k=11, generation_model="gpt-query")
+    mock_adapter = MagicMock()
+    mock_adapter.load_rag_for_index_query.return_value = (mock_rag, mock_effective)
+    mock_adapter.prepare_documents = AsyncMock()
+    mock_adapter.query_with_trace = AsyncMock(
+        return_value={
+            "answer": "The answer.",
+            "context": [],
+            "metadata": {"token_usage": {"prompt_tokens": 3, "completion_tokens": 2}},
+            "retrieval_trace": {"strategy": "vector", "steps": []},
+        }
+    )
+    mock_event_log = MagicMock()
+    mock_event_log.log_event = AsyncMock()
+
+    with (
+        patch("app.services.evaluation_runner.get_rag_adapter_service", return_value=mock_adapter),
+        patch("app.services.evaluation_runner.get_job_event_log", return_value=mock_event_log),
+        patch(
+            "app.services.evaluation_runner.EvaluationRunner._initialize_metrics",
+            return_value=[],
+        ) as mock_init_metrics,
+    ):
+        runner = EvaluationRunner(db_session, evaluation.id)
+        await runner.run()
+
+    mock_adapter.load_rag_for_index_query.assert_called_once()
+    mock_adapter.prepare_documents.assert_not_called()
+    mock_adapter.query_with_trace.assert_awaited_once_with(mock_rag, "What is indexed?", 11)
+    mock_init_metrics.assert_called_once_with("gpt-judge")

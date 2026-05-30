@@ -64,7 +64,7 @@ class HybridSearchRAG(BaseRAG):
 
         # Initialize FastEmbed for sparse embeddings (SPLADE)
         self.sparse_model = SparseTextEmbedding(
-            model_name=settings.sparse_model_name,
+            model_name=self.config.parameters.get("sparse_model_name", settings.sparse_model_name),
         )
 
         # Text splitter for chunking (smaller chunks for hybrid search)

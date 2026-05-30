@@ -121,9 +121,13 @@ Create a RAG configuration. Start with:
 RAG type: vector_semantic
 Provider: openai
 Model: gpt-5-mini
+Embedding model: text-embedding-3-small
 ```
 
-Leave storage parameters blank unless you need a custom external collection or path.
+Leave platform-managed storage parameters blank unless you need a custom external
+collection or path. Build-time settings such as embedding model and chunking are fixed
+once an index is built. Query-time settings, such as generation model and top-k, can be
+overridden later when you run an evaluation or use the playground.
 
 ### 4. Build An Index
 
@@ -168,7 +172,9 @@ Start an evaluation from the project. Select:
 
 - A ready knowledge base index.
 - A test set.
+- Query settings such as generation model override and top-k, if needed.
 - Metrics to calculate.
+- The DeepEval judge model, if you want it to differ from the RAG generation model.
 
 For first runs, use `faithfulness` and `g_eval` to control cost. Add contextual
 precision and recall once the pipeline is stable.
@@ -192,6 +198,11 @@ system.
 Build a second index using another RAG configuration, run it against the same test set,
 then create a comparison in the project comparison tab. Compare aggregate deltas,
 per-question differences, cost, and latency.
+
+When comparing query-time experiments against the same ready index, keep the judge model
+stable and change one query override at a time. When comparing build-time changes such
+as embedding model, chunk size, sparse model, or graph extraction model, build a new
+index so the run manifest records the correct artifact provenance.
 
 ## CLI Workflow
 

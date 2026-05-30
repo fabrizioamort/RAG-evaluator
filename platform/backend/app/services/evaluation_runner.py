@@ -265,16 +265,16 @@ class EvaluationRunner:
             assert self.evaluation is not None
 
             # Prefer using the index if available (new architecture)
+            top_k = 5
             if self.evaluation.index:
                 index = self.evaluation.index
                 if index.status != "ready":
                     raise ValueError(f"Index is not ready: {index.status}")
-                rag = self.rag_adapter.create_rag_for_index(index)
-                documents_path = index.knowledge_base.storage_path
-                if not documents_path:
-                    raise ValueError("Knowledge base has no storage path")
-                await self.rag_adapter.prepare_documents(rag, documents_path)
-                llm_model = index.config_snapshot.get("llm_model", "gpt-4o-mini")
+                rag, effective = self.rag_adapter.load_rag_for_index_query(
+                    index, self.evaluation.query_overrides
+                )
+                top_k = effective.top_k
+                llm_model = effective.generation_model
             else:
                 # Fallback to legacy KB + RAG config approach
                 assert self.evaluation.rag_config is not None
@@ -287,7 +287,8 @@ class EvaluationRunner:
                 llm_model = self.evaluation.rag_config.llm_model
 
             # 3. Initialize metrics
-            metrics = self._initialize_metrics(llm_model)
+            judge_model = self.evaluation.eval_judge_model or llm_model
+            metrics = self._initialize_metrics(judge_model)
 
             # 4. Process test cases
             start_index = job.progress_current
@@ -310,7 +311,7 @@ class EvaluationRunner:
                             or self.evaluation_id in self._paused_evaluations
                         ):
                             return
-                        await self._process_test_case(idx, tc, rag, metrics, total)
+                        await self._process_test_case(idx, tc, rag, metrics, total, top_k, llm_model)
 
                 tasks = [
                     sem_process(start_index + i, tc) for i, tc in enumerate(remaining_test_cases)
@@ -349,14 +350,36 @@ class EvaluationRunner:
                         )
                         return
 
-                    await self._process_test_case(i, self.test_cases[i], rag, metrics, total)
+                    await self._process_test_case(
+                        i, self.test_cases[i], rag, metrics, total, top_k, llm_model
+                    )
 
             # 5. Calculate final summary and complete
             # In parallel mode, we need to check if we were cancelled/paused
             if self.evaluation_id in self._cancelled_evaluations:
-                # Status already handled in loop check/sem_process
+                self._cancelled_evaluations.remove(self.evaluation_id)
+                current_completed = await self._get_completed_count()
+                await self.checkpoint_service.update_evaluation_status(
+                    self.evaluation_id, "cancelled"
+                )
+                await self.checkpoint_service.update_progress(
+                    self.evaluation_id, current_completed, state="cancelled"
+                )
+                await self.event_log.log_event(
+                    self.evaluation_id, "cancelled", {"completed": current_completed}
+                )
                 return
             if self.evaluation_id in self._paused_evaluations:
+                current_completed = await self._get_completed_count()
+                await self.checkpoint_service.update_evaluation_status(
+                    self.evaluation_id, "paused"
+                )
+                await self.checkpoint_service.update_progress(
+                    self.evaluation_id, current_completed, state="paused"
+                )
+                await self.event_log.log_event(
+                    self.evaluation_id, "paused", {"completed": current_completed}
+                )
                 return
 
             await self._finalize_evaluation()
@@ -385,13 +408,20 @@ class EvaluationRunner:
                 logger.error("Failed to trigger failure webhook", error=str(webhook_err))
 
     async def _process_test_case(
-        self, i: int, test_case: TestCase, rag: Any, metrics: List[Any], total: int
+        self,
+        i: int,
+        test_case: TestCase,
+        rag: Any,
+        metrics: List[Any],
+        total: int,
+        top_k: int,
+        generation_model: str,
     ) -> None:
         """Process a single test case."""
         start_time = time.time()
         try:
             # RAG Query with full trace
-            response = await self.rag_adapter.query_with_trace(rag, test_case.question)
+            response = await self.rag_adapter.query_with_trace(rag, test_case.question, top_k)
             latency = time.time() - start_time
 
             # Create DeepEval test case for scoring
@@ -447,18 +477,8 @@ class EvaluationRunner:
             cost_usd = Decimal("0")
             eval_model = self.evaluation
             if eval_model and prompt_tokens is not None and completion_tokens is not None:
-                # Determine LLM model from index (preferred) or rag_config (legacy)
-                if eval_model.index:
-                    llm_model_for_cost = eval_model.index.config_snapshot.get(
-                        "llm_model", "gpt-4o-mini"
-                    )
-                elif eval_model.rag_config:
-                    llm_model_for_cost = eval_model.rag_config.llm_model
-                else:
-                    llm_model_for_cost = "gpt-4o-mini"
-
                 cost_usd = cost_tracker.calculate_cost(
-                    llm_model_for_cost, prompt_tokens, completion_tokens
+                    generation_model, prompt_tokens, completion_tokens
                 )
             else:
                 cost_usd = Decimal(str(response.get("metadata", {}).get("cost", 0.0)))

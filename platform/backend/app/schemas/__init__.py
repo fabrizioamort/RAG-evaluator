@@ -74,6 +74,7 @@ from app.schemas.project import (
     ProjectSummary,
     ProjectUpdate,
 )
+from app.schemas.query_overrides import QueryOverrides
 from app.schemas.rag_config import (
     LLMProviderInfo,
     RAGConfigCreate,
@@ -149,6 +150,7 @@ __all__ = [
     "ProjectResponse",
     "ProjectSummary",
     "ProjectList",
+    "QueryOverrides",
     # Knowledge Base
     "KnowledgeBaseCreate",
     "KnowledgeBaseUpdate",

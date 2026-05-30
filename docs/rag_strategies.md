@@ -24,9 +24,15 @@ build several strategies for the same knowledge base and compare them without st
 collisions.
 
 When you create a RAG configuration, the UI reads parameter metadata from the backend.
+Each parameter is marked as either build-time or query-time. Build-time parameters are
+captured in the index snapshot and require a new index when they change. Query-time
+parameters can be overridden when running an evaluation or playground query against a
+ready index.
+
 Most storage parameters can be left blank in the web platform because index storage is
-managed automatically. For CLI runs, storage paths and service URLs come from the root
-`.env` file.
+managed automatically. Platform-managed parameters are still recorded in snapshots for
+reproducibility, but the platform fills them with isolated per-index values. For CLI
+runs, storage paths and service URLs come from the root `.env` file.
 
 ## Vector Semantic Search
 
@@ -47,6 +53,12 @@ Platform parameters:
 | --- | --- | --- |
 | `collection_name` | `rag_documents` | The platform replaces this with a generated per-index collection unless you provide one. |
 | `persist_directory` | empty | Leave blank in the platform to use managed index storage. |
+| `embedding_model` | `text-embedding-3-small` | Build-time model stored on the RAG configuration and index snapshot. |
+
+Query-time settings:
+
+- `llm_model` can be overridden per evaluation or playground query.
+- `top_k` is passed to query execution instead of stored in the constructor config.
 
 CLI environment:
 
@@ -75,6 +87,13 @@ Platform parameters:
 | --- | --- | --- |
 | `collection_name` | empty | Leave blank for platform-managed per-index Qdrant collections. |
 | `qdrant_url` | empty | Leave blank to use `QDRANT_URL`; set it for a custom Qdrant host. |
+| `embedding_model` | `text-embedding-3-small` | Dense embedding model used while building the index. |
+| `sparse_model_name` | `prithvida/Splade_pp_en_v1` | Sparse model used while building sparse vectors. |
+
+Query-time settings:
+
+- `llm_model` can be overridden per evaluation or playground query.
+- `top_k` is passed to query execution.
 
 CLI environment:
 
@@ -113,6 +132,13 @@ Platform parameters:
 | `neo4j_username` | empty | Leave blank to use `NEO4J_USERNAME`. |
 | `neo4j_password` | empty | Leave blank to use `NEO4J_PASSWORD`. |
 | `vector_index_name` | `chunk_embeddings` | Keep the default unless you manage a custom Neo4j vector index. |
+| `embedding_model` | `text-embedding-3-small` | Embedding model used for graph vector search artifacts. |
+| `extraction_model` | RAG config model | Build-time model used for graph extraction. |
+
+Query-time settings:
+
+- `llm_model` can be overridden per evaluation or playground query.
+- `top_k` is passed to query execution.
 
 CLI environment:
 
@@ -165,6 +191,10 @@ Platform parameters:
 | `max_tool_calls` | `20` | Maximum tool calls per query. |
 | `max_file_reads` | `10` | Maximum file reads per query. |
 
+`prepared_path` and `word_threshold` are build-time settings. `llm_model`,
+`max_iterations`, `max_tool_calls`, and `max_file_reads` are query-time settings that
+can be changed for a run against a ready index.
+
 ## RLM-RAG
 
 Type key: `rlm_rag`
@@ -211,6 +241,14 @@ Platform parameters:
 RLM-RAG can be powerful, but it is intentionally more complex than the baseline
 retrievers. Use the playground to inspect outputs before committing to large evaluation
 runs.
+
+RLM-RAG build-time parameters are the preparation controls: `chunk_size`,
+`chunk_overlap`, `use_llm_summaries`, `use_llm_topics`, `max_topics_per_doc`, and
+`worker_model`. Query-time parameters include `llm_model`, `orchestrator_model`,
+`security_mode`, execution limits, read limits, recursion limits, and
+`small_corpus_threshold`. If you override `llm_model` and do not explicitly set
+`orchestrator_model`, the platform uses the overridden generation model as the effective
+orchestrator model.
 
 ## Choosing A Strategy
 

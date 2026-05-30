@@ -178,3 +178,99 @@ def test_create_rag_for_index_rlm_uses_physical_id_storage(
     assert captured_kwargs["prepared_path"] == str(
         Path("storage") / "indexes" / "idx_rlm_123" / "rlm_rag"
     )
+
+
+def test_build_effective_config_applies_query_overrides() -> None:
+    service = RAGAdapterService()
+    index = SimpleNamespace(
+        id=uuid4(),
+        name="Index 1",
+        physical_id="idx_effective",
+        embedding_model="text-embedding-3-small",
+        config_snapshot={
+            "rag_type": "rlm_rag",
+            "parameters": {
+                "worker_model": "gpt-worker",
+                "orchestrator_model": "gpt-main",
+                "max_repl_steps": 15,
+                "chunk_size": 1000,
+            },
+            "llm_provider": "openai",
+            "llm_model": "gpt-main",
+            "llm_base_url": None,
+            "embedding_model": "text-embedding-3-small",
+        },
+    )
+
+    effective = service.build_effective_config(
+        index,
+        {
+            "llm_model": "gpt-override",
+            "top_k": 9,
+            "parameters": {"orchestrator_model": "gpt-override", "max_repl_steps": 20},
+        },
+    )
+
+    assert effective.top_k == 9
+    assert effective.generation_model == "gpt-override"
+    assert effective.effective_config_snapshot["llm_model"] == "gpt-override"
+    assert effective.effective_config_snapshot["parameters"]["worker_model"] == "gpt-worker"
+    assert effective.effective_config_snapshot["parameters"]["max_repl_steps"] == 20
+
+
+def test_build_effective_config_rejects_build_override() -> None:
+    service = RAGAdapterService()
+    index = SimpleNamespace(
+        id=uuid4(),
+        name="Index 1",
+        physical_id="idx_effective",
+        embedding_model="text-embedding-3-small",
+        config_snapshot={
+            "rag_type": "vector_semantic",
+            "parameters": {"chunk_size": 1000},
+            "llm_provider": "openai",
+            "llm_model": "gpt-main",
+            "llm_base_url": None,
+            "embedding_model": "text-embedding-3-small",
+        },
+    )
+
+    import pytest
+
+    with pytest.raises(ValueError, match="Cannot override build-time parameter `chunk_size`"):
+        service.build_effective_config(index, {"parameters": {"chunk_size": 500}})
+
+
+def test_load_rag_for_index_query_calls_load_not_prepare(monkeypatch) -> None:
+    service = RAGAdapterService()
+    calls: dict[str, int] = {"load": 0, "prepare": 0}
+
+    class FakeRAG:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+        def load_index(self) -> None:
+            calls["load"] += 1
+
+        def prepare_documents(self, documents_path: str) -> None:
+            calls["prepare"] += 1
+
+    monkeypatch.setattr(service, "_get_rag_class", lambda _: FakeRAG)
+    index = SimpleNamespace(
+        id=uuid4(),
+        name="Index 1",
+        physical_id="idx_load",
+        embedding_model="text-embedding-3-small",
+        config_snapshot={
+            "rag_type": "vector_semantic",
+            "parameters": {"chunk_size": 1000},
+            "llm_provider": "openai",
+            "llm_model": "gpt-main",
+            "llm_base_url": None,
+            "embedding_model": "text-embedding-3-small",
+        },
+    )
+
+    service.load_rag_for_index_query(index, {"top_k": 7})
+
+    assert calls == {"load": 1, "prepare": 0}

@@ -194,6 +194,7 @@ async def create_rag_config(
         llm_provider=config_data.llm_provider,
         llm_model=config_data.llm_model,
         llm_base_url=config_data.llm_base_url,
+        embedding_model=config_data.embedding_model,
     )
 
     db.add(config)

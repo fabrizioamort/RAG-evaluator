@@ -302,6 +302,19 @@ class RLMFilesystemRAG(BaseRAG):
             **self._metrics,
         }
 
+    def load_index(self) -> None:
+        """Load an existing prepared RLM filesystem without re-preparing it."""
+        from .preparation import ManifestManager
+
+        output_dir = Path(self.prepared_path).resolve()
+        catalog_path = output_dir / "_meta" / "catalog.json"
+        if not catalog_path.exists():
+            raise FileNotFoundError(f"Prepared RLM catalog not found: {catalog_path}")
+
+        self._prepared_path = output_dir
+        self._manifest = ManifestManager(output_dir)
+        self._load_catalog_and_route()
+
     def _load_catalog_and_route(self) -> None:
         """Load catalog and decide between RLM agent or simple mode."""
         catalog_path = self._prepared_path / "_meta" / "catalog.json"

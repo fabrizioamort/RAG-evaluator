@@ -17,14 +17,9 @@ The shared registry lives in:
 src/rag_evaluator/rag_implementations/registry.py
 ```
 
-The backend web UI metadata lives in:
-
-```text
-platform/backend/app/services/rag_registry.py
-```
-
-The backend adapter uses the shared registry to instantiate RAG classes from platform
-RAG configurations.
+The backend adapter and RAG type API use the shared registry to instantiate RAG classes
+and expose UI metadata. Keep the core registry as the source of truth for display names,
+descriptions, parameter schemas, lifecycle phase, and platform-managed flags.
 
 ## Implement `BaseRAG`
 
@@ -70,6 +65,8 @@ class MyRAG(BaseRAG):
 
 Recommended optional methods:
 
+- `load_index()` to attach to an existing index without rebuilding or mutating
+  artifacts. The platform uses this when querying a ready index.
 - `retrieve()` for retrieval-only traces.
 - `generate()` for generation from pre-retrieved context.
 - `_get_strategy_name()` for cleaner trace labels.
@@ -111,11 +108,20 @@ RAG_TYPE_PARAMETERS = {
                 "type": "string",
                 "default": "default",
                 "description": "Example parameter",
+                "phase": "query",
             },
         },
     },
 }
 ```
+
+Every exposed parameter must declare `phase`:
+
+- `build` for values that affect physical artifacts or preparation.
+- `query` for values that can safely change when querying a ready index.
+
+Set `platform_managed: True` on build-time storage fields that the platform should fill
+with isolated per-index values.
 
 After this change, the CLI accepts the new type:
 
@@ -124,30 +130,12 @@ uv run rag-eval prepare --rag-type my_rag --input-dir data/raw
 uv run rag-eval evaluate --rag-type my_rag --test-set data/test_set.json
 ```
 
-## Add Platform UI Metadata
+## Platform UI Metadata
 
-The web UI calls backend endpoints such as `/api/v1/rag-types`. Add a matching
-`RAGTypeInfo` entry in `platform/backend/app/services/rag_registry.py`.
-
-```python
-RAGTypeInfo(
-    name="my_rag",
-    display_name="My RAG",
-    description="Short description shown in the UI.",
-    requires_index=True,
-    parameters=[
-        RAGTypeParameter(
-            name="my_param",
-            type="string",
-            description="Example parameter.",
-            default="default",
-        ),
-    ],
-)
-```
-
-Supported parameter types are `string`, `integer`, `float`, and `boolean`. For strings,
-add `choices=[...]` to render a select control.
+The web UI calls backend endpoints such as `/api/v1/rag-types`. Those endpoints adapt
+the core registry metadata into API schemas, so adding the core registry entry is enough
+for the UI to discover the RAG type. Supported parameter types are `string`, `integer`,
+`float`, and `boolean`. For strings, add `choices=[...]` to render a select control.
 
 ## Map Platform Parameters To Constructor Arguments
 
@@ -169,6 +157,10 @@ elif rag_type == "my_rag":
 
 If your RAG uses platform-managed storage, derive paths from the provided `index_path` or
 the index storage path, not from a fixed global directory.
+
+Query-time construction uses the effective config snapshot. Build-phase parameters are
+loaded from the selected index snapshot, query overrides are applied only to query-phase
+parameters, and `top_k` is carried separately to the query call.
 
 ## Add Index Storage Mapping
 
@@ -258,7 +250,13 @@ The platform can provide richer debugging when your implementation supports
 - Keep implementation-specific state inside the RAG class.
 - Use `RAGConfig.parameters` for user-controlled settings.
 - Use `RAGConfig.llm_model`, `llm_provider`, and `llm_base_url` instead of hard-coded model names.
+- Use `RAGConfig.embedding_model` for build-time embedding choices instead of reading
+  only global defaults.
+- Mark parameter lifecycle correctly in the registry so build artifacts remain
+  reproducible and query overrides are validated.
 - Store platform index data under the index storage path.
+- Implement `load_index()` when the implementation needs explicit setup before querying
+  an existing prepared index.
 - Implement `close()` for database clients and file handles.
 - Report token usage so cost tracking is meaningful.
 - Start with a small corpus and test set before running full evaluations.

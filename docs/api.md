@@ -118,6 +118,11 @@ Create request:
 | PUT | `/rag-configs/{config_id}` | Update a RAG configuration. |
 | DELETE | `/rag-configs/{config_id}` | Delete a RAG configuration. |
 
+RAG type parameter metadata includes `phase` (`build` or `query`) and
+`platform_managed`. Build-phase parameters are captured when an index is built and
+cannot be overridden while querying a ready index. Query-phase parameters can be
+overridden on evaluation and playground requests.
+
 Create request:
 
 ```json
@@ -126,22 +131,24 @@ Create request:
   "rag_type": "vector_hybrid",
   "llm_provider": "openai",
   "llm_model": "gpt-5-mini",
+  "embedding_model": "text-embedding-3-small",
   "llm_base_url": null,
   "parameters": {
-    "qdrant_url": "http://localhost:6333"
+    "qdrant_url": "http://localhost:6333",
+    "sparse_model_name": "prithvida/Splade_pp_en_v1"
   }
 }
 ```
 
 Supported RAG types:
 
-| Type | Parameters |
-| --- | --- |
-| `vector_semantic` | `collection_name`, `persist_directory` |
-| `vector_hybrid` | `collection_name`, `qdrant_url` |
-| `graph_rag` | `neo4j_uri`, `neo4j_username`, `neo4j_password`, `vector_index_name` |
-| `filesystem_rag` | `llm_model`, `prepared_path`, `word_threshold`, `max_iterations`, `max_tool_calls`, `max_file_reads` |
-| `rlm_rag` | `security_mode`, `orchestrator_model`, `worker_model`, `max_repl_steps`, `repl_timeout`, `max_file_reads`, `max_read_bytes`, `max_read_lines`, `max_sub_calls`, `max_recursion_depth`, `small_corpus_threshold`, `chunk_size`, `chunk_overlap`, `use_llm_summaries`, `use_llm_topics`, `max_topics_per_doc` |
+| Type | Build-time parameters | Query-time parameters |
+| --- | --- | --- |
+| `vector_semantic` | `embedding_model`, `collection_name`, `persist_directory`, chunking controls | `llm_model`, `top_k` |
+| `vector_hybrid` | `embedding_model`, `sparse_model_name`, `collection_name`, `qdrant_url`, chunking controls | `llm_model`, `top_k` |
+| `graph_rag` | `embedding_model`, `extraction_model`, `neo4j_uri`, `neo4j_username`, `neo4j_password`, `vector_index_name` | `llm_model`, `top_k` |
+| `filesystem_rag` | `prepared_path`, `word_threshold` | `llm_model`, `max_iterations`, `max_tool_calls`, `max_file_reads` |
+| `rlm_rag` | `chunk_size`, `chunk_overlap`, `use_llm_summaries`, `use_llm_topics`, `max_topics_per_doc`, `worker_model`, prepared path | `llm_model`, `orchestrator_model`, `security_mode`, `max_repl_steps`, `repl_timeout`, `max_file_reads`, `max_read_bytes`, `max_read_lines`, `max_sub_calls`, `max_recursion_depth`, `small_corpus_threshold`, `top_k` |
 
 Supported provider metadata currently includes OpenAI, OpenRouter, Anthropic, and
 Ollama. Provider support depends on configured API keys and local services.
@@ -239,11 +246,30 @@ Create request:
   "knowledge_base_index_id": "00000000-0000-0000-0000-000000000000",
   "test_set_id": "11111111-1111-1111-1111-111111111111",
   "metric_names": ["faithfulness", "relevancy", "precision", "recall", "g_eval"],
+  "query_overrides": {
+    "llm_model": "gpt-5-mini",
+    "top_k": 8,
+    "parameters": {}
+  },
+  "eval_judge_model": "gpt-5-mini",
   "include_reason": true,
   "notes": "Initial full metric run",
   "tags": ["baseline"]
 }
 ```
+
+`query_overrides` may include `llm_model`, `top_k`, and query-phase entries in
+`parameters`. Build-phase overrides such as `embedding_model`, chunking, storage paths,
+sparse model, graph extraction model, or preparation controls are rejected for ready
+indexes. If `eval_judge_model` is omitted, the backend defaults the judge to the
+effective RAG generation model.
+
+Run manifests include the legacy `rag_config_snapshot` plus:
+
+- `build_config_snapshot`: immutable settings used to build the selected index.
+- `query_overrides`: per-run query overrides requested by the user.
+- `effective_config_snapshot`: build snapshot plus query overrides resolved for the run.
+- `generation_model` and `eval_judge_model`.
 
 Evaluation statuses are `pending`, `running`, `completed`, `failed`, `cancelled`, and
 `paused`.
@@ -296,9 +322,18 @@ Query request:
   "index_ids": [
     "00000000-0000-0000-0000-000000000000"
   ],
-  "top_k": 5
+  "top_k": 5,
+  "query_overrides": {
+    "llm_model": "gpt-5-mini",
+    "top_k": 5,
+    "parameters": {}
+  }
 }
 ```
+
+The top-level `top_k` is retained for compatibility. When `query_overrides.top_k` is
+provided, it is used as the effective query execution value and is recorded with the
+saved playground query.
 
 ## Webhooks
 

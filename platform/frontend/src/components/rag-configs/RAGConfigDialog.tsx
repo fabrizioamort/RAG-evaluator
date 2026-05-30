@@ -15,6 +15,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
     const [ragType, setRagType] = useState('vector_semantic')
     const [provider, setProvider] = useState('openai')
     const [model, setModel] = useState('')
+    const [embeddingModel, setEmbeddingModel] = useState('text-embedding-3-small')
     const [parameters, setParameters] = useState<Record<string, unknown>>({})
     const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -42,12 +43,14 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
             setRagType(config.rag_type)
             setProvider(config.llm_provider)
             setModel(config.llm_model)
+            setEmbeddingModel(config.embedding_model)
             setParameters(config.parameters)
         } else {
             setName('')
             setRagType('vector_semantic')
             setProvider('openai')
             setModel('gpt-4o-mini')
+            setEmbeddingModel('text-embedding-3-small')
             setParameters({})
         }
     }, [config, isOpen])
@@ -64,7 +67,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
         if (!config && selectedTypeInfo) {
             const defaults: Record<string, unknown> = {}
             selectedTypeInfo.parameters.forEach(p => {
-                if (p.default !== undefined) defaults[p.name] = p.default
+                if (!p.platform_managed && p.default !== undefined) defaults[p.name] = p.default
             })
             setParameters(defaults)
         }
@@ -83,6 +86,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                 rag_type: ragType,
                 llm_provider: provider,
                 llm_model: model,
+                embedding_model: embeddingModel,
                 parameters,
             })
             onClose()
@@ -96,6 +100,50 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
     const handleParamChange = (name: string, value: unknown) => {
         setParameters(prev => ({ ...prev, [name]: value }))
     }
+
+    const editableParams = selectedTypeInfo?.parameters.filter(param => !param.platform_managed) || []
+    const buildParams = editableParams.filter(param => param.phase === 'build')
+    const queryParams = editableParams.filter(param => param.phase === 'query')
+
+    const renderParamInput = (param: (typeof editableParams)[number]) => (
+        <div key={param.name} className="space-y-2">
+            <div className="flex items-center justify-between">
+                <label className="text-sm font-semibold capitalize">{param.name.replace(/_/g, ' ')}</label>
+                {param.required && <span className="text-[10px] font-bold text-destructive uppercase">Required</span>}
+            </div>
+
+            {param.type === 'string' && param.choices ? (
+                <select
+                    value={(parameters[param.name] as string) ?? param.default}
+                    onChange={(e) => handleParamChange(param.name, e.target.value)}
+                    className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
+                >
+                    {param.choices.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+            ) : param.type === 'boolean' ? (
+                <div className="flex items-center gap-2">
+                    <input
+                        type="checkbox"
+                        checked={!!((parameters[param.name] as boolean) ?? param.default)}
+                        onChange={(e) => handleParamChange(param.name, e.target.checked)}
+                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary/50"
+                    />
+                    <span className="text-sm text-muted-foreground">Enabled</span>
+                </div>
+            ) : (
+                <input
+                    type={param.type === 'integer' || param.type === 'float' ? 'number' : 'text'}
+                    value={(parameters[param.name] as string | number) ?? param.default ?? ''}
+                    onChange={(e) => handleParamChange(param.name, param.type === 'integer' || param.type === 'float' ? Number(e.target.value) : e.target.value)}
+                    step={param.type === 'float' ? '0.1' : '1'}
+                    min={param.min_value}
+                    max={param.max_value}
+                    className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
+                />
+            )}
+            <p className="text-[11px] text-muted-foreground">{param.description}</p>
+        </div>
+    )
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -181,6 +229,19 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                                         ))}
                                     </select>
                                 </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold">Embedding Model</label>
+                                    <input
+                                        type="text"
+                                        value={embeddingModel}
+                                        onChange={(e) => setEmbeddingModel(e.target.value)}
+                                        className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
+                                    />
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Build-time value frozen into each new index.
+                                    </p>
+                                </div>
                             </div>
                         </div>
 
@@ -189,48 +250,27 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                             <h3 className="text-sm font-bold uppercase tracking-wider text-primary border-b border-border pb-2">RAG Parameters</h3>
 
                             <div className="space-y-4">
-                                {selectedTypeInfo?.parameters.length === 0 && (
+                                {editableParams.length === 0 && (
                                     <p className="text-sm text-muted-foreground italic">No parameters available for this type.</p>
                                 )}
-                                {selectedTypeInfo?.parameters.map(param => (
-                                    <div key={param.name} className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <label className="text-sm font-semibold capitalize">{param.name.replace('_', ' ')}</label>
-                                            {param.required && <span className="text-[10px] font-bold text-destructive uppercase tracking-widest">Required</span>}
+                                {buildParams.length > 0 && (
+                                    <div className="space-y-4 rounded-lg border border-border p-4">
+                                        <div>
+                                            <p className="text-xs font-bold uppercase text-muted-foreground">Build-time</p>
+                                            <p className="text-[11px] text-muted-foreground">Frozen into new indexes.</p>
                                         </div>
-
-                                        {param.type === 'string' && param.choices ? (
-                                            <select
-                                                value={(parameters[param.name] as string) ?? param.default}
-                                                onChange={(e) => handleParamChange(param.name, e.target.value)}
-                                                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
-                                            >
-                                                {param.choices.map(c => <option key={c} value={c}>{c}</option>)}
-                                            </select>
-                                        ) : param.type === 'boolean' ? (
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!!((parameters[param.name] as boolean) ?? param.default)}
-                                                    onChange={(e) => handleParamChange(param.name, e.target.checked)}
-                                                    className="h-4 w-4 rounded border-input text-primary focus:ring-primary/50"
-                                                />
-                                                <span className="text-sm text-muted-foreground">Enabled</span>
-                                            </div>
-                                        ) : (
-                                            <input
-                                                type={param.type === 'integer' || param.type === 'float' ? 'number' : 'text'}
-                                                value={(parameters[param.name] as string | number) ?? param.default ?? ''}
-                                                onChange={(e) => handleParamChange(param.name, param.type === 'integer' || param.type === 'float' ? Number(e.target.value) : e.target.value)}
-                                                step={param.type === 'float' ? '0.1' : '1'}
-                                                min={param.min_value}
-                                                max={param.max_value}
-                                                className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
-                                            />
-                                        )}
-                                        <p className="text-[11px] text-muted-foreground">{param.description}</p>
+                                        {buildParams.map(renderParamInput)}
                                     </div>
-                                ))}
+                                )}
+                                {queryParams.length > 0 && (
+                                    <div className="space-y-4 rounded-lg border border-border p-4">
+                                        <div>
+                                            <p className="text-xs font-bold uppercase text-muted-foreground">Query defaults</p>
+                                            <p className="text-[11px] text-muted-foreground">Defaults that can be overridden during evaluation.</p>
+                                        </div>
+                                        {queryParams.map(renderParamInput)}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

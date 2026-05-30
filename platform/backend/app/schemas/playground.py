@@ -8,7 +8,7 @@ from uuid import UUID
 from pydantic import Field
 
 from app.schemas.base import BaseResponseSchema, BaseSchema, PaginatedResponse
-
+from app.schemas.query_overrides import QueryOverrides
 
 # Request schemas
 
@@ -21,6 +21,10 @@ class PlaygroundQueryRequest(BaseSchema):
         min_length=1, max_length=4, description="List of index IDs to query (max 4 for comparison)"
     )
     top_k: int = Field(default=5, ge=1, le=20, description="Number of chunks to retrieve")
+    query_overrides: QueryOverrides | None = Field(
+        default=None,
+        description="Optional query-time overrides shared across selected indexes",
+    )
 
 
 # Response schemas
@@ -92,6 +96,10 @@ class PlaygroundQueryResult(BaseSchema):
     )
     trace: RetrievalTraceResponse | None = Field(default=None, description="Retrieval trace")
     metrics: QueryMetrics | None = Field(default=None, description="Query metrics")
+    effective_config_snapshot: dict[str, Any] | None = Field(
+        default=None,
+        description="Effective RAG configuration used for this query",
+    )
 
     error: str | None = Field(default=None, description="Error message if query failed")
     success: bool = Field(default=True, description="Whether the query succeeded")
@@ -154,4 +162,8 @@ class PlaygroundQueryDetail(BaseResponseSchema):
 
     question: str = Field(description="Question asked")
     top_k: int = Field(description="Top K parameter used")
+    query_overrides: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Query-time overrides used",
+    )
     results: list[PlaygroundQueryResult] = Field(description="Results from each RAG system")

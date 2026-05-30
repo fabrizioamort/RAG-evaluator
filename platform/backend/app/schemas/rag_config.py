@@ -26,6 +26,11 @@ class RAGConfigBase(BaseSchema):
     llm_base_url: str | None = Field(
         default=None, max_length=500, description="Custom LLM API base URL"
     )
+    embedding_model: str = Field(
+        default="text-embedding-3-small",
+        max_length=100,
+        description="Embedding model used for index build artifacts",
+    )
 
 
 class RAGConfigCreate(RAGConfigBase):
@@ -44,6 +49,7 @@ class RAGConfigUpdate(BaseSchema):
     llm_base_url: str | None = Field(
         default=None, max_length=500, description="Custom LLM API base URL"
     )
+    embedding_model: str | None = Field(default=None, max_length=100, description="Embedding model")
 
 
 class RAGConfigResponse(RAGConfigBase, BaseResponseSchema):
@@ -60,6 +66,7 @@ class RAGConfigSummary(BaseSchema):
     rag_type: str
     llm_provider: str
     llm_model: str
+    embedding_model: str
 
 
 class RAGConfigList(PaginatedResponse):
@@ -74,11 +81,16 @@ class RAGTypeParameter(BaseSchema):
     name: str = Field(description="Parameter name")
     type: str = Field(description="Parameter type (string, integer, float, boolean)")
     description: str = Field(description="Parameter description")
+    phase: str = Field(description="Parameter lifecycle phase: build or query")
     required: bool = Field(default=False, description="Whether required")
     default: Any = Field(default=None, description="Default value")
     min_value: float | None = Field(default=None, description="Minimum value")
     max_value: float | None = Field(default=None, description="Maximum value")
     choices: list[str] | None = Field(default=None, description="Allowed values")
+    platform_managed: bool = Field(
+        default=False,
+        description="Whether the platform manages this value for index isolation/storage",
+    )
 
 
 class RAGTypeInfo(BaseSchema):

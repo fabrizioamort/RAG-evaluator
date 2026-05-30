@@ -63,6 +63,9 @@ async def execute_playground_query(
             question=request.question,
             index_ids=request.index_ids,
             top_k=request.top_k,
+            query_overrides=request.query_overrides.model_dump(exclude_none=True)
+            if request.query_overrides
+            else None,
         )
         return response
 

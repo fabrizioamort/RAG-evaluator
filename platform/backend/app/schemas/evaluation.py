@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import Field
 
 from app.schemas.base import BaseResponseSchema, BaseSchema, PaginatedResponse
+from app.schemas.query_overrides import QueryOverrides
 
 
 class MetricScore(BaseSchema):
@@ -135,6 +136,15 @@ class EvaluationCreate(EvaluationBase):
         default=None,
         description="Whether to include metric reasoning (overrides global setting)",
     )
+    query_overrides: QueryOverrides | None = Field(
+        default=None,
+        description="Query-time overrides for the selected ready index",
+    )
+    eval_judge_model: str | None = Field(
+        default=None,
+        max_length=100,
+        description="DeepEval judge model; defaults to the effective RAG generation model",
+    )
     # knowledge_base_id and rag_config_id are removed as they are derived from the index
 
 
@@ -166,6 +176,11 @@ class EvaluationResponse(EvaluationBase, BaseResponseSchema):
     is_baseline: bool = Field(default=False, description="Whether this is the baseline")
     baseline_reason: str | None = Field(default=None, description="Reason for baseline")
     metric_config: dict[str, Any] | None = Field(default=None, description="Selected metric config")
+    query_overrides: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Query-time overrides used by this evaluation",
+    )
+    eval_judge_model: str | None = Field(default=None, description="DeepEval judge model")
     error_message: str | None = Field(default=None, description="Error if failed")
 
     # Counts
@@ -288,6 +303,9 @@ class RunManifestResponse(BaseSchema):
 
     id: UUID
     rag_config_snapshot: dict[str, Any]
+    build_config_snapshot: dict[str, Any]
+    query_overrides: dict[str, Any]
+    effective_config_snapshot: dict[str, Any]
     kb_version_snapshot: dict[str, Any]
     generation_model: str | None
     eval_judge_model: str | None

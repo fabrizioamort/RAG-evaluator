@@ -160,6 +160,15 @@ class BaseRAG(ABC):
         """
         pass
 
+    def load_index(self) -> None:
+        """Open existing prepared/indexed artifacts without mutating them.
+
+        Build paths call :meth:`prepare_documents`. Query paths for ready
+        indexes call this method so implementations can initialize runtime
+        handles without rebuilding or rewriting stored artifacts.
+        """
+        return None
+
     @abstractmethod
     def prepare_documents(self, documents_path: str) -> None:
         """Prepare and index documents for retrieval.

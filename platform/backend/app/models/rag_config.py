@@ -31,6 +31,9 @@ class RAGConfig(BaseModelNoUpdate):
     llm_provider: Mapped[str] = mapped_column(String(50), default="openai", nullable=False)
     llm_model: Mapped[str] = mapped_column(String(100), default="gpt-4o-mini", nullable=False)
     llm_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    embedding_model: Mapped[str] = mapped_column(
+        String(100), default="text-embedding-3-small", nullable=False
+    )
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="rag_configs")

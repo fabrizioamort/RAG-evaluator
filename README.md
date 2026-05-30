@@ -11,6 +11,8 @@ engine.
 
 - Organize RAG experiments by project.
 - Upload documents and build isolated indexes for different RAG strategies.
+- Reuse ready indexes with query-time overrides for generation model, top-k, and
+  strategy-specific query controls.
 - Create, import, generate, review, and version test sets.
 - Run evaluations with DeepEval metrics and LLM judge reasoning.
 - Inspect per-question results, retrieval traces, run manifests, latency, tokens, and cost.
@@ -64,6 +66,12 @@ Open:
 - Qdrant API: <http://localhost:6333>
 
 For a containerized application stack, see [Deployment](docs/deployment.md).
+
+Platform evaluations separate index-build configuration from query-time settings. Build
+choices such as embedding model, chunking, sparse model, graph extraction model, and
+storage location are captured in the index snapshot. Evaluation and playground runs can
+override only query-safe settings such as the generation model, top-k, and query-phase
+RAG parameters without rebuilding the index.
 
 ## CLI Example
 

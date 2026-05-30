@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from rag_evaluator.rag_implementations.registry import get_parameter_schema
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.api.rag_configs as rag_configs_api
@@ -68,9 +69,23 @@ class TestDiscoveryEndpoints:
         assert rlm_type["display_name"] == "RLM-RAG"
         rlm_params = {p["name"]: p for p in rlm_type["parameters"]}
         assert rlm_params["security_mode"]["choices"] == ["lite", "full"]
+        assert rlm_params["security_mode"]["phase"] == "query"
+        assert rlm_params["worker_model"]["phase"] == "build"
         assert rlm_params["max_repl_steps"]["default"] == 15
         assert rlm_params["max_repl_steps"]["min_value"] == 1
         assert rlm_params["max_repl_steps"]["max_value"] == 50
+
+    @pytest.mark.asyncio
+    async def test_rag_types_phase_data_matches_core_registry(self, client: AsyncClient) -> None:
+        """The API should expose phase metadata from the canonical core registry."""
+        response = await client.get("/api/v1/rag-types")
+
+        assert response.status_code == 200
+        data = response.json()
+        for rag_type in data:
+            core = get_parameter_schema(rag_type["name"])["properties"]
+            for parameter in rag_type["parameters"]:
+                assert parameter["phase"] == core[parameter["name"]]["phase"]
 
     @pytest.mark.asyncio
     async def test_get_rag_type_parameters_success(self, client: AsyncClient) -> None:

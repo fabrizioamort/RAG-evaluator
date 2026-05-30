@@ -91,6 +91,10 @@ class FilesystemRAG(BaseRAG):
         self._agent = None
         self._query_metrics = []
 
+    def load_index(self) -> None:
+        """Initialize the query agent from an existing prepared filesystem."""
+        self._initialize_agent()
+
     def prepare_documents(self, documents_path: str) -> None:
         """Prepare documents by converting to markdown and building indexes.
 

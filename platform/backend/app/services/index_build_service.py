@@ -11,9 +11,11 @@ from pathlib import Path
 from typing import Any, Callable, Coroutine
 from uuid import UUID, uuid4
 
+from rag_evaluator.config import settings as core_settings
 from rag_evaluator.rag_implementations.graph_rag.neo4j_connection import (
     resolve_neo4j_connection_params,
 )
+from rag_evaluator.rag_implementations.registry import split_parameters
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -35,6 +37,7 @@ RAG_TYPE_TO_STORAGE: dict[str, str] = {
     "vector_hybrid": "qdrant",
     "graph_rag": "neo4j",
     "filesystem_rag": "filesystem",
+    "rlm_rag": "filesystem",
 }
 
 
@@ -129,13 +132,7 @@ class IndexBuildService:
             name = f"{kb.name} - {rag_config.name}"
 
         # Create frozen config snapshot for reproducibility
-        config_snapshot = {
-            "rag_type": rag_config.rag_type,
-            "parameters": rag_config.parameters,
-            "llm_provider": rag_config.llm_provider,
-            "llm_model": rag_config.llm_model,
-            "llm_base_url": rag_config.llm_base_url,
-        }
+        config_snapshot = self._build_config_snapshot(rag_config)
 
         # Get the latest version ID if available
         kb_version_id = None
@@ -182,6 +179,29 @@ class IndexBuildService:
             Path to the index storage directory.
         """
         return Path(settings.STORAGE_PATH) / "indexes" / index.physical_id
+
+    def _build_config_snapshot(self, rag_config: RAGConfig) -> dict[str, Any]:
+        """Build the immutable config snapshot stored on a KnowledgeBaseIndex."""
+        parameters = dict(rag_config.parameters or {})
+        if rag_config.rag_type == "graph_rag":
+            parameters.setdefault("extraction_model", rag_config.llm_model)
+        if rag_config.rag_type == "vector_hybrid":
+            parameters.setdefault("sparse_model_name", core_settings.sparse_model_name)
+
+        build_parameters, query_default_parameters = split_parameters(
+            rag_config.rag_type, parameters
+        )
+
+        return {
+            "rag_type": rag_config.rag_type,
+            "parameters": parameters,
+            "build_parameters": build_parameters,
+            "query_default_parameters": query_default_parameters,
+            "llm_provider": rag_config.llm_provider,
+            "llm_model": rag_config.llm_model,
+            "llm_base_url": rag_config.llm_base_url,
+            "embedding_model": rag_config.embedding_model,
+        }
 
     async def build_index(
         self,
@@ -240,7 +260,7 @@ class IndexBuildService:
 
         try:
             # Create RAG instance configured for this index
-            rag = self.rag_adapter.create_rag_for_index(index)
+            rag = self.rag_adapter.create_rag_for_index_build(index)
 
             # Define internal progress callback that broadcasts to SSE
             async def internal_progress(current: int, total: int, doc_name: str = "") -> None:
@@ -275,7 +295,9 @@ class IndexBuildService:
             # Update index with results
             index.status = "ready"
             index.chunk_count = metrics.get("chunk_count", metrics.get("total_chunks", 0))
-            index.embedding_model = metrics.get("embedding_model")
+            index.embedding_model = metrics.get(
+                "embedding_model", index.config_snapshot.get("embedding_model")
+            )
             index.build_completed_at = datetime.now(timezone.utc)
 
             if index.build_started_at:

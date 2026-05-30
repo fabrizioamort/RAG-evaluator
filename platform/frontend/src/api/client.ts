@@ -240,6 +240,7 @@ export interface RAGConfig {
   llm_provider: string
   llm_model: string
   llm_base_url: string | null
+  embedding_model: string
   created_at: string
 }
 
@@ -250,17 +251,20 @@ export interface RAGConfigCreate {
   llm_provider?: string
   llm_model?: string
   llm_base_url?: string
+  embedding_model?: string
 }
 
 export interface RAGTypeParameter {
   name: string
   type: 'string' | 'integer' | 'float' | 'boolean'
   description: string
+  phase: 'build' | 'query'
   required: boolean
   default: unknown
   min_value?: number
   max_value?: number
   choices?: string[]
+  platform_managed?: boolean
 }
 
 export interface RAGTypeInfo {
@@ -307,8 +311,16 @@ export interface Evaluation {
   baseline_reason: string | null
   error_message: string | null
   metric_config?: { metrics: string[] } | null
+  query_overrides: QueryOverrides
+  eval_judge_model: string | null
   result_count: number
   created_at: string
+}
+
+export interface QueryOverrides {
+  llm_model?: string
+  top_k?: number
+  parameters?: Record<string, unknown>
 }
 
 export interface EvaluationCreate {
@@ -317,6 +329,8 @@ export interface EvaluationCreate {
   test_set_id: string
   metric_names?: string[]
   include_reason?: boolean
+  query_overrides?: QueryOverrides
+  eval_judge_model?: string
   notes?: string
   tags?: string[]
 }
@@ -381,6 +395,9 @@ export interface RetrievalTrace {
 export interface RunManifest {
   id: string
   rag_config_snapshot: Record<string, unknown>
+  build_config_snapshot: Record<string, unknown>
+  query_overrides: Record<string, unknown>
+  effective_config_snapshot: Record<string, unknown>
   kb_version_snapshot: Record<string, unknown>
   generation_model: string | null
   eval_judge_model: string | null
@@ -548,6 +565,7 @@ export interface PlaygroundQueryResult {
   retrieved_context: RetrievedContextDetail | null
   trace: RetrievalTraceDetail | null
   metrics: QueryMetrics | null
+  effective_config_snapshot?: Record<string, unknown> | null
   error: string | null
   success: boolean
 }
@@ -563,6 +581,7 @@ export interface PlaygroundQueryRequest {
   question: string
   index_ids: string[]
   top_k?: number
+  query_overrides?: QueryOverrides
 }
 
 export interface PlaygroundQueryHistoryItem {
@@ -587,6 +606,7 @@ export interface PlaygroundQueryDetail {
   created_at: string
   question: string
   top_k: number
+  query_overrides: Record<string, unknown>
   results: PlaygroundQueryResult[]
 }
 

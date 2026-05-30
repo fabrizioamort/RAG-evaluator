@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { X, Play, Loader2, Database, FileText, ChevronRight, ChevronLeft, LucideIcon, Layers, Calendar, CheckSquare, Square, Info } from 'lucide-react'
-import { api, KnowledgeBase, TestSet, KnowledgeBaseIndex, EvaluationCreate } from '@/api/client'
+import { api, KnowledgeBase, TestSet, KnowledgeBaseIndex, EvaluationCreate, RAGTypeInfo, RAGTypeParameter } from '@/api/client'
 import { cn } from '@/lib/utils'
 
 interface StartEvaluationWizardProps {
@@ -13,7 +13,7 @@ interface StartEvaluationWizardProps {
     initialTestSetId?: string
 }
 
-type Step = 'testset' | 'kb' | 'index' | 'metrics' | 'review'
+type Step = 'testset' | 'kb' | 'index' | 'overrides' | 'metrics' | 'review'
 
 const AVAILABLE_METRICS = [
     { id: 'faithfulness', name: 'Faithfulness', description: 'Consistency of the answer with the retrieved context.' },
@@ -50,6 +50,7 @@ export function StartEvaluationWizard({
     const [kbs, setKbs] = useState<KnowledgeBase[]>([])
     const [testSets, setTestSets] = useState<TestSet[]>([])
     const [indexes, setIndexes] = useState<KnowledgeBaseIndex[]>([])
+    const [ragTypes, setRagTypes] = useState<RAGTypeInfo[]>([])
 
     const [selectedKb, setSelectedKb] = useState<string>('')
     const [selectedTestSet, setSelectedTestSet] = useState<string>('')
@@ -57,6 +58,10 @@ export function StartEvaluationWizard({
     const [selectedMetrics, setSelectedMetrics] = useState<string[]>(AVAILABLE_METRICS.map(m => m.id))
     const [evaluationName, setEvaluationName] = useState<string>('')
     const [includeReason, setIncludeReason] = useState(true)
+    const [queryModel, setQueryModel] = useState('')
+    const [judgeModel, setJudgeModel] = useState('')
+    const [queryTopK, setQueryTopK] = useState(5)
+    const [queryParams, setQueryParams] = useState<Record<string, unknown>>({})
 
     const [isLoading, setIsLoading] = useState(false)
     const [isLoadingIndexes, setIsLoadingIndexes] = useState(false)
@@ -65,12 +70,14 @@ export function StartEvaluationWizard({
     const loadData = useCallback(async () => {
         setIsLoading(true)
         try {
-            const [kbRes, tsRes] = await Promise.all([
+            const [kbRes, tsRes, ragTypeRes] = await Promise.all([
                 api.knowledgeBases.list(projectId),
-                api.testSets.list(projectId)
+                api.testSets.list(projectId),
+                api.ragConfigs.getTypes()
             ])
             setKbs(kbRes.data.items)
             setTestSets(tsRes.data.items)
+            setRagTypes(ragTypeRes.data)
         } catch (error) {
             console.error('Failed to load evaluation requirements:', error)
         } finally {
@@ -88,6 +95,10 @@ export function StartEvaluationWizard({
             setSelectedMetrics(AVAILABLE_METRICS.map(m => m.id))
             setEvaluationName('')
             setIncludeReason(true)
+            setQueryModel('')
+            setJudgeModel('')
+            setQueryTopK(5)
+            setQueryParams({})
             setIndexes([])
         }
     }, [isOpen, projectId, loadData, initialKnowledgeBaseId, initialIndexId, initialTestSetId])
@@ -112,6 +123,43 @@ export function StartEvaluationWizard({
         }
     }, [selectedKb])
 
+    const selectedIndexInfo = indexes.find(i => i.id === selectedIndex)
+    const indexSnapshot = (selectedIndexInfo?.config_snapshot ?? {}) as {
+        rag_type?: string
+        llm_model?: string
+        parameters?: Record<string, unknown>
+    }
+    const selectedRagTypeInfo = ragTypes.find(t => t.name === indexSnapshot.rag_type)
+    const buildParamDefs = useMemo(
+        () => selectedRagTypeInfo?.parameters.filter(p => p.phase === 'build' && !p.platform_managed) || [],
+        [selectedRagTypeInfo]
+    )
+    const queryParamDefs = useMemo(
+        () => selectedRagTypeInfo?.parameters.filter(p => p.phase === 'query' && !p.platform_managed) || [],
+        [selectedRagTypeInfo]
+    )
+
+    useEffect(() => {
+        if (!selectedIndexInfo) return
+
+        const snapshot = (selectedIndexInfo.config_snapshot ?? {}) as {
+            llm_model?: string
+            parameters?: Record<string, unknown>
+        }
+        const defaultModel = snapshot.llm_model || 'gpt-4o-mini'
+        const defaults: Record<string, unknown> = {}
+        queryParamDefs.forEach(param => {
+            const snapshotValue = snapshot.parameters?.[param.name]
+            if (snapshotValue !== undefined) defaults[param.name] = snapshotValue
+            else if (param.default !== undefined) defaults[param.name] = param.default
+        })
+
+        setQueryModel(defaultModel)
+        setJudgeModel(defaultModel)
+        setQueryTopK(5)
+        setQueryParams(defaults)
+    }, [selectedIndexInfo, queryParamDefs])
+
     const handleStart = async () => {
         setIsStarting(true)
         try {
@@ -121,6 +169,12 @@ export function StartEvaluationWizard({
                 knowledge_base_index_id: selectedIndex,
                 metric_names: selectedMetrics,
                 include_reason: includeReason,
+                query_overrides: {
+                    llm_model: queryModel || undefined,
+                    top_k: queryTopK,
+                    parameters: queryParams,
+                },
+                eval_judge_model: judgeModel || undefined,
             }
             const res = await api.evaluations.create(data)
             onStarted(res.data.id)
@@ -139,9 +193,51 @@ export function StartEvaluationWizard({
         { id: 'testset', label: 'Test Set', icon: FileText },
         { id: 'kb', label: 'Knowledge Base', icon: Database },
         { id: 'index', label: 'Index', icon: Layers },
+        { id: 'overrides', label: 'Query', icon: Info },
         { id: 'metrics', label: 'Metrics', icon: CheckSquare },
         { id: 'review', label: 'Review', icon: Play }
     ]
+
+    const getParamValue = (param: RAGTypeParameter) => {
+        return indexSnapshot.parameters?.[param.name] ?? param.default ?? ''
+    }
+
+    const setQueryParamValue = (param: RAGTypeParameter, value: unknown) => {
+        setQueryParams(prev => ({ ...prev, [param.name]: value }))
+    }
+
+    const renderQueryParam = (param: RAGTypeParameter) => (
+        <div key={param.name} className="space-y-1.5">
+            <label className="text-xs font-bold text-muted-foreground uppercase">{param.name.replace(/_/g, ' ')}</label>
+            {param.type === 'boolean' ? (
+                <input
+                    type="checkbox"
+                    checked={Boolean(queryParams[param.name] ?? param.default)}
+                    onChange={(e) => setQueryParamValue(param, e.target.checked)}
+                    className="h-4 w-4 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+            ) : param.type === 'string' && param.choices ? (
+                <select
+                    value={(queryParams[param.name] as string) ?? param.default ?? ''}
+                    onChange={(e) => setQueryParamValue(param, e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                    {param.choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
+                </select>
+            ) : (
+                <input
+                    type={param.type === 'integer' || param.type === 'float' ? 'number' : 'text'}
+                    value={(queryParams[param.name] as string | number) ?? param.default ?? ''}
+                    min={param.min_value}
+                    max={param.max_value}
+                    step={param.type === 'float' ? '0.1' : '1'}
+                    onChange={(e) => setQueryParamValue(param, param.type === 'integer' || param.type === 'float' ? Number(e.target.value) : e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+            )}
+            <p className="text-[11px] text-muted-foreground">{param.description}</p>
+        </div>
+    )
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -149,7 +245,7 @@ export function StartEvaluationWizard({
                 className="absolute inset-0 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
                 onClick={onClose}
             />
-            <div className="relative w-full max-w-2xl rounded-xl border border-border bg-card shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="relative w-full max-w-3xl rounded-xl border border-border bg-card shadow-2xl animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-border p-6">
                     <h2 className="text-xl font-bold flex items-center gap-2">
@@ -310,6 +406,67 @@ export function StartEvaluationWizard({
                                 </div>
                             )}
 
+                            {step === 'overrides' && (
+                                <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <div>
+                                        <h3 className="text-lg font-bold">Query Settings</h3>
+                                        <p className="text-sm text-muted-foreground">Adjust runtime settings for this evaluation without rebuilding the index.</p>
+                                    </div>
+
+                                    <div className="grid gap-4 sm:grid-cols-3">
+                                        <div className="space-y-1.5 sm:col-span-2">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">RAG Model</label>
+                                            <input
+                                                value={queryModel}
+                                                onChange={(e) => setQueryModel(e.target.value)}
+                                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">Top K</label>
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                max={50}
+                                                value={queryTopK}
+                                                onChange={(e) => setQueryTopK(Number(e.target.value))}
+                                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5 sm:col-span-3">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">Judge Model</label>
+                                            <input
+                                                value={judgeModel}
+                                                onChange={(e) => setJudgeModel(e.target.value)}
+                                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {queryParamDefs.length > 0 && (
+                                        <div className="grid gap-4 rounded-lg border border-border p-4">
+                                            {queryParamDefs.map(renderQueryParam)}
+                                        </div>
+                                    )}
+
+                                    {buildParamDefs.length > 0 && (
+                                        <div className="rounded-lg border border-border bg-muted/20 p-4">
+                                            <p className="mb-3 text-xs font-bold uppercase text-muted-foreground">Frozen build parameters</p>
+                                            <div className="grid gap-2 sm:grid-cols-2">
+                                                {buildParamDefs.map(param => (
+                                                    <div key={param.name} className="rounded-md bg-background p-3">
+                                                        <p className="text-[10px] font-bold uppercase text-muted-foreground">{param.name.replace(/_/g, ' ')}</p>
+                                                        <p className="mt-1 truncate text-sm font-medium" title={String(getParamValue(param))}>
+                                                            {String(getParamValue(param))}
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {step === 'metrics' && (
                                 <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                                     <div className="mb-4">
@@ -360,7 +517,7 @@ export function StartEvaluationWizard({
                                     <div className="mt-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 flex gap-3">
                                         <Info className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
                                         <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
-                                            Metrics use LLM-as-a-judge (GPT-4o-mini). Selecting more metrics increases total evaluation cost and duration.
+                                            Metrics use the selected judge model ({judgeModel || 'matching the RAG model'}). Selecting more metrics increases total evaluation cost and duration.
                                         </p>
                                     </div>
 
@@ -418,6 +575,14 @@ export function StartEvaluationWizard({
                                                     <p className="text-sm font-semibold truncate">{indexes.find(i => i.id === selectedIndex)?.name}</p>
                                                 </div>
                                                 <div className="bg-card p-4 sm:col-span-3 border-t border-border">
+                                                    <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Query Settings</p>
+                                                    <div className="grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-3">
+                                                        <span className="truncate">RAG: <strong className="text-foreground">{queryModel}</strong></span>
+                                                        <span>Top K: <strong className="text-foreground">{queryTopK}</strong></span>
+                                                        <span className="truncate">Judge: <strong className="text-foreground">{judgeModel}</strong></span>
+                                                    </div>
+                                                </div>
+                                                <div className="bg-card p-4 sm:col-span-3 border-t border-border">
                                                     <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1">Selected Metrics</p>
                                                     <div className="flex flex-wrap gap-1.5 mt-1">
                                                         {selectedMetrics.map(id => (
@@ -448,7 +613,8 @@ export function StartEvaluationWizard({
                     <button
                         onClick={() => {
                             if (step === 'review') setStep('metrics')
-                            else if (step === 'metrics') setStep('index')
+                            else if (step === 'metrics') setStep('overrides')
+                            else if (step === 'overrides') setStep('index')
                             else if (step === 'index') setStep('kb')
                             else if (step === 'kb') setStep('testset')
                         }}
@@ -481,13 +647,15 @@ export function StartEvaluationWizard({
                                 onClick={() => {
                                     if (step === 'testset') setStep('kb')
                                     else if (step === 'kb') setStep('index')
-                                    else if (step === 'index') setStep('metrics')
+                                    else if (step === 'index') setStep('overrides')
+                                    else if (step === 'overrides') setStep('metrics')
                                     else if (step === 'metrics') setStep('review')
                                 }}
                                 disabled={
                                     (step === 'testset' && !selectedTestSet) ||
                                     (step === 'kb' && !selectedKb) ||
-                                    (step === 'index' && !selectedIndex)
+                                    (step === 'index' && !selectedIndex) ||
+                                    (step === 'overrides' && (!queryModel || !judgeModel || queryTopK < 1))
                                 }
                                 className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
                             >

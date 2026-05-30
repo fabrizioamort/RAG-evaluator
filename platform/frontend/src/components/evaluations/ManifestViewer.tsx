@@ -74,11 +74,25 @@ export function ManifestViewer({ evaluationId }: ManifestViewerProps) {
 
             <div className="grid gap-6">
                 <ManifestSection
-                    title="RAG Configuration"
+                    title="Build Snapshot"
                     icon={<Code className="h-4 w-4" />}
-                    subtitle="Parameters used by the RAG implementation"
-                    data={manifest.rag_config_snapshot}
+                    subtitle="Frozen index build configuration"
+                    data={manifest.build_config_snapshot || manifest.rag_config_snapshot}
                     defaultOpen={true}
+                />
+
+                <ManifestSection
+                    title="Query Overrides"
+                    icon={<Search className="h-4 w-4" />}
+                    subtitle="Runtime changes applied to the ready index"
+                    data={manifest.query_overrides}
+                />
+
+                <ManifestSection
+                    title="Effective Config"
+                    icon={<Code className="h-4 w-4" />}
+                    subtitle="Configuration used for RAG query execution"
+                    data={manifest.effective_config_snapshot || manifest.rag_config_snapshot}
                 />
 
                 <ManifestSection

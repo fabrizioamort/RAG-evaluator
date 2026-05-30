@@ -78,6 +78,8 @@ class Evaluation(BaseModelNoUpdate):
     tags: Mapped[dict[str, Any]] = mapped_column(JSONType, default=list, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     metric_config: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
+    query_overrides: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
+    eval_judge_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="evaluations")

@@ -182,6 +182,59 @@ class TestCreateEvaluation:
         response = await client.post("/api/v1/evaluations", json=payload)
         assert response.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_create_evaluation_persists_query_overrides_and_judge_model(
+        self,
+        client: AsyncClient,
+        sample_index: KnowledgeBaseIndex,
+        sample_test_set: TestSet,
+    ) -> None:
+        """Query overrides and judge model should be recorded in the run manifest."""
+        payload = {
+            "knowledge_base_index_id": str(sample_index.id),
+            "test_set_id": str(sample_test_set.id),
+            "query_overrides": {"llm_model": "gpt-5-mini", "top_k": 8},
+            "eval_judge_model": "gpt-5.1",
+        }
+
+        response = await client.post("/api/v1/evaluations", json=payload)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["query_overrides"]["llm_model"] == "gpt-5-mini"
+        assert data["query_overrides"]["top_k"] == 8
+        assert data["eval_judge_model"] == "gpt-5.1"
+
+        manifest_response = await client.get(f"/api/v1/evaluations/{data['id']}/manifest")
+        assert manifest_response.status_code == 200
+        manifest = manifest_response.json()
+        assert manifest["build_config_snapshot"]["llm_model"] == "gpt-4o-mini"
+        assert manifest["effective_config_snapshot"]["llm_model"] == "gpt-5-mini"
+        assert manifest["query_overrides"]["top_k"] == 8
+        assert manifest["generation_model"] == "gpt-5-mini"
+        assert manifest["eval_judge_model"] == "gpt-5.1"
+
+    @pytest.mark.asyncio
+    async def test_create_evaluation_rejects_build_override(
+        self,
+        client: AsyncClient,
+        sample_index: KnowledgeBaseIndex,
+        sample_test_set: TestSet,
+    ) -> None:
+        """Build-time overrides should be rejected before persistence."""
+        payload = {
+            "knowledge_base_index_id": str(sample_index.id),
+            "test_set_id": str(sample_test_set.id),
+            "query_overrides": {
+                "parameters": {"chunk_size": 500},
+            },
+        }
+
+        response = await client.post("/api/v1/evaluations", json=payload)
+
+        assert response.status_code == 400
+        assert "requires creating a new index" in response.json()["detail"]
+
 
 @pytest.fixture
 async def sample_evaluation(

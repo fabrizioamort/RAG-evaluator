@@ -73,9 +73,18 @@ when tuning retrieval. Run all metrics for final comparisons.
 1. Build a ready index.
 2. Open the project's Evaluations tab.
 3. Start an evaluation.
-4. Select the index, test set, and metrics.
-5. Watch streamed progress.
-6. Review the completed results.
+4. Select the index and test set.
+5. Review or change query-time settings such as generation model, top-k, and
+   strategy-specific query parameters.
+6. Select metrics and, if needed, a DeepEval judge model.
+7. Watch streamed progress.
+8. Review the completed results and run manifest.
+
+The platform treats a ready index as an immutable build artifact. It will not rebuild
+the index while running an evaluation. Build-time settings such as embedding model,
+chunk size, sparse model, graph extraction model, and managed storage paths come from
+the index build snapshot. Query-time overrides are validated so they can change only
+query behavior.
 
 ### CLI
 
@@ -121,11 +130,17 @@ Compare systems only when the inputs are consistent:
 - Same knowledge base content.
 - Same test set.
 - Same metric list.
+- Same judge model, unless the judge itself is what you are testing.
 - One major change at a time when possible.
 
 Use the Comparisons tab to choose a completed baseline evaluation and one or more
 completed alternatives. Review aggregate deltas and per-question deltas. A strategy
 that improves average score but fails critical questions may not be the right choice.
+
+Changing query-time overrides such as generation model, top-k, or an agent iteration
+limit can reuse the same ready index. Changing build-time settings such as embedding
+model, chunking, sparse model, graph extraction model, or filesystem preparation options
+requires a new index for a reproducible comparison.
 
 ## Baselines And Trends
 
@@ -145,6 +160,8 @@ Use Trends to observe:
 - Start with small test sets.
 - Run fewer metrics during iteration.
 - Use cheaper judge/generation models for exploratory runs when acceptable.
+- Decouple the RAG generation model from the judge model when you want a stable judge
+  across candidate systems.
 - Keep `DEEPEVAL_ASYNC_MODE=False` if you are hitting provider rate limits.
 - Inspect playground results before running large evaluations.
 
@@ -155,7 +172,9 @@ Before trusting a result:
 - Confirm the index status was `ready`.
 - Confirm the test set cases were reviewed.
 - Confirm metric selection matches the decision you are making.
+- Confirm query overrides and judge model match the comparison you intend to make.
 - Inspect several high-scoring and low-scoring cases manually.
 - Check retrieval traces for representative failures.
+- Check the run manifest's build snapshot, query overrides, and effective config.
 - Compare cost and latency, not only quality.
 - Save the rationale for baseline changes in the baseline reason or notes.
