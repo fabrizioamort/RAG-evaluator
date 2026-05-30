@@ -410,11 +410,40 @@ class RLMFilesystemRAG(BaseRAG):
 
     def query_with_trace(self, question: str, top_k: int = 5) -> dict[str, Any]:
         result = self.query(question, top_k)
+        agent_trace = result["metadata"].get("trace", {})
+
+        # Reshape the agent's exploration trace into the standard RetrievalTrace
+        # format the UI and consumers expect (strategy, steps, retrieved_chunks).
+        mapped_steps = [
+            {
+                "type": "code_execution",
+                "input": step.get("code", ""),
+                "duration_ms": round((step.get("time") or 0.0) * 1000, 2),
+                "metadata": {
+                    key: step[key]
+                    for key in ("step", "success", "error", "output", "variables")
+                    if step.get(key) is not None
+                },
+            }
+            for step in agent_trace.get("steps", [])
+        ]
+        retrieval_trace = {
+            "strategy": "agentic",
+            "steps": mapped_steps,
+            "retrieved_chunks": agent_trace.get("retrieved_chunks", []),
+            "fusion_details": {
+                "files_accessed": agent_trace.get("files_accessed", []),
+                "total_steps": agent_trace.get("total_steps", 0),
+            },
+            "total_duration_ms": round(
+                result["metadata"].get("retrieval_time", 0.0) * 1000, 2
+            ),
+        }
         return {
             "answer": result["answer"],
             "context": result["context"],
             "metadata": result["metadata"],
-            "retrieval_trace": result["metadata"].get("trace", {}),
+            "retrieval_trace": retrieval_trace,
         }
 
     def query_stream(

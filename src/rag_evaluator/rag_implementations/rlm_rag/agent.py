@@ -400,32 +400,34 @@ class FilesystemTools:
             name = name[: -len("_summary")]
         return name
 
-    def get_retrieved_context(self) -> list[str]:
-        """Return distinct content snippets the agent actually retrieved.
+    def get_retrieved_items(self) -> list[dict[str, str]]:
+        """Distinct {source, content} pairs the agent retrieved this query.
 
         Prefers full reads; falls back to grep match lines when the agent only
-        searched. Used as the retrieval context for evaluation metrics.
+        searched. Pairing lets callers build per-chunk source attribution.
         """
         source = self._retrieved if self._retrieved else self._grep_hits
         seen: set[str] = set()
-        out: list[str] = []
+        out: list[dict[str, str]] = []
         for item in source:
             content = item["content"]
             if content and content not in seen:
                 seen.add(content)
-                out.append(content)
+                out.append({"source": item["source"], "content": content})
             if len(out) >= 20:
                 break
         return out
 
+    def get_retrieved_context(self) -> list[str]:
+        """Content snippets the agent retrieved (for metrics/display)."""
+        return [it["content"] for it in self.get_retrieved_items()]
+
     def get_retrieved_sources(self) -> list[str]:
-        """Return distinct document ids the agent retrieved from."""
-        source = self._retrieved if self._retrieved else self._grep_hits
+        """Distinct document ids the agent retrieved from."""
         out: list[str] = []
-        for item in source:
-            sid = item["source"]
-            if sid and sid not in out:
-                out.append(sid)
+        for it in self.get_retrieved_items():
+            if it["source"] and it["source"] not in out:
+                out.append(it["source"])
         return out
 
     def reset_tracking(self) -> None:
@@ -889,16 +891,35 @@ class RLMAgent:
         if not isinstance(sources_used, list):
             sources_used = [str(sources_used)]
 
-        # Fall back to what the agent actually retrieved when the LLM didn't
-        # populate sources_used explicitly.
-        if not sources_used:
-            sources_used = self.tools.get_retrieved_sources()
+        # What the agent actually retrieved this query (paired source+content).
+        items = self.tools.get_retrieved_items()
 
-        # Retrieval context = the document content the agent actually read or
-        # matched. Fall back to the conversation if it retrieved nothing.
-        retrieved_context = self.tools.get_retrieved_context()
+        # Fall back to retrieved sources when the LLM didn't set sources_used.
+        if not sources_used:
+            sources_used = []
+            for it in items:
+                if it["source"] and it["source"] not in sources_used:
+                    sources_used.append(it["source"])
+
+        # Retrieval context = retrieved document content. Fall back to the
+        # conversation only if nothing was retrieved.
+        retrieved_context = [it["content"] for it in items]
         if not retrieved_context:
             retrieved_context = messages_to_context(messages)
+
+        # Standardized retrieved chunks for the retrieval-trace viewer.
+        trace["retrieved_chunks"] = [
+            {
+                "content": it["content"],
+                "document_id": it["source"],
+                "chunk_id": f"chunk_{i}",
+                "score": round(max(0.0, 1.0 - i * 0.05), 4),
+                "rank": i + 1,
+                "source": it["source"],
+                "metadata": {},
+            }
+            for i, it in enumerate(items)
+        ]
 
         # Collect files accessed
         trace["files_accessed"] = list(set(self.tools.get_accessed_files()))
