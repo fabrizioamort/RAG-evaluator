@@ -251,7 +251,10 @@ class LLMClient:
         messages: list[dict[str, str]],
         model: str | None = None,
         temperature: float = 0.0,
-        max_tokens: int = 4000,
+        # Headroom for gpt-5 reasoning orchestrators: reasoning and visible
+        # output share this budget, so a tight cap can starve the response of
+        # code and waste exploration steps. Sub-calls override this explicitly.
+        max_tokens: int = 8000,
     ) -> ChatResponse:
         """Send chat completion request.
 

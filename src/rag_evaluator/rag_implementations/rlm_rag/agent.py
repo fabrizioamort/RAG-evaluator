@@ -882,7 +882,10 @@ class RLMAgent:
         # Extract results from namespace
         final_answer = self.repl.get_variable("final_answer")
         if final_answer is None:
-            final_answer = "Unable to find answer within exploration budget."
+            # Budget exhausted without committing an answer: synthesize a
+            # best-effort answer from the evidence gathered instead of returning
+            # a content-free placeholder.
+            final_answer = self._synthesize_final_answer(messages)
 
         confidence = self.repl.get_variable("confidence") or "LOW"
         sources_used = self.repl.get_variable("sources_used") or []
@@ -934,6 +937,36 @@ class RLMAgent:
             generation_time=0.0,  # Included in retrieval_time for RLM
             trace=trace,
         )
+
+    def _synthesize_final_answer(self, messages: list[dict[str, str]]) -> str:
+        """Best-effort answer after the step budget is exhausted.
+
+        Rather than returning a content-free placeholder, ask the orchestrator to
+        answer from the evidence already gathered in the conversation. Falls back
+        to the placeholder only if synthesis itself fails or returns nothing.
+        """
+        synthesis_messages = messages + [
+            {
+                "role": "user",
+                "content": (
+                    "You have reached the exploration budget without setting "
+                    "final_answer. Using only the evidence gathered above, write "
+                    "your best final answer to the original question now. Cite the "
+                    "supporting document ids. If the corpus genuinely does not "
+                    "contain the answer, say so in one sentence."
+                ),
+            }
+        ]
+        placeholder = "Unable to find answer within exploration budget."
+        try:
+            response = self.llm_client.chat(
+                messages=synthesis_messages,
+                model=self.config.orchestrator_model,
+            )
+            return (response.content or "").strip() or placeholder
+        except Exception as e:
+            logger.error(f"Final-answer synthesis failed: {e}")
+            return placeholder
 
     def get_stats(self) -> dict[str, Any]:
         """Get agent performance and budget statistics."""
