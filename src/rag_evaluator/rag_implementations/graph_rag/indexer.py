@@ -15,6 +15,7 @@ from neo4j_graphrag.indexes import create_vector_index
 from neo4j_graphrag.llm.openai_llm import OpenAILLM
 
 from rag_evaluator.common.document_loaders import create_loader
+from rag_evaluator.config import settings
 from rag_evaluator.rag_implementations.graph_rag.neo4j_connection import (
     create_verified_neo4j_driver,
 )
@@ -217,12 +218,17 @@ class GraphIndexer:
         if "nano" not in self.llm_model.lower() and "o1" not in self.llm_model.lower():
             llm_params["temperature"] = 0
 
+        openai_kwargs: dict[str, Any] = {}
+        if settings.openai_base_url:
+            openai_kwargs["base_url"] = settings.openai_base_url
+
         llm = OpenAILLM(
             model_name=self.llm_model,
             model_params=llm_params,
+            **openai_kwargs,
         )
 
-        embedder = OpenAIEmbeddings(model=self.embedding_model)
+        embedder = OpenAIEmbeddings(model=self.embedding_model, **openai_kwargs)
 
         schema = self._build_schema()
         lexical_graph_config = self._build_lexical_graph_config()

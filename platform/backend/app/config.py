@@ -33,6 +33,7 @@ class Settings(BaseSettings):
 
     # LLM Providers
     OPENAI_API_KEY: str | None = None
+    OPENROUTER_API_KEY: str | None = None
     ANTHROPIC_API_KEY: str | None = None
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 

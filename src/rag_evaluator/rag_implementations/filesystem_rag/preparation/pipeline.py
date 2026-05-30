@@ -119,6 +119,7 @@ class PreparationPipeline:
         if self._client is None:
             self._client = OpenAI(
                 api_key=settings.openai_api_key,
+                base_url=settings.openai_base_url,
                 timeout=settings.openai_timeout,
             )
         return self._client
