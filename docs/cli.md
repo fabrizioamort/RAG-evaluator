@@ -1,158 +1,186 @@
-# CLI Reference - RAG Evaluator
+# CLI Reference
 
-The RAG Evaluator CLI is the core tool for running local evaluations, preparing documents, and testing different RAG implementations directly from your terminal.
+The `rag-eval` CLI runs local document preparation, evaluation, report generation,
+and the legacy Streamlit report viewer. It uses the core package in `src/rag_evaluator`
+and the root `.env` file.
 
-## Installation
+## Install
 
-The CLI is part of the core project. Ensure you have the environment set up:
+Run from the repository root:
 
-```bash
-# Install dependencies
-uv sync
+```powershell
+uv sync --all-extras
+Copy-Item .env.example .env
+# Edit .env and set OPENAI_API_KEY
 ```
 
-## Basic Usage
+Check the CLI:
 
-The CLI is accessed via `uv run rag-eval` (defined in `pyproject.toml`).
-
-```bash
+```powershell
 uv run rag-eval --help
 ```
 
+## Test Set Format
+
+CLI evaluations require a JSON object with a top-level `test_cases` array.
+
+```json
+{
+  "metadata": {
+    "name": "Example test set"
+  },
+  "test_cases": [
+    {
+      "question": "What does the system evaluate?",
+      "expected_answer": "It evaluates Retrieval Augmented Generation systems.",
+      "ground_truth_context": [
+        "RAG Evaluator compares Retrieval Augmented Generation systems."
+      ],
+      "difficulty": "easy",
+      "category": "overview"
+    }
+  ]
+}
+```
+
+`question` and `expected_answer` are required. `ground_truth_context` is optional but
+recommended for contextual precision and recall.
+
 ## Commands
 
-### 1. `prepare`
+### `prepare`
 
-Prepares and indexes documents for a specific RAG implementation.
+Indexes documents for a RAG implementation.
 
-**Usage:**
-
-```bash
-uv run rag-eval prepare --rag-type <type> --input-dir <path>
-```
-
-**Arguments:**
-
-- `--rag-type`: The RAG implementation to prepare. Choices: `vector_semantic`, `vector_hybrid`, `graph_rag`, `filesystem_rag`.
-- `--input-dir`: Path to the directory containing raw documents (PDF, DOCX, TXT).
-
-**Examples:**
-
-```bash
-# Standard Vector Search (ChromaDB)
+```powershell
 uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
-
-# Filesystem RAG
-uv run rag-eval prepare --rag-type filesystem_rag --input-dir data/raw
 ```
 
-### 2. `evaluate`
+Options:
 
-Runs the evaluation pipeline using the DeepEval framework.
+| Option | Description | Default |
+| --- | --- | --- |
+| `--rag-type` | One of `vector_semantic`, `vector_hybrid`, `graph_rag`, `filesystem_rag`, `rlm_rag` | `vector_semantic` |
+| `--input-dir` | Directory containing source documents | `data/raw` |
 
-**Usage:**
+Supported source formats are handled by the shared document loaders and include PDF,
+DOCX, TXT, and Markdown where supported by the implementation.
 
-```bash
-uv run rag-eval evaluate --rag-type <type> [options]
+### `evaluate`
+
+Runs DeepEval metrics against a prepared RAG implementation.
+
+```powershell
+uv run rag-eval evaluate --rag-type vector_semantic --test-set data/test_set.json
 ```
 
-**Arguments:**
+Options:
 
-- `--rag-type`: The implementation to evaluate. Use `all` to run all available implementations.
-- `--test-set`: Path to the test set JSON file (default: `data/test_set.json`).
-- `--output`: Directory to save reports (default: `reports`).
-- `--verbose`: Enable detailed output.
+| Option | Description | Default |
+| --- | --- | --- |
+| `--rag-type` | RAG type to evaluate, or `all` | `vector_semantic` |
+| `--test-set` | JSON test set path | `data/test_set.json` |
+| `--output` | Report output directory | `reports` |
+| `--verbose` | Print per-case progress and errors | disabled |
+| `--combine` | Combine this run with latest reports for other RAG types | disabled |
 
-**Examples:**
+Reports are written as JSON and Markdown. Running `--rag-type all` creates a comparison
+report across every registered RAG implementation. Running a single implementation with
+`--combine` loads the latest compatible reports from `--output` for the other RAG types
+and produces a comparison report.
 
-```bash
-# Evaluate specific implementation
-uv run rag-eval evaluate --rag-type vector_semantic
+### `ui`
 
-# Evaluate all implementations
-uv run rag-eval evaluate --rag-type all
+Starts the legacy Streamlit report viewer for local report inspection.
 
-# Use custom test set
-uv run rag-eval evaluate --rag-type vector_hybrid --test-set my_tests.json
-```
-
-### 3. `ui`
-
-Launches the standalone Streamlit UI for local visualization.
-
-**Usage:**
-
-```bash
+```powershell
 uv run rag-eval ui
 ```
 
----
+The production web platform lives under `platform/` and is started separately. See the
+[Getting Started guide](guides/getting-started.md).
 
-## RAG Implementations
+## RAG Type Notes
 
-For a deep dive into the architecture and logic of each implementation, see the [RAG Strategies Guide](rag_strategies.md).
+| RAG type | Required services | Notes |
+| --- | --- | --- |
+| `vector_semantic` | None beyond OpenAI-compatible API access | Uses ChromaDB persistence under `CHROMA_PERSIST_DIRECTORY`. |
+| `vector_hybrid` | Qdrant | Start with `docker-compose up -d qdrant`. Uses dense embeddings and SPLADE sparse vectors. |
+| `graph_rag` | Neo4j | Start with `docker-compose up -d neo4j`. Graph construction uses LLM calls during preparation. |
+| `filesystem_rag` | None beyond LLM access | Builds a prepared filesystem and uses an agentic navigation loop. |
+| `rlm_rag` | None beyond LLM access | Builds a prepared filesystem and lets a recursive language-model agent explore it with Python tools. |
 
-### Vector Semantic Search (ChromaDB)
+## Environment Variables
 
-The default implementation using OpenAI embeddings and ChromaDB.
+The CLI reads the repository root `.env`.
 
-- **Requires:** `OPENAI_API_KEY`
-- **Setup:** `uv run rag-eval prepare --rag-type vector_semantic ...`
+Common settings:
 
-### Hybrid Search RAG (Qdrant)
+| Variable | Description |
+| --- | --- |
+| `OPENAI_API_KEY` | Required for OpenAI models and embeddings. |
+| `OPENAI_BASE_URL` | Optional OpenAI-compatible endpoint, such as OpenRouter. |
+| `OPENAI_MODEL` | Generation and judge model used by the core CLI. |
+| `EMBEDDING_MODEL` | Embedding model for vector implementations. |
+| `CHROMA_PERSIST_DIRECTORY` | Local ChromaDB path. |
+| `QDRANT_URL` | Qdrant endpoint for hybrid search. |
+| `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` | Neo4j connection details for Graph RAG. |
+| `DEEPEVAL_ASYNC_MODE` | Set to `False` for conservative sequential judging. |
 
-Combines dense vectors (semantic) and sparse vectors (keyword/SPLADE) using Reciprocal Rank Fusion (RRF).
+See [Configuration](guides/configuration.md) for the full list.
 
-**Prerequisites:**
+## Legal RAG Bench Converter
 
-- Qdrant running (`docker-compose up -d qdrant`)
-- Configuration in `.env`:
+The repository includes a helper for converting Legal RAG Bench JSONL data into CLI
+inputs.
 
-  ```bash
-  QDRANT_URL=http://localhost:6333
-  QDRANT_COLLECTION_NAME=hybrid_rag
-  SPARSE_MODEL_NAME=prithvida/Splade_pp_en_v1
-  ```
+Place the source files here:
 
-**How it works:**
+```text
+data/datasets/legal-rag-bench/
+  corpus.jsonl
+  qa.jsonl
+```
 
-1. Splits docs into 700-char chunks.
-2. Generates dense embeddings (OpenAI) and sparse embeddings (SPLADE).
-3. Performs hybrid search in Qdrant with RRF fusion.
+Run:
 
-### Graph RAG (Neo4j)
+```powershell
+uv run python scripts/convert_legal_rag_bench.py
+```
 
-Uses a knowledge graph to enhance retrieval with structural relationships.
+Outputs:
 
-**Prerequisites:**
+```text
+data/legal_rag_bench/
+  subset/
+    raw/
+    test_set.json
+  full/
+    raw/
+    test_set.json
+```
 
-- Neo4j Database (local or cloud)
-- Configuration in `.env`:
+Smoke test:
 
-  ```bash
-  NEO4J_URI=bolt://localhost:7687
-  NEO4J_USERNAME=neo4j
-  NEO4J_PASSWORD=password
-  ```
+```powershell
+uv run rag-eval prepare --rag-type vector_semantic --input-dir data/legal_rag_bench/subset/raw
+uv run rag-eval evaluate --rag-type vector_semantic --test-set data/legal_rag_bench/subset/test_set.json --verbose
+```
 
-**How it works:**
+## Examples
 
-1. Uses LLM to extract entities and relationships during ingestion.
-2. Builds a graph in Neo4j.
-3. Retrieves context by traversing the graph from found entities.
+```powershell
+# Prepare and evaluate semantic search
+uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
+uv run rag-eval evaluate --rag-type vector_semantic
 
-### Filesystem RAG (Agentic)
+# Compare all registered implementations
+uv run rag-eval evaluate --rag-type all --test-set data/test_set.json
 
-An agentic approach that navigates a prepared directory structure like a human developer.
+# Evaluate one implementation and combine with latest reports for the others
+uv run rag-eval evaluate --rag-type rlm_rag --combine
 
-**How it works:**
-
-1. **Preparation:** Converts docs to Markdown, builds a structured index (`_index/`, `_summaries/`).
-2. **Retrieval:** A ReAct agent uses tools (`list_directory`, `read_file`, `grep_search`) to find answers.
-
-**Agent Tools:**
-
-- `list_directory`: Explore the index.
-- `read_file`: Read content (supports partial reading).
-- `grep_search`: Keyword search.
-- `find_files`: Locate files.
+# Use an OpenAI-compatible provider
+$env:OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+uv run rag-eval evaluate --rag-type vector_semantic
+```

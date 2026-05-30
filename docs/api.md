@@ -1,152 +1,328 @@
-# API Reference - RAG Evaluation Platform
+# API Reference
 
-The RAG Evaluation Platform provides a RESTful API for managing projects, knowledge bases, test sets, RAG configurations, and running evaluations.
+The platform backend is a FastAPI application. The OpenAPI schema is available at
+`http://localhost:8000/api/v1/docs` when the backend is running.
 
-## Base URL
+Base path:
 
-All API requests are prefixed with:
-`/api/v1`
-
-## API Endpoints
-
-### Projects
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| GET | `/projects` | List all projects (supports `?status=`, `?tags=`) |
-| POST | `/projects` | Create a new project |
-| GET | `/projects/{id}` | Get project details |
-| PUT | `/projects/{id}` | Update project information |
-| DELETE | `/projects/{id}` | Delete a project (cascades to all related data) |
-| POST | `/projects/{id}/archive` | Archive a project |
-
-### Knowledge Bases
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| GET | `/projects/{pid}/knowledge-bases` | List knowledge bases in a project |
-| POST | `/projects/{pid}/knowledge-bases` | Create a new knowledge base |
-| GET | `/knowledge-bases/{id}` | Get knowledge base details |
-| DELETE | `/knowledge-bases/{id}` | Delete a knowledge base |
-| POST | `/knowledge-bases/{id}/documents` | Upload documents (multipart/form-data) |
-| DELETE | `/knowledge-bases/{id}/documents/{docId}` | Remove a document |
-| POST | `/knowledge-bases/{id}/index` | Trigger indexing of the knowledge base |
-| GET | `/knowledge-bases/{id}/status` | Get indexing status |
-| GET | `/knowledge-bases/{id}/versions` | List knowledge base versions |
-
-### Test Sets
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| GET | `/projects/{pid}/test-sets` | List test sets in a project |
-| POST | `/projects/{pid}/test-sets` | Create a new test set |
-| GET | `/test-sets/{id}` | Get test set details and its test cases |
-| PUT | `/test-sets/{id}` | Update test set information |
-| DELETE | `/test-sets/{id}` | Delete a test set |
-| POST | `/test-sets/{id}/cases` | Add a test case to the set |
-| PUT | `/test-sets/{id}/cases/{caseId}` | Update a test case |
-| DELETE | `/test-sets/{id}/cases/{caseId}` | Delete a test case |
-| POST | `/test-sets/{id}/import` | Import test cases from a JSON file |
-| GET | `/test-sets/{id}/export` | Export test cases to JSON |
-| POST | `/test-sets/{id}/generate` | Generate test cases from a knowledge base |
-| GET | `/test-sets/{id}/generation-status` | Get the status of a generation job |
-| POST | `/test-sets/{id}/cases/bulk-review` | Bulk approve or reject generated cases |
-
-### RAG Configurations
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| GET | `/projects/{pid}/rag-configs` | List RAG configurations in a project |
-| POST | `/projects/{pid}/rag-configs` | Create a new RAG configuration |
-| GET | `/rag-configs/{id}` | Get configuration details |
-| PUT | `/rag-configs/{id}` | Update a RAG configuration |
-| DELETE | `/rag-configs/{id}` | Delete a configuration |
-| GET | `/rag-types` | List available RAG types (vector_semantic, hybrid, etc.) |
-| GET | `/rag-types/{type}/parameters` | Get the configuration schema for a specific type |
-| GET | `/llm-providers` | List available LLM providers (OpenAI, Ollama, etc.) |
-
-#### RAG Parameters
-
-When creating or updating a RAG config, send a `parameters` object with the fields for the selected type. Use `GET /rag-types` and `GET /rag-types/{type}/parameters` to discover the parameter names, types, defaults, and descriptions. If a parameter is omitted, the backend falls back to environment settings (from `.env`) or internal defaults. When you build an index through the platform, collection and storage paths are auto-managed for isolation, so storage-related parameters are usually optional.
-
-#### vector_semantic
-
-- `collection_name` (default: `rag_documents`): ChromaDB collection name. In the platform, indexes use a generated collection name, so keep the default unless you need to reuse an existing collection.
-- `persist_directory` (default: empty): Filesystem path for Chroma persistence. Leave blank to use platform-managed storage or the core default.
-
-#### vector_hybrid
-
-- `collection_name` (default: empty): Qdrant collection name. In the platform, indexes use a generated collection name, so leave blank unless you need to reuse an existing collection.
-- `qdrant_url` (default: empty): Qdrant server URL, for example `http://localhost:6333`. If blank, the backend uses `QDRANT_URL` from `.env` or the core default.
-
-#### graph_rag
-
-- `neo4j_uri` (default: empty): Neo4j connection URI, for example `bolt://localhost:7687`. If blank, the backend uses `NEO4J_URI` from `.env` or the core default.
-- `neo4j_username` (default: empty): Neo4j username. If blank, the backend uses `NEO4J_USERNAME` from `.env` or the core default.
-- `neo4j_password` (default: empty): Neo4j password. If blank, the backend uses `NEO4J_PASSWORD` from `.env` or the core default.
-- `vector_index_name` (default: `chunk_embeddings`): Name of the Neo4j vector index. Keep the default unless you created a custom index.
-
-#### filesystem_rag
-
-- `llm_model` (default: `gpt-4o-mini`): Model used by the agent for navigation. In the platform, this is driven by the LLM Settings section, so the default is usually fine.
-- `prepared_path` (default: `data/prepared/filesystem_rag`): Path to prepared filesystem output. The platform stores this under `storage/indexes/<index_id>/filesystem_rag`, so leave blank unless you need a custom path.
-- `word_threshold` (default: `1000`): Word count threshold for LLM analysis vs heuristic analysis. Lower values use the LLM more (higher cost).
-- `max_iterations` (default: `10`): Max ReAct loop iterations per query.
-- `max_tool_calls` (default: `20`): Max tool calls per query.
-- `max_file_reads` (default: `10`): Max file reads per query.
-
-### Evaluations
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| GET | `/projects/{pid}/evaluations` | List evaluations in a project |
-| POST | `/evaluations` | Start a new evaluation |
-| GET | `/evaluations/{id}` | Get evaluation details and summary metrics |
-| GET | `/evaluations/{id}/results` | Get detailed per-question results (paginated) |
-| GET | `/evaluations/{id}/stream` | SSE stream for real-time progress updates |
-| POST | `/evaluations/{id}/cancel` | Cancel a running evaluation |
-| POST | `/evaluations/{id}/pause` | Pause an evaluation (save checkpoint) |
-| POST | `/evaluations/{id}/resume` | Resume from a checkpoint |
-| POST | `/evaluations/{id}/retry` | Retry a failed evaluation |
-| GET | `/evaluations/{id}/report` | Download the evaluation report (`?format=json\|markdown`) |
-| GET | `/evaluations/{id}/manifest` | Get the reproducibility run manifest |
-| GET | `/evaluations/{id}/trace/{resultId}` | Get the retrieval trace for a specific result |
-| POST | `/evaluations/{id}/set-baseline` | Mark this evaluation as the project baseline |
-
-### Webhooks
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| GET | `/projects/{pid}/webhooks` | List webhooks for a project |
-| POST | `/projects/{pid}/webhooks` | Create a new webhook (max 3 per project) |
-| GET | `/webhooks/{id}` | Get webhook details |
-| PUT | `/webhooks/{id}` | Update webhook configuration |
-| DELETE | `/webhooks/{id}` | Delete a webhook |
-| POST | `/webhooks/{id}/test` | Send a test payload to the webhook URL |
-
-## Authentication
-
-In the Open Source Edition, the API is accessible without authentication for local use. For production environments, it is recommended to run the platform behind a reverse proxy with authentication.
-
-## Example Usage
-
-### Creating a Project
-
-```bash
-curl -X POST http://localhost:8000/api/v1/projects \
-  -H "Content-Type: application/json" \
-  -d '{"name": "My RAG Project", "description": "Evaluating internal documentation"}'
+```text
+/api/v1
 ```
 
-### Starting an Evaluation
+The open source edition does not include built-in authentication. Protect the API with
+a reverse proxy, private network, or API gateway before exposing it beyond a local
+development environment.
 
-```bash
-curl -X POST http://localhost:8000/api/v1/evaluations \
-  -H "Content-Type: application/json" \
-  -d '{
-    "project_id": "...",
-    "knowledge_base_id": "...",
-    "test_set_id": "...",
-    "rag_config_id": "..."
-  }'
+## Response Conventions
+
+List endpoints return paginated objects:
+
+```json
+{
+  "items": [],
+  "total": 0,
+  "offset": 0,
+  "limit": 50
+}
+```
+
+Errors use a structured response with `detail`, `request_id`, and optional validation
+details. Every request receives an `X-Request-ID` response header.
+
+## Health And Dashboard
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/health` | Basic health check |
+| GET | `/health/detail` | Detailed service health |
+| GET | `/stats` | Dashboard counters |
+| GET | `/recent-activity` | Recent platform activity |
+
+## Projects
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/projects` | List projects. Supports `limit`, `offset`, and `status`. |
+| POST | `/projects` | Create a project. |
+| GET | `/projects/{project_id}` | Get project details. |
+| PUT | `/projects/{project_id}` | Update project metadata. |
+| DELETE | `/projects/{project_id}` | Delete a project and related data. |
+| POST | `/projects/{project_id}/archive` | Archive a project. |
+| GET | `/projects/{project_id}/baseline` | Get the current baseline evaluation. |
+
+Create request:
+
+```json
+{
+  "name": "Internal docs RAG",
+  "description": "Evaluate support documentation retrieval",
+  "tags": ["support", "baseline"]
+}
+```
+
+## Knowledge Bases And Documents
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/projects/{project_id}/knowledge-bases` | List knowledge bases in a project. |
+| POST | `/projects/{project_id}/knowledge-bases` | Create a knowledge base. |
+| GET | `/knowledge-bases/{kb_id}` | Get a knowledge base with documents. |
+| PUT | `/knowledge-bases/{kb_id}` | Update knowledge base metadata. |
+| DELETE | `/knowledge-bases/{kb_id}` | Delete a knowledge base. |
+| POST | `/knowledge-bases/{kb_id}/archive` | Archive a knowledge base. |
+| POST | `/knowledge-bases/{kb_id}/restore` | Restore an archived knowledge base. |
+| POST | `/knowledge-bases/{kb_id}/documents` | Upload documents using `multipart/form-data` field `files`. |
+| DELETE | `/knowledge-bases/{kb_id}/documents/{doc_id}` | Delete a document. |
+| GET | `/knowledge-bases/{kb_id}/versions` | List knowledge base versions. |
+| GET | `/knowledge-bases/{kb_id}/status` | Get processing/indexing status. |
+
+Supported upload formats include PDF, DOCX, TXT, and Markdown where the active loader
+supports them.
+
+## Indexes
+
+Indexes are isolated physical builds of a knowledge base using a specific RAG
+configuration. Evaluations run against indexes, not directly against mutable knowledge
+bases.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/indexes` | List indexes. Supports `kb_id`, `project_id`, `status`, `limit`, and `offset`. |
+| POST | `/knowledge-bases/{kb_id}/indexes` | Create and start an index build. |
+| GET | `/indexes/{index_id}` | Get index details. |
+| DELETE | `/indexes/{index_id}` | Delete an index and clean up storage when possible. |
+| GET | `/indexes/{index_id}/stream` | SSE stream for build progress. |
+| POST | `/indexes/{index_id}/retry` | Retry a failed index build. |
+| POST | `/indexes/{index_id}/archive` | Archive an index while preserving evaluation references. |
+
+Create request:
+
+```json
+{
+  "rag_config_id": "00000000-0000-0000-0000-000000000000",
+  "name": "Hybrid support docs index",
+  "description": "Qdrant hybrid index for support documentation"
+}
+```
+
+## RAG Configurations
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/rag-types` | List supported RAG types and parameter metadata. |
+| GET | `/rag-types/{rag_type}/parameters` | Get parameter schema for one RAG type. |
+| GET | `/llm-providers` | List provider/model options exposed by the platform. |
+| GET | `/projects/{project_id}/rag-configs` | List RAG configurations. |
+| POST | `/projects/{project_id}/rag-configs` | Create a RAG configuration. |
+| GET | `/rag-configs/{config_id}` | Get a RAG configuration. |
+| PUT | `/rag-configs/{config_id}` | Update a RAG configuration. |
+| DELETE | `/rag-configs/{config_id}` | Delete a RAG configuration. |
+
+Create request:
+
+```json
+{
+  "name": "Hybrid gpt-5-mini",
+  "rag_type": "vector_hybrid",
+  "llm_provider": "openai",
+  "llm_model": "gpt-5-mini",
+  "llm_base_url": null,
+  "parameters": {
+    "qdrant_url": "http://localhost:6333"
+  }
+}
+```
+
+Supported RAG types:
+
+| Type | Parameters |
+| --- | --- |
+| `vector_semantic` | `collection_name`, `persist_directory` |
+| `vector_hybrid` | `collection_name`, `qdrant_url` |
+| `graph_rag` | `neo4j_uri`, `neo4j_username`, `neo4j_password`, `vector_index_name` |
+| `filesystem_rag` | `llm_model`, `prepared_path`, `word_threshold`, `max_iterations`, `max_tool_calls`, `max_file_reads` |
+| `rlm_rag` | `security_mode`, `orchestrator_model`, `worker_model`, `max_repl_steps`, `repl_timeout`, `max_file_reads`, `max_read_bytes`, `max_read_lines`, `max_sub_calls`, `max_recursion_depth`, `small_corpus_threshold`, `chunk_size`, `chunk_overlap`, `use_llm_summaries`, `use_llm_topics`, `max_topics_per_doc` |
+
+Supported provider metadata currently includes OpenAI, OpenRouter, Anthropic, and
+Ollama. Provider support depends on configured API keys and local services.
+
+## Test Sets And Test Generation
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/projects/{project_id}/test-sets` | List test sets. |
+| POST | `/projects/{project_id}/test-sets` | Create an empty test set. |
+| GET | `/test-sets/{test_set_id}` | Get a test set with cases. |
+| PUT | `/test-sets/{test_set_id}` | Update test set metadata. |
+| DELETE | `/test-sets/{test_set_id}` | Delete a test set. |
+| POST | `/test-sets/{test_set_id}/cases` | Add one test case. |
+| POST | `/test-sets/{test_set_id}/cases/bulk` | Add multiple test cases. |
+| PUT | `/test-sets/{test_set_id}/cases/{case_id}` | Update a test case. |
+| DELETE | `/test-sets/{test_set_id}/cases/{case_id}` | Delete a test case. |
+| POST | `/test-sets/{test_set_id}/cases/bulk-review` | Approve or reject generated cases. |
+| POST | `/projects/{project_id}/test-sets/import` | Import a test set from JSON. |
+| GET | `/test-sets/{test_set_id}/export` | Export a test set to JSON. |
+| POST | `/test-sets/{test_set_id}/generate` | Start AI-assisted test generation. |
+| GET | `/test-sets/{test_set_id}/generation-status` | Get latest generation job status. |
+| DELETE | `/test-sets/{test_set_id}/generation` | Cancel a running generation job. |
+| GET | `/test-sets/{test_set_id}/generation-jobs` | List generation jobs for the test set. |
+
+Import request:
+
+```json
+{
+  "name": "Support smoke tests",
+  "description": "A small hand-reviewed test set",
+  "tags": ["smoke"],
+  "test_cases": [
+    {
+      "question": "How do users reset a password?",
+      "expected_answer": "Users reset a password from the account settings page.",
+      "ground_truth_context": ["Password reset instructions are in account settings."],
+      "difficulty": "easy",
+      "category": "support",
+      "question_type": "factual"
+    }
+  ]
+}
+```
+
+Generation request:
+
+```json
+{
+  "knowledge_base_id": "00000000-0000-0000-0000-000000000000",
+  "target_count": 20,
+  "questions_per_chunk": 1,
+  "difficulty_distribution": {
+    "easy": 0.3,
+    "medium": 0.5,
+    "hard": 0.2
+  },
+  "skip_semantic_check": false
+}
+```
+
+## Test Templates
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/test-templates` | List built-in and custom templates. |
+| POST | `/test-templates` | Create a template. |
+| GET | `/test-templates/{template_id}` | Get a template. |
+| PUT | `/test-templates/{template_id}` | Update a template. |
+| DELETE | `/test-templates/{template_id}` | Delete a template. |
+
+## Evaluations
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| POST | `/evaluations` | Start an evaluation against a ready index. |
+| GET | `/evaluations/{evaluation_id}` | Get evaluation summary. |
+| PATCH | `/evaluations/{evaluation_id}` | Update evaluation name, notes, or tags. |
+| GET | `/evaluations/{evaluation_id}/results` | List per-question results. |
+| GET | `/evaluations/{evaluation_id}/trace/{result_id}` | Get retrieval trace artifact for one result. |
+| GET | `/evaluations/{evaluation_id}/manifest` | Get reproducibility snapshot. |
+| GET | `/evaluations/{evaluation_id}/stream` | SSE stream for progress. |
+| POST | `/evaluations/{evaluation_id}/cancel` | Cancel a running evaluation. |
+| POST | `/evaluations/{evaluation_id}/pause` | Pause a running evaluation. |
+| POST | `/evaluations/{evaluation_id}/resume` | Resume a paused evaluation. |
+| POST | `/evaluations/{evaluation_id}/retry` | Retry a failed or cancelled evaluation. |
+| POST | `/evaluations/{evaluation_id}/set-baseline` | Mark a completed evaluation as project baseline. |
+| GET | `/projects/{project_id}/evaluations` | List evaluations in a project. Supports `status`. |
+
+Create request:
+
+```json
+{
+  "name": "Hybrid baseline run",
+  "knowledge_base_index_id": "00000000-0000-0000-0000-000000000000",
+  "test_set_id": "11111111-1111-1111-1111-111111111111",
+  "metric_names": ["faithfulness", "relevancy", "precision", "recall", "g_eval"],
+  "include_reason": true,
+  "notes": "Initial full metric run",
+  "tags": ["baseline"]
+}
+```
+
+Evaluation statuses are `pending`, `running`, `completed`, `failed`, `cancelled`, and
+`paused`.
+
+## Comparisons
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| POST | `/comparisons` | Create a comparison from one baseline evaluation and one or more compared evaluations. |
+| GET | `/comparisons/{comparison_id}` | Get aggregate and per-question comparison details. |
+| DELETE | `/comparisons/{comparison_id}` | Delete a comparison. |
+| GET | `/projects/{project_id}/comparisons` | List comparisons in a project. |
+| GET | `/evaluations/{evaluation_id}/comparisons` | List comparisons involving one evaluation. |
+
+Create request:
+
+```json
+{
+  "name": "Semantic vs hybrid",
+  "description": "Compare the two completed baseline candidates",
+  "baseline_evaluation_id": "00000000-0000-0000-0000-000000000000",
+  "compared_evaluation_ids": [
+    "11111111-1111-1111-1111-111111111111"
+  ]
+}
+```
+
+## Trends
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/projects/{project_id}/trends` | Metric history grouped by RAG config. |
+| GET | `/rag-configs/{rag_config_id}/trends` | Metric history for one RAG config. |
+
+## Playground
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/playground/indexes` | List ready indexes available for ad hoc querying. |
+| POST | `/playground/query` | Query one to four indexes and save the result. |
+| GET | `/playground/history` | List saved playground queries. |
+| GET | `/playground/history/{query_id}` | Get one saved query with all results. |
+| DELETE | `/playground/history/{query_id}` | Delete a saved query. |
+
+Query request:
+
+```json
+{
+  "question": "What are the main support escalation steps?",
+  "index_ids": [
+    "00000000-0000-0000-0000-000000000000"
+  ],
+  "top_k": 5
+}
+```
+
+## Webhooks
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/projects/{project_id}/webhooks` | List project webhooks. |
+| POST | `/projects/{project_id}/webhooks` | Create a webhook. |
+| GET | `/webhooks/{webhook_id}` | Get webhook details. |
+| PATCH | `/webhooks/{webhook_id}` | Update webhook configuration. |
+| DELETE | `/webhooks/{webhook_id}` | Delete a webhook. |
+| POST | `/webhooks/{webhook_id}/test` | Send a test payload. |
+
+The default maximum is three webhooks per project.
+
+## Example Requests
+
+```powershell
+# Create a project
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://localhost:8000/api/v1/projects `
+  -ContentType "application/json" `
+  -Body '{"name":"Demo","description":"RAG evaluation demo"}'
+
+# Check health
+Invoke-RestMethod http://localhost:8000/api/v1/health
 ```

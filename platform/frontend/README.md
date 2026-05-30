@@ -1,46 +1,75 @@
-# RAG Evaluation Platform - Frontend
+# RAG Evaluator Frontend
 
-React + Vite + TypeScript frontend for the RAG Evaluation Platform.
+React, Vite, TypeScript, and Tailwind frontend for the RAG Evaluator Platform.
 
-## Prerequisites
+## Setup
 
-- [Node.js](https://nodejs.org/) (v18+)
-- [npm](https://www.npmjs.com/)
-
-## Quick Start
-
-### Development
-
-```bash
-# Install dependencies
+```powershell
+cd platform/frontend
 npm install
+```
 
-# Run the development server
+## Run
+
+Start the backend first:
+
+```powershell
+cd platform/backend
+uv run python dev_server.py
+```
+
+Then start the frontend:
+
+```powershell
+cd platform/frontend
 npm run dev
 ```
 
-The UI will be available at `http://localhost:3000`.
+Open <http://localhost:3000>.
 
-## Configuration
+The Vite dev server proxies `/api` to `http://localhost:8000`.
 
-The frontend uses Vite's proxy to communicate with the backend. Configuration can be found in `vite.config.ts`.
+## Scripts
 
-- **Backend URL**: `http://localhost:8000` (proxied via `/api`)
-- **Dev Port**: `3000`
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start Vite development server on port 3000. |
+| `npm run build` | Type-check and create a production build. |
+| `npm run lint` | Run ESLint. |
+| `npm run preview` | Preview the production build. |
+| `npm run test` | Run Vitest. |
 
 ## Features
 
-- **Project Management**: Create and manage RAG evaluation projects.
-- **Knowledge Bases**: Upload and index documents.
-- **Test Sets**: Create and manage evaluation datasets.
-- **RAG Configs**: Configure different RAG implementations.
-- **Evaluations**: Run and view results of RAG evaluations.
+- Dashboard and project overview.
+- Project workspaces with tabs for knowledge bases, test sets, RAG configs,
+  evaluations, comparisons, and trends.
+- Knowledge base document upload and index creation.
+- Index progress and retry/archive actions.
+- Test set creation, JSON import/export, AI generation, and generated-case review.
+- Evaluation wizard, progress view, result detail, metric reasoning, and retrieval traces.
+- Baseline evaluation selection.
+- Evaluation comparison UI with aggregate and per-question deltas.
+- Playground for ad hoc multi-index queries.
 
-## Built With
+## API Configuration
 
-- [React](https://reactjs.org/)
-- [Vite](https://vitejs.dev/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [shadcn/ui](https://ui.shadcn.com/)
-- [TanStack Query](https://tanstack.com/query/latest)
-- [Lucide React](https://lucide.dev/)
+The frontend API client uses:
+
+```text
+VITE_API_URL or http://localhost:8000
+```
+
+In development, requests are made to `/api/v1` through the Vite proxy. In a production
+build, set `VITE_API_URL` to the backend origin if it differs from the frontend origin.
+
+## Structure
+
+```text
+platform/frontend/src/
+  api/             API client and TypeScript DTOs
+  components/      Shared UI and feature components
+  hooks/           React hooks
+  lib/             Utilities
+  pages/           Route-level pages
+```

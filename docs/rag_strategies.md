@@ -1,169 +1,227 @@
-# RAG Implementation Guide
+# RAG Strategies
 
-This guide details the four distinct Retrieval-Augmented Generation (RAG) strategies available in the RAG Evaluator Platform. Each implementation represents a different approach to information retrieval, ranging from standard semantic search to advanced agentic systems.
+RAG Evaluator includes five built-in retrieval strategies. They all implement the
+same `BaseRAG` interface, so they can be evaluated with the same test sets and metrics.
 
-## RAG Parameters (Platform UI)
+Use this guide to choose an implementation and understand the trade-offs before you run
+an evaluation.
 
-When you create a RAG configuration in the web UI, the "RAG Parameters" section shows the fields that are specific to the selected implementation. Defaults are pre-filled and are usually safe to keep. If you leave a parameter blank, the backend will fall back to the corresponding environment setting (for example `.env`) or an internal default.
+## Strategy Summary
 
-The platform also manages storage paths and per-index isolation automatically when you build a Knowledge Base index. This means storage-related parameters are typically optional unless you are using the CLI or a custom integration.
+| Type | Storage | Retrieval style | Strengths | Watch-outs |
+| --- | --- | --- | --- | --- |
+| `vector_semantic` | ChromaDB | Dense vector similarity | Fast baseline, simple setup, strong semantic matching | Can miss exact terms, IDs, and acronyms |
+| `vector_hybrid` | Qdrant | Dense + sparse vectors with fusion | Good for technical docs and exact terminology | Requires Qdrant and sparse model loading |
+| `graph_rag` | Neo4j | Vector entry points plus graph traversal | Useful for relationships and multi-hop reasoning | LLM graph extraction can be slower and more expensive |
+| `filesystem_rag` | Local prepared files | ReAct-style agent with file tools | Good for large corpora and research-style queries | Agent behavior is slower and less deterministic than vector search |
+| `rlm_rag` | Local prepared files | Recursive language-model agent with Python tools | Strong for large corpora that need programmatic exploration | Executes generated Python; choose security mode carefully |
 
-## 1. Vector Semantic Search (Baseline)
+## Shared Platform Behavior
 
-### Overview
+In the web platform, documents are uploaded to a knowledge base and then built into
+one or more indexes. Each index receives an isolated physical identifier, so you can
+build several strategies for the same knowledge base and compare them without storage
+collisions.
 
-The standard baseline for modern RAG systems. It uses dense vector embeddings to find semantically similar text chunks.
+When you create a RAG configuration, the UI reads parameter metadata from the backend.
+Most storage parameters can be left blank in the web platform because index storage is
+managed automatically. For CLI runs, storage paths and service URLs come from the root
+`.env` file.
 
-### Architecture
+## Vector Semantic Search
 
-- **Database:** [ChromaDB](https://www.trychroma.com/) (Local persistent vector store)
-- **Embeddings:** OpenAI `text-embedding-3-small` (1536 dimensions)
-- **Chunking:** Recursive Character Splitter (1000 chars, 200 overlap)
-- **Search Metric:** Cosine Similarity
+Type key: `vector_semantic`
 
-### How it Works
+The semantic baseline uses dense embeddings and ChromaDB. Documents are split into
+chunks, embedded, stored locally, and retrieved by vector similarity.
 
-1. **Ingestion:** Documents are split into overlapping chunks. Each chunk is converted into a vector embedding using OpenAI's API and stored in ChromaDB.
-2. **Retrieval:** The user's question is embedded into the same vector space. The system performs a K-Nearest Neighbors (KNN) search to find the chunks with the highest cosine similarity.
-3. **Generation:** The top-k chunks are fed into the LLM as context to generate an answer.
+Best for:
 
-### Best For
+- First baseline evaluations.
+- General Q&A where semantic similarity is enough.
+- Small to medium corpora where setup speed matters.
 
-- General-purpose Q&A
-- Semantic matching (e.g., matching "car" to "vehicle")
-- Speed and simplicity
+Platform parameters:
 
-### Configuration Parameters (Platform UI)
-
-| Parameter | Default | How to fill |
+| Parameter | Default | Notes |
 | --- | --- | --- |
-| `collection_name` | `rag_documents` | Name of the ChromaDB collection. In the platform, indexes use a generated collection name per index, so you can usually leave the default. Set this only if you are reusing an existing collection outside the platform. |
-| `persist_directory` | (empty) | Filesystem path for Chroma persistence. The platform stores indexes under `storage/indexes/<index_id>/chroma`, so leave this blank unless you need a custom path for CLI or custom runs. |
+| `collection_name` | `rag_documents` | The platform replaces this with a generated per-index collection unless you provide one. |
+| `persist_directory` | empty | Leave blank in the platform to use managed index storage. |
 
----
+CLI environment:
 
-## 2. Hybrid Search (Dense + Sparse)
+- `CHROMA_PERSIST_DIRECTORY`
+- `EMBEDDING_MODEL`
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL` if using an OpenAI-compatible endpoint
 
-### Overview
+## Hybrid Search
 
-Combines the semantic understanding of dense vectors with the precise keyword matching of sparse vectors (SPLADE). This overcomes the limitations of dense vectors, which sometimes miss specific terminology or acronyms.
+Type key: `vector_hybrid`
 
-### Architecture
+Hybrid search combines dense vector retrieval with sparse keyword-aware retrieval and
+fuses the result sets. This helps when a query contains product codes, error messages,
+legal citations, API names, or other exact terms that pure dense retrieval may blur.
 
-- **Database:** [Qdrant](https://qdrant.tech/)
-- **Dense Model:** OpenAI `text-embedding-3-small`
-- **Sparse Model:** SPLADE (via FastEmbed)
-- **Fusion Algorithm:** Reciprocal Rank Fusion (RRF)
+Best for:
 
-### How it Works
+- Technical documentation.
+- Legal or policy corpora with exact references.
+- Queries that mix concepts with precise vocabulary.
 
-1. **Dual Indexing:** Each document chunk is indexed twice:
-   - **Dense Vector:** Captures meaning/concept.
-   - **Sparse Vector:** Captures specific keywords and their importance (learned weights).
-2. **Parallel Retrieval:** The query is executed against both indexes simultaneously.
-3. **RRF Fusion:** The two result sets are merged using Reciprocal Rank Fusion:
-   $$score = \frac{1}{k + rank_{dense}} + \frac{1}{k + rank_{sparse}}$$
-   This boosts documents that appear highly ranked in both lists.
+Platform parameters:
 
-### Best For
-
-- Technical documentation (specific variable names/error codes)
-- Queries requiring both conceptual understanding and exact keyword matches
-- Reducing "lost in the middle" phenomena
-
-### Configuration Parameters (Platform UI)
-
-| Parameter | Default | How to fill |
+| Parameter | Default | Notes |
 | --- | --- | --- |
-| `collection_name` | (empty) | Qdrant collection name. The platform isolates each index with its own collection name, so you can usually leave this blank unless you need to reuse an existing collection. |
-| `qdrant_url` | (empty) | Qdrant server URL, for example `http://localhost:6333`. If blank, the backend uses `QDRANT_URL` from `.env` or the core default. |
+| `collection_name` | empty | Leave blank for platform-managed per-index Qdrant collections. |
+| `qdrant_url` | empty | Leave blank to use `QDRANT_URL`; set it for a custom Qdrant host. |
 
----
+CLI environment:
 
-## 3. Graph RAG (Knowledge Graph)
+- `QDRANT_URL`
+- `QDRANT_COLLECTION_NAME`
+- `HYBRID_CHUNK_SIZE`
+- `HYBRID_CHUNK_OVERLAP`
+- `HYBRID_FUSION_ALPHA`
+- `HYBRID_INDEXING_BATCH_SIZE`
+- `SPARSE_MODEL_NAME`
 
-### Overview
+Start Qdrant locally:
 
-Uses a Neo4j knowledge graph to understand relationships between entities. This enables "multi-hop" reasoning where the answer requires connecting disparate pieces of information.
+```powershell
+docker-compose up -d qdrant
+```
 
-### Architecture
+## Graph RAG
 
-- **Database:** [Neo4j](https://neo4j.com/)
-- **Graph Construction:** LLM-based extraction of Nodes (Entities) and Relationships
-- **Framework:** `neo4j-graphrag`
-- **Retrieval:** Vector Index + Graph Traversal (Cypher)
+Type key: `graph_rag`
 
-### How it Works
+Graph RAG stores document chunks and extracted relationships in Neo4j. Retrieval starts
+with semantic search and can enrich context by traversing graph relationships.
 
-1. **Graph Construction:** An LLM analyzes documents to extract entities (Person, Org, Concept) and their relationships (MENTIONS, RELATED_TO).
-2. **Retrieval:**
-   - **Vector Search:** Finds entry point nodes based on similarity.
-   - **Graph Traversal:** Explores the graph neighborhood (1-2 hops) to find connected context that might not share keywords with the query but is semantically relevant via a relationship.
-3. **Context Enrichment:** The prompt includes not just the text, but the structured relationships found (e.g., "Alice is CEO of TechCorp").
+Best for:
 
-### Best For
+- Relationship-heavy corpora.
+- Questions like "how does X depend on Y?"
+- Multi-document synthesis where structure matters.
 
-- Complex reasoning tasks
-- Questions about relationships or structure (e.g., "How does module A interact with module B?")
-- Multi-document synthesis
+Platform parameters:
 
-### Configuration Parameters (Platform UI)
-
-| Parameter | Default | How to fill |
+| Parameter | Default | Notes |
 | --- | --- | --- |
-| `neo4j_uri` | (empty) | Neo4j connection URI, for example `bolt://localhost:7687`. If blank, the backend uses `NEO4J_URI` from `.env` or the core default. |
-| `neo4j_username` | (empty) | Neo4j username. If blank, the backend uses `NEO4J_USERNAME` from `.env` or the core default (`neo4j`). |
-| `neo4j_password` | (empty) | Neo4j password. If blank, the backend uses `NEO4J_PASSWORD` from `.env` or the core default (empty). |
-| `vector_index_name` | `chunk_embeddings` | Name of the Neo4j vector index. Keep the default unless you are integrating with an existing Neo4j index. |
+| `neo4j_uri` | empty | Leave blank to use `NEO4J_URI`. |
+| `neo4j_username` | empty | Leave blank to use `NEO4J_USERNAME`. |
+| `neo4j_password` | empty | Leave blank to use `NEO4J_PASSWORD`. |
+| `vector_index_name` | `chunk_embeddings` | Keep the default unless you manage a custom Neo4j vector index. |
 
----
+CLI environment:
 
-## 4. Filesystem RAG (Agentic)
+- `NEO4J_URI`
+- `NEO4J_USERNAME`
+- `NEO4J_PASSWORD`
+- `OPENAI_API_KEY`
 
-> **Credit:** Inspired by **Izzy Fuller** and their article *[Convergent Evolution in AI Augmented Development](https://dev.to/izzyfuller/convergent-evolution-in-ai-augmented-development-part-2-when-you-build-solutions-before-you-have-2l0o)*.
+Start Neo4j locally:
 
-### Overview
+```powershell
+docker-compose up -d neo4j
+```
 
-A unique, agentic approach that navigates a document corpus like a human researcher. Instead of retrieving chunks, it treats the dataset as a filesystem that an LLM agent explores, reads, and summarizes.
+Graph construction uses LLM calls during indexing, so start with a small subset when
+testing a new corpus.
 
-### Architecture
+## Filesystem RAG
 
-- **Agent:** ReAct (Reason-Act) Loop
-- **Structure:** Hierarchical "virtual" filesystem
-- **Tools:** `ls`, `read_file`, `grep`, `find`
+Type key: `filesystem_rag`
 
-### The "Universal Interface" Pattern
+Filesystem RAG converts documents into a navigable directory structure with summaries,
+indexes, and line-numbered source files. An agent uses file tools such as listing,
+reading, searching, and finding files to gather context before answering.
 
-The raw documents are transformed into a structured, traversable format optimized for LLM agents:
+Best for:
 
-1. **_meta/**: Entry points and high-level navigation guides.
-2. **_index/**: Specialized indexes (Topics, Entities, Timeline) created by clustering content.
-3. **_summaries/**: High-level abstracts of every document.
-4. **documents/**: The raw content, line-numbered for precise citation.
+- Larger corpora where loading many chunks into a prompt is inefficient.
+- Broad research questions.
+- Cases where source navigation and summaries are useful for debugging.
 
-### How it Works
+Prepared structure:
 
-The agent receives a question and autonomously decides how to answer it:
+```text
+prepared_path/
+  _meta/
+  _index/
+  _summaries/
+  documents/
+```
 
-1. **Plan:** "I need to find X. I'll check the topic index for 'Deployment'."
-2. **Navigate:** Uses `list_directory` to explore related folders.
-3. **Filter:** Reads summaries to verify relevance without loading massive files.
-4. **Read:** Opens specific files (or line ranges) to get the exact answer.
-5. **Synthesize:** Composes the final answer based on its research journey.
+Platform parameters:
 
-### Best For
-
-- "Needle in a haystack" problems
-- Broad research questions ("Give me an overview of X")
-- When context window usage needs to be minimized (agent selects only what it needs)
-
-### Configuration Parameters (Platform UI)
-
-| Parameter | Default | How to fill |
+| Parameter | Default | Notes |
 | --- | --- | --- |
-| `llm_model` | `gpt-4o-mini` | Model used by the agent for navigation and analysis. In the platform, this is driven by the LLM Settings section, so you can keep this default. |
-| `prepared_path` | `data/prepared/filesystem_rag` | Path to the prepared filesystem output. The platform stores this under `storage/indexes/<index_id>/filesystem_rag`, so you can leave the default unless you need a custom path for CLI or custom runs. |
-| `word_threshold` | `1000` | Word count threshold for LLM analysis vs heuristic analysis. Lower values increase LLM usage (higher cost), higher values favor heuristics (lower cost). |
-| `max_iterations` | `10` | Maximum ReAct loop iterations per query. Increase for deeper exploration, decrease for faster responses. |
-| `max_tool_calls` | `20` | Maximum tool calls per query. Increase if the agent needs more steps to find context. |
-| `max_file_reads` | `10` | Maximum file reads per query. Increase if answers often require reading many files. |
+| `llm_model` | `gpt-4o-mini` | Usually controlled by the RAG configuration LLM model. |
+| `prepared_path` | `data/prepared/filesystem_rag` | The platform uses managed storage under `storage/indexes`. |
+| `word_threshold` | `1000` | Lower values use the LLM more during preparation. |
+| `max_iterations` | `10` | Maximum agent reasoning loops. |
+| `max_tool_calls` | `20` | Maximum tool calls per query. |
+| `max_file_reads` | `10` | Maximum file reads per query. |
+
+## RLM-RAG
+
+Type key: `rlm_rag`
+
+RLM-RAG is a recursive language-model approach for large corpora. It prepares documents
+into a filesystem and lets an LLM orchestrator write Python exploration code. The agent
+can call a smaller worker model for summaries, topic extraction, and recursive document
+analysis.
+
+Best for:
+
+- Large corpora where static top-k retrieval is too shallow.
+- Questions that benefit from programmatic filtering, grouping, or iteration.
+- Experiments with recursive language-model retrieval.
+
+Security modes:
+
+| Mode | Use case | Behavior |
+| --- | --- | --- |
+| `lite` | Trusted local corpora | Faster in-process execution. |
+| `full` | Less trusted document content | Subprocess isolation, stricter path controls, and prompt-injection wrapping. |
+
+Platform parameters:
+
+| Parameter | Default | Notes |
+| --- | --- | --- |
+| `security_mode` | `lite` | Use `full` for stricter isolation. |
+| `orchestrator_model` | RAG config model | Main reasoning and code-generation model. |
+| `worker_model` | `gpt-5-nano` | Worker model for summaries and sub-calls. |
+| `max_repl_steps` | `15` | Maximum Python exploration steps. |
+| `repl_timeout` | `5.0` | Timeout per Python step in seconds. |
+| `max_file_reads` | `12` | Maximum file reads per query. |
+| `max_read_bytes` | `50000` | Maximum bytes returned by a file read. |
+| `max_read_lines` | `1000` | Maximum lines returned by a file read. |
+| `max_sub_calls` | `8` | Maximum recursive worker calls. |
+| `max_recursion_depth` | `2` | Maximum nested worker-call depth. |
+| `small_corpus_threshold` | `10` | Uses a simple-context fallback at or below this document count. |
+| `chunk_size` | `1000` | Preparation chunk size. |
+| `chunk_overlap` | `200` | Preparation chunk overlap. |
+| `use_llm_summaries` | `true` | Generate summaries during preparation. |
+| `use_llm_topics` | `true` | Extract topics during preparation. |
+| `max_topics_per_doc` | `5` | Maximum topics per source document. |
+
+RLM-RAG can be powerful, but it is intentionally more complex than the baseline
+retrievers. Use the playground to inspect outputs before committing to large evaluation
+runs.
+
+## Choosing A Strategy
+
+Start with `vector_semantic` to establish a baseline. Add `vector_hybrid` if exact
+terms matter. Try `graph_rag` when relationships are central to your questions. Use
+`filesystem_rag` or `rlm_rag` when corpora are large enough that agentic exploration is
+worth the latency and cost trade-off.
+
+For reliable comparisons:
+
+1. Use the same knowledge base and test set for each strategy.
+2. Build a separate index for each RAG configuration.
+3. Run the same selected metrics.
+4. Compare quality, latency, token usage, and cost together.

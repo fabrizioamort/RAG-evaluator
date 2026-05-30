@@ -1,89 +1,108 @@
-# Evaluation Metrics Guide
+# Evaluation Metrics
 
-This guide explains the metrics used by the RAG Evaluator Platform to assess the quality of your RAG applications. We utilize the [DeepEval](https://github.com/confident-ai/deepeval) framework, which employs an "LLM-as-a-judge" approach to provide rigorous, semantically aware scores.
+RAG Evaluator uses DeepEval-style LLM-as-judge metrics to score generated answers and
+retrieved context. Scores are normalized from `0.0` to `1.0`, where higher is better.
 
-## Overview
+You can run any subset of metrics in the platform evaluation wizard or through the API.
+The CLI currently initializes the standard metric set.
 
-The platform evaluates RAG systems across five distinct dimensions. You can select any combination of these metrics for each evaluation run to optimize for cost and relevance.
+## Metrics At A Glance
 
-| Metric | What it Measures | Input Components | Key Question |
-| :--- | :--- | :--- | :--- |
-| **Faithfulness** | Hallucinations | Answer, Retrieved Context | Is the answer derived *only* from the context? |
-| **Answer Relevancy** | Utility | Answer, Question | Does the answer actually address the question? |
-| **Contextual Precision** | Ranking Quality | Question, Retrieved Context, Ground Truth | Are the most relevant chunks at the top? |
-| **Contextual Recall** | Retrieval Completeness | Ground Truth Answer, Retrieved Context | Did we find *all* the necessary information? |
-| **Correctness (G-Eval)** | Semantic Accuracy | Answer, Expected Answer | Is the answer factually correct? |
+| Metric name | Measures | Inputs | Primary question |
+| --- | --- | --- | --- |
+| `faithfulness` | Hallucination risk | Generated answer, retrieved context | Is the answer supported by retrieved context? |
+| `relevancy` | Answer usefulness | Question, generated answer | Does the answer address the question? |
+| `precision` | Retrieval ranking | Question, retrieved context, expected answer | Are the most relevant chunks ranked first? |
+| `recall` | Retrieval completeness | Expected answer, retrieved context | Did retrieval find the needed facts? |
+| `g_eval` | End-to-end correctness | Generated answer, expected answer | Is the generated answer semantically correct? |
 
----
+## Faithfulness
 
-## 1. Faithfulness
+Faithfulness checks whether answer claims can be inferred from the retrieved context.
 
-**Purpose:** Measures the factual consistency of the generated answer against the retrieved context. This is your primary metric for detecting *hallucinations*.
+Use it when:
 
-**How it works:**
-The LLM judge extracts claims from the generated answer and verifies if each claim can be inferred from the retrieved context.
+- You need to detect hallucinations.
+- The answer must stay grounded in supplied documents.
+- You are testing prompt changes that may cause the model to over-answer.
 
-- **Score:** 0.0 to 1.0 (Higher is better)
-- **Low Score:** Indicates the model is inventing information not present in the source documents.
+Low scores usually mean the generator added unsupported information, or retrieval did
+not provide enough context and the model filled gaps from prior knowledge.
 
----
+## Answer Relevancy
 
-## 2. Answer Relevancy
+Answer relevancy checks whether the generated answer addresses the question. It does
+not prove the answer is factually correct; it only checks whether it is on topic and
+useful for the user intent.
 
-**Purpose:** Measures how relevant the generated answer is to the original user question. It penalizes answers that are factual but fail to address the user's specific intent.
+Use it when:
 
-**How it works:**
-The metric assesses the vector similarity or semantic relationship between the generated answer and the question to ensuring the response is on-topic and helpful.
-*Note: This metric does not check for factual correctness, only relevance.*
+- Answers are generic.
+- The model responds to the wrong part of a question.
+- Retrieved context is relevant but generation drifts.
 
-- **Score:** 0.0 to 1.0 (Higher is better)
-- **Low Score:** Indicates the answer is evasive, generic, or off-topic.
+## Contextual Precision
 
----
+Contextual precision checks whether relevant chunks appear early in the retrieved
+context list. This matters because most prompts privilege the first few chunks and may
+ignore later evidence.
 
-## 3. Contextual Precision
+Use it when:
 
-**Purpose:** Evaluates the quality of your retrieval ranking (similar to Mean Average Precision). It is critical for systems where the LLM only processes the top few chunks.
+- Relevant facts are retrieved but buried.
+- You are tuning chunk size, overlap, or top-k.
+- You compare dense retrieval with hybrid search.
 
-**How it works:**
-It checks if the "ground truth" nodes (relevant information) appear higher in the list of retrieved context chunks. A system that retrieves relevant info in position #1 is scored higher than one that finds it in position #5.
+Low precision often points to ranking noise or oversized chunks.
 
-- **Score:** 0.0 to 1.0 (Higher is better)
-- **Low Score:** Indicates that while relevant info might be retrieved, it is buried under irrelevant noise, potentially confusing the LLM.
+## Contextual Recall
 
----
+Contextual recall checks whether the retrieved context contains the facts needed to
+produce the expected answer.
 
-## 4. Contextual Recall
+Use it when:
 
-**Purpose:** Measures the completeness of your retrieval system.
+- Answers are incomplete.
+- Relevant facts are spread across documents.
+- You are deciding whether graph, hybrid, or agentic retrieval is needed.
 
-**How it works:**
-It analyzes the expected output (ground truth answer) and checks if the *retrieved context* contains all the necessary facts to generate that answer.
+Low recall often means top-k is too small, chunking split key evidence, or the chosen
+retriever cannot reach the needed document.
 
-- **Score:** 0.0 to 1.0 (Higher is better)
-- **Low Score:** Indicates the retrieval system is missing key information required to answer the question.
+## Correctness With G-Eval
 
----
+G-Eval correctness compares the generated answer with the expected answer using a
+semantic judge. It is more flexible than string matching and can tolerate equivalent
+phrasing while penalizing contradictions or important omissions.
 
-## 5. Correctness (G-Eval)
+Use it when:
 
-**Purpose:** Measures the semantic equivalence between the *Generated Answer* and the *Expected Answer* (Ground Truth). Unlike simple string matching (BLEU/ROUGE), this metric understands meaning.
+- You need an end-to-end acceptance metric.
+- Expected answers are known.
+- You want to compare final user-visible quality across RAG strategies.
 
-**Criteria:**
-The system uses a custom G-Eval prompt designed to:
+## Choosing Metrics
 
-1. Identify specific facts and entities in the expected answer.
-2. Verify if the generated answer conveys the same meaning.
-3. **Ignore** minor differences in formatting, punctuation, or phrasing.
-4. **Penalize** contradictions or significant omissions.
+| Goal | Recommended metrics |
+| --- | --- |
+| Quick smoke test | `faithfulness`, `g_eval` |
+| Retrieval tuning | `precision`, `recall` |
+| Hallucination reduction | `faithfulness` |
+| End-to-end release check | All five metrics |
+| Cost-conscious iteration | One or two primary metrics, then full metrics for candidates |
 
-- **Score:** 0.0 to 1.0 (Higher is better)
-- **Low Score:** Indicates the answer is factually wrong or missing critical details compared to the ground truth.
+Each metric requires additional judge work, so broader metric sets cost more and take
+longer. Use small test sets while iterating and full metric runs for candidate baselines.
 
----
+## Interpreting Scores
 
-## Usage Strategies
+| Score range | Interpretation |
+| --- | --- |
+| `0.90` to `1.00` | Strong result. Inspect edge cases and monitor regressions. |
+| `0.75` to `0.89` | Generally usable, with targeted improvements likely. |
+| `0.60` to `0.74` | Needs investigation before relying on the system. |
+| Below `0.60` | Significant retrieval, generation, or test-set quality issue. |
 
-- **Debugging Hallucinations:** Focus on **Faithfulness**.
-- **Tuning Retrieval:** Focus on **Contextual Precision** and **Contextual Recall**.
-- **Final Acceptance Testing:** Focus on **Correctness (G-Eval)** to ensure end-to-end accuracy.
+Treat scores as decision support, not ground truth. Always inspect representative
+successes and failures, especially when a change improves one metric while degrading
+another.

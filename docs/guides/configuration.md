@@ -1,519 +1,248 @@
-# Configuration Reference
+# Configuration
 
-> **Complete reference for all configuration options in the RAG Evaluator Platform.**
+RAG Evaluator is configured with environment variables. For most local development,
+copy the root example file and edit it:
 
-The platform is configured primarily through environment variables, stored in a `.env` file at the project root.
-
----
-
-## Table of Contents
-
-- [Quick Setup](#quick-setup)
-- [LLM Configuration](#llm-configuration)
-- [Database Configuration](#database-configuration)
-- [Vector Store Configuration](#vector-store-configuration)
-- [Evaluation Configuration](#evaluation-configuration)
-- [Performance Tuning](#performance-tuning)
-- [Storage Configuration](#storage-configuration)
-- [Logging Configuration](#logging-configuration)
-- [Configuration by Environment](#configuration-by-environment)
-
----
-
-## Quick Setup
-
-Start with the example file:
-
-```bash
-cp .env.example .env
+```powershell
+Copy-Item .env.example .env
 ```
 
-**Minimum required configuration:**
+The core CLI reads the root `.env`. The backend reads `platform/backend/.env` when it
+exists and also falls back to the root `.env`.
+
+## Minimum Configuration
 
 ```env
-# Required - Your OpenAI API key
-OPENAI_API_KEY=sk-your-api-key-here
-```
-
-All other settings have sensible defaults.
-
----
-
-## LLM Configuration
-
-### OpenAI
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | Your OpenAI API key | **Required** |
-| `OPENAI_MODEL` | Model for generation | `gpt-4o-mini` |
-| `EMBEDDING_MODEL` | Model for embeddings | `text-embedding-3-small` |
-| `OPENAI_TIMEOUT` | API timeout (seconds) | `600` |
-| `OPENAI_TEMPERATURE` | Generation temperature | `0.0` |
-| `OPENAI_MAX_TOKENS` | Max tokens per response | `1000` |
-
-**Example configurations:**
-
-```env
-# Cost-optimized (default)
-OPENAI_MODEL=gpt-4o-mini
-EMBEDDING_MODEL=text-embedding-3-small
-
-# Quality-optimized
-OPENAI_MODEL=gpt-4o
-EMBEDDING_MODEL=text-embedding-3-large
-
-# Budget-constrained
-OPENAI_MODEL=gpt-3.5-turbo
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-5-mini
 EMBEDDING_MODEL=text-embedding-3-small
 ```
 
-### Alternative Providers (via LiteLLM)
-
-The platform supports other LLM providers through LiteLLM:
+For an OpenAI-compatible provider:
 
 ```env
-# Anthropic
-ANTHROPIC_API_KEY=sk-ant-your-key
-OPENAI_MODEL=claude-3-sonnet-20240229
-
-# Azure OpenAI
-AZURE_API_KEY=your-azure-key
-AZURE_API_BASE=https://your-resource.openai.azure.com/
-AZURE_API_VERSION=2024-02-15-preview
-OPENAI_MODEL=azure/your-deployment-name
-
-# Local Ollama
-OLLAMA_BASE_URL=http://localhost:11434
-OPENAI_MODEL=ollama/llama2
+OPENAI_API_KEY=your_provider_key
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
 ```
 
----
+## Core And CLI Settings
 
-## Database Configuration
+These variables are used by `uv run rag-eval ...` and by the shared RAG
+implementations.
 
-### PostgreSQL (Recommended for Production)
+### LLM And Embeddings
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | Full connection string | SQLite fallback |
-| `DB_PASSWORD` | Database password | - |
-| `DB_HOST` | Database host | `postgres` |
-| `DB_PORT` | Database port | `5432` |
-| `DB_NAME` | Database name | `rag_eval` |
-| `DB_USER` | Database user | `postgres` |
+| Variable | Default in code/example | Description |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | required | API key for OpenAI or an OpenAI-compatible provider. |
+| `OPENAI_BASE_URL` | unset | Optional custom base URL for OpenAI-compatible APIs. |
+| `OPENAI_MODEL` | example: `gpt-5-mini` | Generation and judge model for CLI runs. |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model for vector stores. |
+| `OPENAI_TIMEOUT` | `600` | OpenAI client timeout in seconds. |
 
-**Connection string format:**
+### ChromaDB
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `CHROMA_PERSIST_DIRECTORY` | `./data/chroma_db` | Local ChromaDB persistence directory. |
+
+### Qdrant And Hybrid Search
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `QDRANT_URL` | `http://localhost:6333` | Qdrant HTTP endpoint. |
+| `QDRANT_COLLECTION_NAME` | `hybrid_rag` | Default CLI collection name. |
+| `HYBRID_CHUNK_SIZE` | `700` | Chunk size for hybrid indexing. |
+| `HYBRID_CHUNK_OVERLAP` | `100` | Chunk overlap for hybrid indexing. |
+| `HYBRID_FUSION_ALPHA` | `0.5` | Dense/sparse weighting where supported by the implementation. |
+| `HYBRID_INDEXING_BATCH_SIZE` | `16` | Batch size during hybrid indexing. |
+| `SPARSE_MODEL_NAME` | `prithvida/Splade_pp_en_v1` | Sparse embedding model used by FastEmbed. |
+
+### Neo4j And Graph RAG
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `NEO4J_AUTH` | `neo4j/password` in the example file | Docker Compose credential pair for the local Neo4j container. |
+| `NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt URI. |
+| `NEO4J_USERNAME` | `neo4j` | Neo4j username. |
+| `NEO4J_PASSWORD` | empty/example value | Neo4j password. |
+
+### Evaluation
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `EVAL_TEST_SET_PATH` | `data/test_set.json` | Default CLI test set path. |
+| `EVAL_REPORTS_DIR` | `reports` | CLI report output directory. |
+| `EVAL_FAITHFULNESS_THRESHOLD` | `0.7` | Pass threshold for faithfulness. |
+| `EVAL_ANSWER_RELEVANCY_THRESHOLD` | `0.7` | Pass threshold for answer relevancy. |
+| `EVAL_CONTEXTUAL_PRECISION_THRESHOLD` | `0.7` | Pass threshold for contextual precision. |
+| `EVAL_CONTEXTUAL_RECALL_THRESHOLD` | `0.7` | Pass threshold for contextual recall. |
+| `DEEPEVAL_ASYNC_MODE` | `False` | Enables asynchronous DeepEval execution. |
+| `DEEPEVAL_PER_TASK_TIMEOUT` | `900` | Total timeout per DeepEval task in seconds. |
+| `DEEPEVAL_PER_ATTEMPT_TIMEOUT` | `300` | Timeout per judge API call attempt. |
+| `DEEPEVAL_MAX_RETRIES` | `3` | Retry attempts for judge calls. |
+| `DEEPEVAL_MAX_CONCURRENT` | `10` | Maximum concurrent DeepEval tasks. |
+| `DEEPEVAL_THROTTLE_VALUE` | `0.0` | Delay between DeepEval calls. |
+
+### Data Directories
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `RAW_DATA_DIR` | `data/raw` | Default CLI source document directory. |
+| `PROCESSED_DATA_DIR` | `data/processed` | Processed document output directory. |
+
+## Backend Settings
+
+These variables are used by `platform/backend/app/config.py`.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./storage/dev.db` | Backend database URL. Use PostgreSQL for shared deployments. |
+| `STORAGE_PATH` | `./storage` | Base directory for documents, indexes, artifacts, reports, and job logs. |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, or `ERROR`. |
+| `LOG_FORMAT` | `json` | `json` or `console`. |
+| `API_V1_PREFIX` | `/api/v1` | API route prefix. |
+| `DEBUG` | `False` | Enables debug mode. |
+| `CORS_ORIGINS` | `["http://localhost:3000"]` | JSON array of allowed origins. |
+| `OPENAI_API_KEY` | unset | OpenAI key for platform runs. |
+| `OPENROUTER_API_KEY` | unset | OpenRouter key. |
+| `ANTHROPIC_API_KEY` | unset | Anthropic key. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL. |
+| `DEFAULT_LLM_PROVIDER` | `openai` | Default provider for generated configs and quality checks. |
+| `DEFAULT_LLM_MODEL` | `gpt-4o-mini` | Backend default model if not provided by a RAG config. |
+| `EVAL_CHECKPOINT_INTERVAL` | `5` | Save progress every N test cases. |
+| `EVAL_MAX_CONCURRENT` | `1` | Maximum concurrent evaluations in OSS mode. |
+| `EVAL_INCLUDE_REASON` | `True` | Include judge reasoning by default. |
+| `EVAL_G_EVAL_THRESHOLD` | `0.7` | Pass threshold for G-Eval correctness. |
+| `DEEPEVAL_ASYNC_MODE` | `False` | Enables async metric execution in the backend runner. |
+| `DEEPEVAL_MAX_CONCURRENCY` | `5` | Async metric concurrency limit in the backend. |
+| `WEBHOOK_MAX_PER_PROJECT` | `3` | Maximum webhooks per project. |
+| `WEBHOOK_TIMEOUT_SECONDS` | `30` | Webhook request timeout. |
+| `WEBHOOK_MAX_RETRIES` | `3` | Webhook retry count. |
+
+## Database URLs
+
+SQLite for local backend development:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://user:password@host:port/database
-
-# Docker Compose
-DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/rag_eval
-
-# Local PostgreSQL
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/rag_eval
+DATABASE_URL=sqlite+aiosqlite:///./storage/dev.db
 ```
 
-### SQLite (Development)
+PostgreSQL for shared or production use:
 
 ```env
-# Uses SQLite automatically if DATABASE_URL is not set
-DATABASE_URL=sqlite+aiosqlite:///./data/rag_eval.db
+DATABASE_URL=postgresql+asyncpg://rageval:password@localhost:5432/rageval
 ```
 
-### Connection Pool Settings
+When using the root `docker-compose.yml`, PostgreSQL defaults are:
 
 ```env
-# For high-concurrency scenarios
-DB_POOL_SIZE=10
-DB_MAX_OVERFLOW=20
-DB_POOL_TIMEOUT=30
+POSTGRES_USER=rageval
+POSTGRES_PASSWORD=rageval
+POSTGRES_DB=rageval
 ```
 
----
+## Storage Layout
 
-## Vector Store Configuration
+The backend creates these directories under `STORAGE_PATH`:
 
-### ChromaDB (Vector Semantic)
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CHROMA_PERSIST_DIRECTORY` | Storage path | `./data/chroma_db` |
-| `CHROMA_COLLECTION_NAME` | Collection name | `rag_documents` |
-
-```env
-CHROMA_PERSIST_DIRECTORY=./data/chroma_db
-```
-
-### Qdrant (Hybrid Search)
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `QDRANT_URL` | Qdrant server URL | `http://localhost:6333` |
-| `QDRANT_COLLECTION_NAME` | Collection name | `hybrid_rag` |
-| `QDRANT_API_KEY` | API key (if secured) | - |
-
-```env
-# Local development
-QDRANT_URL=http://localhost:6333
-
-# Docker Compose
-QDRANT_URL=http://qdrant:6333
-
-# Qdrant Cloud
-QDRANT_URL=https://your-cluster.qdrant.io
-QDRANT_API_KEY=your-api-key
-```
-
-### Neo4j (Graph RAG)
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NEO4J_URI` | Neo4j connection URI | `bolt://localhost:7687` |
-| `NEO4J_USERNAME` | Username | `neo4j` |
-| `NEO4J_PASSWORD` | Password | - |
-
-```env
-# Local development
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your_password
-
-# Docker Compose
-NEO4J_URI=bolt://neo4j:7687
-
-# Neo4j AuraDB
-NEO4J_URI=neo4j+s://xxxx.databases.neo4j.io
-```
-
----
-
-## Evaluation Configuration
-
-### Metric Thresholds
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `EVAL_FAITHFULNESS_THRESHOLD` | Pass threshold for Faithfulness | `0.7` |
-| `EVAL_ANSWER_RELEVANCY_THRESHOLD` | Pass threshold for Answer Relevancy | `0.7` |
-| `EVAL_CONTEXTUAL_PRECISION_THRESHOLD` | Pass threshold for Precision | `0.7` |
-| `EVAL_CONTEXTUAL_RECALL_THRESHOLD` | Pass threshold for Recall | `0.7` |
-
-```env
-# Strict thresholds for production
-EVAL_FAITHFULNESS_THRESHOLD=0.85
-EVAL_ANSWER_RELEVANCY_THRESHOLD=0.80
-EVAL_CONTEXTUAL_PRECISION_THRESHOLD=0.75
-EVAL_CONTEXTUAL_RECALL_THRESHOLD=0.80
-
-# Lenient thresholds for development
-EVAL_FAITHFULNESS_THRESHOLD=0.6
-EVAL_ANSWER_RELEVANCY_THRESHOLD=0.6
-```
-
-### DeepEval Settings
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DEEPEVAL_ASYNC_MODE` | Enable parallel evaluation | `False` |
-| `DEEPEVAL_MAX_CONCURRENT` | Max concurrent evaluations | `10` |
-| `DEEPEVAL_THROTTLE_VALUE` | Delay between requests (seconds) | `0.0` |
-| `DEEPEVAL_PER_TASK_TIMEOUT` | Total timeout per test case | `900` |
-| `DEEPEVAL_PER_ATTEMPT_TIMEOUT` | Timeout per API call | `300` |
-| `DEEPEVAL_MAX_RETRIES` | Max retry attempts | `3` |
-
-```env
-# Fast evaluation (requires high API limits)
-DEEPEVAL_ASYNC_MODE=True
-DEEPEVAL_MAX_CONCURRENT=10
-DEEPEVAL_THROTTLE_VALUE=0.0
-
-# Rate-limited (conservative)
-DEEPEVAL_ASYNC_MODE=False
-DEEPEVAL_MAX_CONCURRENT=3
-DEEPEVAL_THROTTLE_VALUE=1.0
-```
-
-### Test Set Configuration
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `EVAL_TEST_SET_PATH` | Default test set file | `data/test_set.json` |
-| `EVAL_REPORTS_DIR` | Report output directory | `reports` |
-
----
-
-## Performance Tuning
-
-### Chunking Configuration
-
-| Variable | Description | Default | Impact |
-|----------|-------------|---------|--------|
-| `HYBRID_CHUNK_SIZE` | Characters per chunk | `700` | Larger = more context, slower |
-| `HYBRID_CHUNK_OVERLAP` | Overlap between chunks | `100` | Larger = better continuity |
-| `HYBRID_INDEXING_BATCH_SIZE` | Batch size for indexing | `16` | Larger = faster, more memory |
-| `HYBRID_FUSION_ALPHA` | Dense vs. sparse weight | `0.5` | Higher = more semantic |
-
-```env
-# For short documents
-HYBRID_CHUNK_SIZE=500
-HYBRID_CHUNK_OVERLAP=50
-
-# For long documents with complex reasoning
-HYBRID_CHUNK_SIZE=1000
-HYBRID_CHUNK_OVERLAP=200
-```
-
-### Sparse Embeddings (SPLADE)
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SPARSE_MODEL_NAME` | SPLADE model | `prithvida/Splade_pp_en_v1` |
-
-```env
-# Alternative models
-SPARSE_MODEL_NAME=naver/splade-cocondenser-ensembledistil
-SPARSE_MODEL_NAME=naver/splade-cocondenser-selfdistil
-```
-
-### Filesystem RAG
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `FILESYSTEM_RAG_MAX_ITERATIONS` | Max ReAct iterations | `10` |
-| `FILESYSTEM_RAG_MAX_TOOL_CALLS` | Max tool calls | `20` |
-| `FILESYSTEM_RAG_MAX_FILE_READS` | Max file reads | `10` |
-| `FILESYSTEM_RAG_WORD_THRESHOLD` | LLM vs. heuristic threshold | `1000` |
-
----
-
-## Storage Configuration
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `STORAGE_PATH` | Base storage directory | `./storage` |
-| `RAW_DATA_DIR` | Raw document input | `data/raw` |
-| `PROCESSED_DATA_DIR` | Processed output | `data/processed` |
-| `UPLOADS_DIR` | Uploaded files | `storage/uploads` |
-| `INDEXES_DIR` | Built indexes | `storage/indexes` |
-
-```env
-# Custom storage paths
-STORAGE_PATH=/var/lib/rag-evaluator/storage
-RAW_DATA_DIR=/data/documents/raw
-```
-
-### Storage Structure
-
-```
+```text
 storage/
-├── uploads/           # Uploaded documents
-│   └── {kb_id}/
-│       └── documents/
-├── indexes/           # Built indexes
-│   └── {index_id}/
-│       ├── chroma/    # ChromaDB data
-│       ├── qdrant/    # Qdrant data (if local)
-│       └── filesystem_rag/
-└── artifacts/         # Generated artifacts
+  documents/
+  indexes/
+  artifacts/
+  reports/
+  logs/
 ```
 
----
+Uploaded documents, physical indexes, retrieval traces, generated test-case provenance,
+and raw metric artifacts are stored here. Back up this directory together with the
+database if you need to preserve evaluation history.
 
-## Logging Configuration
+## Provider Selection In The Platform
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LOG_LEVEL` | Logging verbosity | `INFO` |
-| `LITELLM_LOGGING` | LiteLLM detailed logs | `false` |
-| `LOG_FORMAT` | Log format | `%(asctime)s - %(name)s - %(levelname)s - %(message)s` |
+RAG configurations store provider, model, optional `llm_base_url`, and RAG-specific
+parameters. The platform currently exposes provider metadata for:
 
-```env
-# Development (verbose)
-LOG_LEVEL=DEBUG
-LITELLM_LOGGING=true
+- OpenAI
+- OpenRouter
+- Anthropic
+- Ollama
 
-# Production (quiet)
-LOG_LEVEL=WARNING
-LITELLM_LOGGING=false
-```
+Actual availability depends on the matching environment variables and local services.
 
----
+## Common Local Profiles
 
-## Configuration by Environment
-
-### Development
+### Simple Semantic Evaluation
 
 ```env
-# .env.development
-
-# LLM - Cost-optimized
-OPENAI_API_KEY=sk-your-key
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_API_KEY=your_key
+OPENAI_MODEL=gpt-5-mini
 EMBEDDING_MODEL=text-embedding-3-small
+DATABASE_URL=sqlite+aiosqlite:///./storage/dev.db
+```
 
-# Database - SQLite for simplicity
-DATABASE_URL=sqlite+aiosqlite:///./data/rag_eval.db
+### Hybrid Search
 
-# Vector Stores - Local
+```env
+OPENAI_API_KEY=your_key
 QDRANT_URL=http://localhost:6333
+QDRANT_COLLECTION_NAME=hybrid_rag
+SPARSE_MODEL_NAME=prithvida/Splade_pp_en_v1
+```
+
+Start Qdrant:
+
+```powershell
+docker-compose up -d qdrant
+```
+
+### Graph RAG
+
+```env
+OPENAI_API_KEY=your_key
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=dev_password
-
-# Evaluation - Fast, lenient
-DEEPEVAL_ASYNC_MODE=True
-DEEPEVAL_MAX_CONCURRENT=5
-EVAL_FAITHFULNESS_THRESHOLD=0.6
-
-# Logging - Verbose
-LOG_LEVEL=DEBUG
-LITELLM_LOGGING=true
+NEO4J_PASSWORD=password
 ```
 
-### Production
+Start Neo4j:
+
+```powershell
+docker-compose up -d neo4j
+```
+
+### OpenAI-Compatible Provider
 
 ```env
-# .env.production
-
-# LLM - Quality-optimized
-OPENAI_API_KEY=sk-your-production-key
-OPENAI_MODEL=gpt-4o
-EMBEDDING_MODEL=text-embedding-3-large
-OPENAI_TEMPERATURE=0
-
-# Database - PostgreSQL
-DATABASE_URL=postgresql+asyncpg://user:password@db.example.com:5432/rag_eval
-DB_POOL_SIZE=20
-DB_MAX_OVERFLOW=40
-
-# Vector Stores - Managed services
-QDRANT_URL=https://your-cluster.qdrant.io
-QDRANT_API_KEY=production-key
-NEO4J_URI=neo4j+s://production.databases.neo4j.io
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=secure_password
-
-# Evaluation - Strict, rate-limited
-DEEPEVAL_ASYNC_MODE=True
-DEEPEVAL_MAX_CONCURRENT=10
-DEEPEVAL_THROTTLE_VALUE=0.5
-EVAL_FAITHFULNESS_THRESHOLD=0.85
-
-# Timeouts - Generous for reliability
-OPENAI_TIMEOUT=900
-DEEPEVAL_PER_TASK_TIMEOUT=1800
-
-# Logging - Production
-LOG_LEVEL=INFO
-LITELLM_LOGGING=false
+OPENAI_API_KEY=your_provider_key
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_MODEL=openrouter/openai/gpt-5-mini
 ```
 
-### Docker Compose
+## Validation Commands
 
-```env
-# .env (for docker-compose)
+Core CLI settings:
 
-OPENAI_API_KEY=sk-your-key
-OPENAI_MODEL=gpt-4o-mini
-
-# Use Docker service names
-DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/rag_eval
-QDRANT_URL=http://qdrant:6333
-NEO4J_URI=bolt://neo4j:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your_password
-
-DEEPEVAL_ASYNC_MODE=True
-LOG_LEVEL=INFO
+```powershell
+uv run python -c "from rag_evaluator.config import settings; print(settings.model_dump())"
 ```
 
----
+Backend settings:
 
-## Configuration Validation
-
-The platform validates configuration on startup. Common validation errors:
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `OPENAI_API_KEY not set` | Missing API key | Add key to `.env` |
-| `Invalid DATABASE_URL` | Malformed connection string | Check format |
-| `Cannot connect to Qdrant` | Qdrant not running | Start Qdrant service |
-| `Neo4j authentication failed` | Wrong credentials | Verify username/password |
-
-### Manual Validation
-
-```bash
-# Check config loading
+```powershell
 cd platform/backend
-uv run python -c "from app.config import settings; print(settings.dict())"
-
-# Test database connection
-uv run python -c "from app.database import engine; print('DB OK')"
-
-# Test OpenAI connection
-uv run python -c "
-from openai import OpenAI
-client = OpenAI()
-print(client.models.list().data[0].id)
-"
+uv run python -c "from app.config import settings; print(settings.model_dump())"
 ```
 
----
+Backend health:
 
-## Environment Variable Precedence
-
-Configuration is loaded in this order (later overrides earlier):
-
-1. **Defaults** - Hardcoded in `config.py`
-2. **`.env` file** - Project root
-3. **Environment variables** - System/shell environment
-4. **CLI arguments** - Command-line flags (where applicable)
-
-```bash
-# Override with environment variable
-OPENAI_MODEL=gpt-4o uv run rag-eval evaluate --rag-type vector_semantic
-
-# Override for Docker
-docker-compose run -e OPENAI_MODEL=gpt-4o backend python -m app.main
+```powershell
+Invoke-RestMethod http://localhost:8000/api/v1/health
 ```
 
----
+## Secrets
 
-## Secrets Management
-
-**Never commit secrets to version control.**
-
-### Best Practices
-
-1. **Use `.env.example`** for documentation (no real values)
-2. **Add `.env` to `.gitignore`**
-3. **Use different keys** for development/production
-4. **Rotate keys regularly**
-
-### Production Options
-
-| Method | Best For |
-|--------|----------|
-| Environment variables | Container orchestration (K8s, ECS) |
-| Secret manager | Cloud deployments (AWS Secrets, GCP Secret Manager) |
-| Vault | Enterprise, multi-environment |
-
-```yaml
-# Kubernetes example
-env:
-  - name: OPENAI_API_KEY
-    valueFrom:
-      secretKeyRef:
-        name: rag-evaluator-secrets
-        key: openai-api-key
-```
-
----
-
-## Related Documentation
-
-- [Deployment Guide](../deployment.md) - Production deployment
-- [Troubleshooting Guide](troubleshooting.md) - Configuration issues
-- [Architecture Overview](../ARCHITECTURE.md) - System design
+Do not commit `.env`, API keys, database passwords, or downloaded datasets. For
+production deployments, use your platform's secret manager and inject secrets as
+environment variables.

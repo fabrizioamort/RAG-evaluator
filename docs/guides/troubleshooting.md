@@ -1,727 +1,302 @@
-# Troubleshooting Guide
+# Troubleshooting
 
-> **Quick solutions for common issues with the RAG Evaluator Platform.**
+Use this guide when setup, indexing, or evaluations fail.
 
-This guide covers the most frequently encountered problems and their solutions. Issues are organized by category for quick navigation.
+## Quick Checks
 
----
+From the repository root:
 
-## Table of Contents
-
-- [Installation Issues](#installation-issues)
-- [Docker & Infrastructure](#docker--infrastructure)
-- [API & Backend Issues](#api--backend-issues)
-- [Frontend Issues](#frontend-issues)
-- [Evaluation Issues](#evaluation-issues)
-- [RAG-Specific Issues](#rag-specific-issues)
-- [Performance Issues](#performance-issues)
-- [Database Issues](#database-issues)
-- [Getting Help](#getting-help)
-
----
-
-## Quick Diagnostics
-
-Run these commands first to identify common issues:
-
-```bash
-# Check Docker services
+```powershell
 docker-compose ps
-
-# Check backend logs
-docker-compose logs backend --tail=50
-
-# Check database connectivity
-docker-compose exec backend python -c "from app.database import engine; print('DB OK')"
-
-# Verify API is running
-curl http://localhost:8000/api/v1/health
+Invoke-RestMethod http://localhost:6333/health
 ```
 
----
+Backend:
 
-## Installation Issues
-
-### Python Version Mismatch
-
-**Error:**
-```
-ERROR: Package requires Python >=3.11 but you have Python 3.9
+```powershell
+cd platform/backend
+uv run python -c "from app.config import settings; print(settings.model_dump())"
+uv run pytest tests/test_api/test_health.py -q
 ```
 
-**Solution:**
-```bash
-# Check your Python version
-python --version
+Frontend:
 
-# Install Python 3.11+ via pyenv (recommended)
-pyenv install 3.11.7
-pyenv local 3.11.7
-
-# Or use uv's managed Python
-uv python install 3.11
-```
-
-### uv Not Found
-
-**Error:**
-```
-command not found: uv
-```
-
-**Solution:**
-```bash
-# Install uv (macOS/Linux)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install uv (Windows PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Restart your terminal after installation
-```
-
-### Dependency Conflicts
-
-**Error:**
-```
-ERROR: Cannot install package-a==1.0 and package-b==2.0 because these requirements conflict
-```
-
-**Solution:**
-```bash
-# Clear uv cache and reinstall
-uv cache clean
-rm -rf .venv
-uv sync --all-extras
-```
-
----
-
-## Docker & Infrastructure
-
-### Containers Won't Start
-
-**Error:**
-```
-ERROR: Service 'backend' failed to build
-```
-
-**Solutions:**
-
-1. **Rebuild containers:**
-```bash
-docker-compose build --no-cache
-docker-compose up -d
-```
-
-2. **Check disk space:**
-```bash
-docker system df
-docker system prune -a  # Warning: removes all unused data
-```
-
-3. **Check port conflicts:**
-```bash
-# macOS/Linux
-lsof -i :8000
-lsof -i :3000
-
-# Windows
-netstat -ano | findstr :8000
-```
-
-### Database Connection Refused
-
-**Error:**
-```
-sqlalchemy.exc.OperationalError: connection refused
-```
-
-**Solutions:**
-
-1. **Ensure database is running:**
-```bash
-docker-compose up -d postgres
-docker-compose logs postgres
-```
-
-2. **Check DATABASE_URL in .env:**
-```env
-# For Docker Compose
-DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/rag_eval
-
-# For local development
-DATABASE_URL=sqlite+aiosqlite:///./data/rag_eval.db
-```
-
-3. **Wait for database to be ready:**
-```bash
-# Database might still be initializing
-docker-compose logs -f postgres
-# Wait until you see "database system is ready to accept connections"
-```
-
-### Qdrant Connection Failed
-
-**Error:**
-```
-qdrant_client.http.exceptions.UnexpectedResponse: Connection refused
-```
-
-**Solutions:**
-
-1. **Start Qdrant:**
-```bash
-docker-compose up -d qdrant
-```
-
-2. **Check QDRANT_URL:**
-```env
-# Docker Compose
-QDRANT_URL=http://qdrant:6333
-
-# Local development
-QDRANT_URL=http://localhost:6333
-```
-
-3. **Verify Qdrant is healthy:**
-```bash
-curl http://localhost:6333/health
-```
-
-### Neo4j Connection Issues
-
-**Error:**
-```
-neo4j.exceptions.ServiceUnavailable: Unable to retrieve routing information
-```
-
-**Solutions:**
-
-1. **Start Neo4j:**
-```bash
-docker-compose up -d neo4j
-# Wait 30-60 seconds for Neo4j to initialize
-```
-
-2. **Check credentials:**
-```env
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your_password
-```
-
-3. **Access Neo4j browser:**
-Open [http://localhost:7474](http://localhost:7474) and verify you can log in.
-
----
-
-## API & Backend Issues
-
-### OpenAI API Key Invalid
-
-**Error:**
-```
-openai.AuthenticationError: Invalid API key
-```
-
-**Solutions:**
-
-1. **Verify API key:**
-```bash
-# Check if key is set
-echo $OPENAI_API_KEY
-
-# Test the key
-curl https://api.openai.com/v1/models \
-  -H "Authorization: Bearer $OPENAI_API_KEY"
-```
-
-2. **Check .env file:**
-```env
-# Make sure there are no quotes or extra spaces
-OPENAI_API_KEY=sk-your-key-here
-```
-
-3. **Restart backend:**
-```bash
-docker-compose restart backend
-```
-
-### API Rate Limits
-
-**Error:**
-```
-openai.RateLimitError: Rate limit exceeded
-```
-
-**Solutions:**
-
-1. **Enable sequential mode:**
-```env
-DEEPEVAL_ASYNC_MODE=False
-DEEPEVAL_THROTTLE_VALUE=1.0
-```
-
-2. **Reduce concurrent requests:**
-```env
-DEEPEVAL_MAX_CONCURRENT=3
-```
-
-3. **Increase timeouts:**
-```env
-OPENAI_TIMEOUT=900
-DEEPEVAL_PER_TASK_TIMEOUT=1200
-```
-
-### 500 Internal Server Error
-
-**Solution:**
-```bash
-# Check backend logs for details
-docker-compose logs backend --tail=100
-
-# Common causes:
-# - Missing environment variables
-# - Database migration issues
-# - Import errors
-```
-
-### CORS Errors
-
-**Error:**
-```
-Access to fetch at 'http://localhost:8000/api/v1/...' has been blocked by CORS policy
-```
-
-**Solutions:**
-
-1. **Check frontend is using correct API URL:**
-```typescript
-// In frontend/.env or environment
-VITE_API_URL=http://localhost:8000/api/v1
-```
-
-2. **Verify CORS is configured in backend:**
-The backend should allow requests from the frontend origin.
-
----
-
-## Frontend Issues
-
-### Blank Page on Load
-
-**Solutions:**
-
-1. **Check browser console for errors:**
-Press F12 and look at the Console tab.
-
-2. **Verify API connection:**
-```bash
-curl http://localhost:8000/api/v1/health
-```
-
-3. **Rebuild frontend:**
-```bash
+```powershell
 cd platform/frontend
 npm run build
 ```
 
-### npm Install Fails
+CLI:
 
-**Error:**
-```
-npm ERR! ERESOLVE unable to resolve dependency tree
-```
-
-**Solution:**
-```bash
-# Remove node_modules and reinstall
-rm -rf node_modules package-lock.json
-npm install
-
-# Or force resolution
-npm install --legacy-peer-deps
+```powershell
+uv run rag-eval --help
+uv run python -c "from rag_evaluator.config import settings; print(settings.model_dump())"
 ```
 
-### Hot Reload Not Working
+## Backend Will Not Start
 
-**Solution:**
-```bash
-# Restart dev server
+### Port 8000 Is Already In Use
+
+The backend launcher can stop stale listeners on Windows:
+
+```powershell
+cd platform/backend
+uv run python dev_server.py --kill-port 8000
+uv run python dev_server.py
+```
+
+If access is denied, the process may be elevated or owned by another environment. Stop
+that process manually or run from an Administrator PowerShell.
+
+### Wrong Virtual Environment
+
+Backend commands must run from `platform/backend`:
+
+```powershell
+cd platform/backend
+uv sync --all-extras
+uv run python dev_server.py
+```
+
+If tests report missing `aiosqlite`, you are probably running from the wrong directory.
+
+### Database Connection Fails
+
+For local SQLite:
+
+```env
+DATABASE_URL=sqlite+aiosqlite:///./storage/dev.db
+```
+
+For local PostgreSQL, start the service:
+
+```powershell
+docker-compose up -d postgres
+```
+
+Then set a matching URL:
+
+```env
+DATABASE_URL=postgresql+asyncpg://rageval:rageval@localhost:5432/rageval
+```
+
+## Frontend Issues
+
+### Blank Page
+
+1. Check the browser console.
+2. Verify the backend is running:
+
+   ```powershell
+   Invoke-RestMethod http://localhost:8000/api/v1/health
+   ```
+
+3. Rebuild the frontend:
+
+   ```powershell
+   cd platform/frontend
+   npm run build
+   ```
+
+### API Calls Fail In Development
+
+The Vite dev server proxies `/api` to `http://localhost:8000`. Confirm the backend is
+on port 8000 and the frontend was started with:
+
+```powershell
 cd platform/frontend
 npm run dev
-
-# Check Vite config if using Docker volumes
-# Volume mounts can interfere with file watching
 ```
 
----
+## Provider And Model Issues
+
+### OpenAI Authentication Fails
+
+Check `.env`:
+
+```powershell
+Get-Content .env | Select-String OPENAI_API_KEY
+```
+
+Make sure the value has no quotes, trailing spaces, or placeholder text. Restart the
+backend or rerun the CLI after changing `.env`.
+
+### OpenAI-Compatible Provider Does Not Work
+
+Set both key and base URL:
+
+```env
+OPENAI_API_KEY=your_provider_key
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+```
+
+For platform RAG configs, also set the provider/model in the UI. If the provider uses
+OpenAI-compatible routing, store the base URL in the config where available.
+
+### Rate Limits Or Timeouts
+
+Use conservative settings:
+
+```env
+DEEPEVAL_ASYNC_MODE=False
+DEEPEVAL_MAX_CONCURRENT=3
+DEEPEVAL_THROTTLE_VALUE=1.0
+OPENAI_TIMEOUT=900
+DEEPEVAL_PER_TASK_TIMEOUT=1800
+DEEPEVAL_PER_ATTEMPT_TIMEOUT=600
+```
+
+Reduce the test set size while debugging.
+
+## Indexing Issues
+
+### Qdrant Connection Refused
+
+Hybrid search requires Qdrant:
+
+```powershell
+docker-compose up -d qdrant
+Invoke-RestMethod http://localhost:6333/health
+```
+
+Set:
+
+```env
+QDRANT_URL=http://localhost:6333
+```
+
+### SPLADE Or FastEmbed Model Download Fails
+
+Hybrid search downloads the configured sparse model on first use. Check network access
+and the `SPARSE_MODEL_NAME` value. Retry with a smaller document subset after the model
+is cached.
+
+### Neo4j Connection Fails
+
+Graph RAG requires Neo4j:
+
+```powershell
+docker-compose up -d neo4j
+```
+
+Wait for startup, then open <http://localhost:7474>. Confirm:
+
+```env
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=password
+```
+
+Graph RAG uses LLM calls during graph construction. Start with a small subset to reduce
+cost and isolate failures.
+
+### Filesystem Or RLM-RAG Preparation Fails
+
+Check that the input directory exists and contains supported files:
+
+```powershell
+Get-ChildItem data/raw
+```
+
+For platform builds, inspect the index error message in the UI and backend logs. For CLI
+runs, rerun with a small directory and confirm the prepared output path is writable.
 
 ## Evaluation Issues
 
-### Evaluation Stuck at 0%
+### Evaluation Stays Pending Or Running
 
-**Solutions:**
+Check backend logs and health:
 
-1. **Check backend logs:**
-```bash
-docker-compose logs -f backend
-```
-
-2. **Verify RAG index exists:**
-The knowledge base must be indexed before evaluation.
-
-3. **Check SSE connection:**
-Open browser DevTools → Network tab → look for `/stream` request.
-
-### Evaluation Times Out
-
-**Error:**
-```
-TimeoutError: Evaluation exceeded maximum time
-```
-
-**Solutions:**
-
-1. **Increase timeouts:**
-```env
-DEEPEVAL_PER_TASK_TIMEOUT=1800    # 30 minutes
-DEEPEVAL_PER_ATTEMPT_TIMEOUT=600  # 10 minutes
-OPENAI_TIMEOUT=900                # 15 minutes
-```
-
-2. **Reduce test set size:**
-Try running with fewer test cases first.
-
-3. **Check OpenAI status:**
-Visit [status.openai.com](https://status.openai.com) for outages.
-
-### All Metrics Return 0
-
-**Possible Causes:**
-
-1. **Empty retrieval results:**
-```bash
-# Test retrieval directly
-uv run python -c "
-from rag_evaluator.rag_implementations.vector_semantic import ChromaSemanticRAG
-rag = ChromaSemanticRAG()
-result = rag.query('test question')
-print(result)
-"
-```
-
-2. **Index not built:**
-Verify the index was created successfully.
-
-3. **Wrong RAG config:**
-Ensure the selected RAG config points to the correct index.
-
-### Inconsistent Scores
-
-Scores vary significantly between runs.
-
-**Solutions:**
-
-1. **Set temperature to 0:**
-```env
-OPENAI_TEMPERATURE=0
-```
-
-2. **Use consistent test cases:**
-Don't modify test cases between evaluations.
-
-3. **Check for randomness in RAG:**
-Some RAG implementations have non-deterministic elements.
-
----
-
-## RAG-Specific Issues
-
-### ChromaDB: Collection Not Found
-
-**Error:**
-```
-ValueError: Collection 'rag_documents' does not exist
-```
-
-**Solution:**
-```bash
-# Rebuild the index
-uv run rag-eval prepare --rag-type vector_semantic --input-dir data/raw
-```
-
-### Hybrid RAG: SPLADE Model Download Fails
-
-**Error:**
-```
-OSError: Can't load tokenizer for 'prithvida/Splade_pp_en_v1'
-```
-
-**Solutions:**
-
-1. **Check internet connection**
-
-2. **Pre-download model:**
-```python
-from fastembed import SparseTextEmbedding
-model = SparseTextEmbedding(model_name="prithvida/Splade_pp_en_v1")
-```
-
-3. **Use alternative model:**
-```env
-SPARSE_MODEL_NAME=naver/splade-cocondenser-ensembledistil
-```
-
-### Graph RAG: Entity Extraction Fails
-
-**Error:**
-```
-neo4j.exceptions.CypherSyntaxError: Invalid input
-```
-
-**Solutions:**
-
-1. **Check Neo4j version:**
-```bash
-docker-compose exec neo4j neo4j --version
-# Should be 5.x
-```
-
-2. **Clear and rebuild:**
-```bash
-docker-compose down neo4j
-docker volume rm rag-evaluator_neo4j_data
-docker-compose up -d neo4j
-# Wait for startup, then re-index
-```
-
-### Filesystem RAG: Preparation Fails
-
-**Error:**
-```
-FileNotFoundError: [Errno 2] No such file or directory: 'data/prepared/filesystem_rag'
-```
-
-**Solution:**
-```bash
-# Create directory and prepare
-mkdir -p data/prepared/filesystem_rag
-uv run rag-eval prepare --rag-type filesystem_rag --input-dir data/raw
-```
-
----
-
-## Performance Issues
-
-### Slow Indexing
-
-**Solutions:**
-
-1. **Reduce batch size for large documents:**
-```env
-HYBRID_INDEXING_BATCH_SIZE=8
-```
-
-2. **Use smaller chunks:**
-```env
-HYBRID_CHUNK_SIZE=500
-```
-
-3. **Index in batches:**
-Upload documents in smaller groups.
-
-### Slow Evaluations
-
-**Solutions:**
-
-1. **Enable async mode:**
-```env
-DEEPEVAL_ASYNC_MODE=True
-```
-
-2. **Reduce metrics:**
-Only evaluate necessary metrics.
-
-3. **Use faster model:**
-```env
-OPENAI_MODEL=gpt-4o-mini
-```
-
-### High Memory Usage
-
-**Solutions:**
-
-1. **Reduce concurrent evaluations:**
-```env
-DEEPEVAL_MAX_CONCURRENT=3
-```
-
-2. **Clear embeddings cache:**
-```python
-# ChromaDB
-import chromadb
-client = chromadb.PersistentClient(path="./data/chroma_db")
-client.delete_collection("rag_documents")
-```
-
-3. **Increase Docker memory:**
-```yaml
-# docker-compose.yml
-services:
-  backend:
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-```
-
----
-
-## Database Issues
-
-### Migration Errors
-
-**Error:**
-```
-alembic.util.exc.CommandError: Target database is not up to date
-```
-
-**Solutions:**
-
-1. **Run migrations:**
-```bash
+```powershell
 cd platform/backend
-uv run alembic upgrade head
+uv run pytest tests/test_api/test_health.py -q
 ```
 
-2. **Check migration history:**
-```bash
-uv run alembic history
-uv run alembic current
+Confirm the selected index is `ready`, the test set has cases, and the provider key is
+valid.
+
+### Results Are Empty Or All Scores Are Zero
+
+Likely causes:
+
+- The index was not built successfully.
+- The RAG returned no context.
+- The test set lacks `expected_answer`.
+- Provider calls failed during generation or judging.
+
+Use the playground to query the same index. If the playground returns no useful context,
+debug indexing and retrieval before rerunning metrics.
+
+### CLI Says Test Set Has Zero Cases
+
+The CLI expects:
+
+```json
+{
+  "test_cases": []
+}
 ```
 
-3. **Reset database (dev only):**
-```bash
+A raw top-level JSON array is not accepted by the current CLI evaluator.
+
+### Pause Or Resume Does Not Behave As Expected
+
+Pause/resume uses backend checkpointing and event logs. It applies to platform
+evaluations, not CLI runs. If resume fails, retry the evaluation from the UI.
+
+## Import Issues
+
+### JSON Test Set Import Fails
+
+The platform import endpoint expects:
+
+```json
+{
+  "name": "Imported test set",
+  "test_cases": [
+    {
+      "question": "Question",
+      "expected_answer": "Answer"
+    }
+  ]
+}
+```
+
+Optional fields include `description`, `tags`, `ground_truth_context`, `difficulty`,
+`category`, and `question_type`.
+
+## Storage And Cleanup
+
+Backend storage lives under `STORAGE_PATH`, usually `platform/backend/storage` for
+backend-local SQLite development or repository `storage/` for full-stack/container
+usage depending on how you launched the app.
+
+Deleting an index removes associated physical storage when the backend knows how to
+clean up that storage type. Archive indexes if evaluations still need to reference
+them.
+
+For a clean local infrastructure reset:
+
+```powershell
 docker-compose down -v
-docker-compose up -d
 ```
 
-### SQLite Locked
+For full stack:
 
-**Error:**
-```
-sqlite3.OperationalError: database is locked
-```
-
-**Solutions:**
-
-1. **Use PostgreSQL for concurrent access:**
-```env
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/rag_eval
+```powershell
+cd docker
+docker compose down -v
 ```
 
-2. **Increase timeout:**
-```python
-# In database.py
-engine = create_engine(url, connect_args={"timeout": 30})
-```
-
-### Data Corruption
-
-**Solutions:**
-
-1. **Backup and restore:**
-```bash
-# PostgreSQL
-docker-compose exec postgres pg_dump -U postgres rag_eval > backup.sql
-docker-compose exec -i postgres psql -U postgres rag_eval < backup.sql
-```
-
-2. **Reset completely:**
-```bash
-docker-compose down -v
-rm -rf storage/*
-docker-compose up -d
-```
-
----
+This deletes container volumes.
 
 ## Getting Help
 
-### Gathering Debug Information
+When opening an issue, include:
 
-Before asking for help, collect:
-
-1. **System info:**
-```bash
-python --version
-uv --version
-docker --version
-docker-compose --version
-```
-
-2. **Error logs:**
-```bash
-docker-compose logs backend > backend.log 2>&1
-```
-
-3. **Configuration (remove secrets!):**
-```bash
-grep -v "KEY\|PASSWORD\|SECRET" .env > config-sanitized.txt
-```
-
-### Where to Get Help
-
-| Resource | Best For |
-|----------|----------|
-| [GitHub Issues](https://github.com/fabrizioamort/RAG-evaluator/issues) | Bug reports, feature requests |
-| [Discussions](https://github.com/fabrizioamort/RAG-evaluator/discussions) | Questions, best practices |
-| Documentation | How-to guides, reference |
-
-### Reporting Bugs
-
-Include in your bug report:
-- Operating system and version
-- Python version
-- Docker version
-- Full error message and stack trace
-- Steps to reproduce
-- Expected vs. actual behavior
-- Relevant configuration (sanitized)
-
----
-
-## Diagnostic Commands Reference
-
-```bash
-# === Docker ===
-docker-compose ps                    # Check service status
-docker-compose logs -f <service>     # Follow logs
-docker-compose restart <service>     # Restart a service
-docker-compose down -v              # Remove all containers and volumes
-
-# === Backend ===
-cd platform/backend
-uv run python -c "from app.config import settings; print(settings)"  # Check config
-uv run alembic current              # Check migration status
-uv run pytest -x                    # Run tests
-
-# === Frontend ===
-cd platform/frontend
-npm run lint                        # Check for issues
-npm run build                       # Build for production
-
-# === Core ===
-uv run rag-eval --help              # CLI help
-uv run pytest tests/ -v             # Run core tests
-
-# === Database ===
-docker-compose exec postgres psql -U postgres -d rag_eval -c "\dt"  # List tables
-docker-compose exec postgres psql -U postgres -d rag_eval -c "SELECT count(*) FROM project"
-
-# === Vector Stores ===
-curl http://localhost:6333/collections  # Qdrant collections
-curl http://localhost:7474             # Neo4j browser
-```
+- Operating system.
+- Python, Node, `uv`, and Docker versions.
+- Exact command that failed.
+- Sanitized `.env` values.
+- Backend logs or CLI traceback.
+- Whether you used root infrastructure Compose or the full stack under `docker/`.

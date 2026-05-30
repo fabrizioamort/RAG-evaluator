@@ -1,535 +1,204 @@
-# Web Platform UI Guide
+# Web UI Guide
 
-> **A visual tour of the RAG Evaluator Platform interface.**
+The web platform is the primary workflow for managing RAG experiments. It runs as a
+React application on `http://localhost:3000` and calls the FastAPI backend on
+`http://localhost:8000/api/v1`.
 
-This guide walks you through every screen and feature of the web platform, helping you understand the complete workflow from project creation to result analysis.
+## Main Navigation
 
----
+| Route | Purpose |
+| --- | --- |
+| `/` | Dashboard with project and activity overview. |
+| `/projects` | Project list. |
+| `/projects/{id}` | Project workspace with knowledge bases, test sets, RAG configs, evaluations, comparisons, and trends. |
+| `/knowledge-bases/{id}` | Knowledge base detail and document management. |
+| `/indexes` | Cross-project index list. |
+| `/indexes/{id}` | Index detail and build status. |
+| `/playground` | Ad hoc querying against ready indexes. |
 
-## Table of Contents
+## Project Workflow
 
-- [Dashboard Overview](#dashboard-overview)
-- [Project Management](#project-management)
-- [Knowledge Base Management](#knowledge-base-management)
-- [Test Set Management](#test-set-management)
-- [RAG Configuration](#rag-configuration)
-- [Running Evaluations](#running-evaluations)
-- [Analyzing Results](#analyzing-results)
-- [Comparisons & Trends](#comparisons--trends)
-- [Keyboard Shortcuts](#keyboard-shortcuts)
+Every evaluation belongs to a project. A project groups the documents, test sets,
+RAG configurations, indexes, evaluations, comparisons, and trends for one use case.
 
----
+Recommended workflow:
 
-## Dashboard Overview
+1. Create a project.
+2. Create a knowledge base and upload documents.
+3. Create one or more RAG configurations.
+4. Build indexes from the knowledge base and RAG configurations.
+5. Create, import, or generate a test set.
+6. Run evaluations against ready indexes.
+7. Compare completed evaluations and mark a baseline.
+8. Use trends to track changes over time.
 
-The dashboard is your home screen, providing a quick overview of all projects and recent activity.
+## Knowledge Bases
 
-![Dashboard Overview](../images/ui-dashboard-overview.png)
-<!-- PLACEHOLDER: ui-dashboard-overview.png - Full dashboard screenshot showing projects, recent evaluations, quick stats -->
+Knowledge bases hold source documents. From the Knowledge Bases tab you can:
 
-### Dashboard Components
+- Create a knowledge base.
+- Upload documents.
+- Open a knowledge base detail page.
+- Build indexes for different RAG configurations.
 
-| Component | Description |
-|-----------|-------------|
-| **Project Cards** | Quick access to all projects with status indicators |
-| **Recent Evaluations** | Last 5 evaluations across all projects |
-| **Quick Stats** | Total projects, evaluations, and success rate |
-| **Quick Actions** | Create project, import, settings |
+Document uploads use the backend storage service. Uploaded files are copied into
+`STORAGE_PATH/documents` and associated with the knowledge base.
 
-### Navigation
+## Indexes
 
-The sidebar provides access to:
+An index is a physical build of a knowledge base for one RAG configuration. This
+separation is important: evaluations run against immutable-ish index snapshots instead
+of the current mutable knowledge base.
 
-- **Dashboard** - Home overview
-- **Projects** - All projects list
-- **Settings** - Platform configuration
+Index states:
 
----
+| State | Meaning |
+| --- | --- |
+| `pending` | Created and waiting for the build task. |
+| `building` | Build is in progress. |
+| `ready` | Ready for playground queries and evaluations. |
+| `failed` | Build failed and can be retried. |
+| `archived` | Hidden from normal active workflows but retained for history. |
 
-## Project Management
+Build progress is streamed from the backend with Server-Sent Events. Failed indexes can
+be retried. Indexes referenced by evaluations should usually be archived instead of
+deleted.
 
-### Creating a Project
+## RAG Configurations
 
-![Create Project](../images/ui-create-project.png)
-<!-- PLACEHOLDER: ui-create-project.png - Create project dialog -->
+RAG configurations define retrieval strategy, provider/model settings, and strategy
+parameters.
 
-1. Click **"+ New Project"** on the dashboard
-2. Fill in project details:
-   - **Name** (required): A descriptive name
-   - **Description** (optional): Project goals or notes
-   - **Tags** (optional): For organization (e.g., "production", "experiment")
-3. Click **"Create"**
+Available strategies:
 
-### Project Detail View
+- Vector Semantic Search (`vector_semantic`)
+- Hybrid Search (`vector_hybrid`)
+- Graph RAG (`graph_rag`)
+- Filesystem RAG (`filesystem_rag`)
+- RLM-RAG (`rlm_rag`)
 
-![Project Detail](../images/ui-project-detail.png)
-<!-- PLACEHOLDER: ui-project-detail.png - Full project detail page showing all sections -->
+The form loads parameter metadata from the backend. For platform-managed indexes, leave
+storage fields blank unless you are intentionally reusing external storage.
 
-The project detail page has four main sections:
+## Test Sets
 
-#### 1. Knowledge Bases
+Test sets contain the questions and expected answers used by evaluations.
 
-Manage your document collections:
+You can:
 
-![Knowledge Bases Section](../images/ui-kb-section.png)
-<!-- PLACEHOLDER: ui-kb-section.png - Knowledge bases list with cards -->
+- Create a blank test set.
+- Add or edit test cases manually.
+- Import a JSON test set.
+- Export a test set.
+- Generate test cases from a knowledge base.
+- Review, approve, or reject generated cases in bulk.
 
-- **Add Knowledge Base**: Create a new document collection
-- **Upload Documents**: Add PDFs, DOCX, TXT files
-- **Build Index**: Create searchable indexes for different RAG types
-
-#### 2. Test Sets
-
-Manage evaluation test cases:
-
-![Test Sets Section](../images/ui-testsets-section.png)
-<!-- PLACEHOLDER: ui-testsets-section.png - Test sets list -->
-
-- **Create Test Set**: Define question/answer pairs
-- **Import/Export**: JSON format support
-- **Generate**: AI-powered test generation from KB
-
-#### 3. RAG Configurations
-
-Define RAG settings:
-
-![RAG Configs Section](../images/ui-ragconfigs-section.png)
-<!-- PLACEHOLDER: ui-ragconfigs-section.png - RAG config list with type badges -->
-
-- **Create Config**: Choose RAG type and parameters
-- **LLM Settings**: Model and provider selection
-- **Parameters**: Type-specific configuration
-
-#### 4. Evaluations
-
-View all evaluations:
-
-![Evaluations Section](../images/ui-evaluations-section.png)
-<!-- PLACEHOLDER: ui-evaluations-section.png - Evaluations list with status badges -->
-
-- **Status Badges**: Running, Completed, Failed
-- **Quick Metrics**: Overview scores
-- **Actions**: View, Compare, Retry
-
-### Editing a Project
-
-![Edit Project](../images/ui-edit-project.png)
-<!-- PLACEHOLDER: ui-edit-project.png - Edit project dialog -->
-
-1. Click the **Edit** button (pencil icon) in the project header
-2. Modify name, description, or tags
-3. Click **"Save Changes"**
-
-### Archiving/Deleting
-
-- **Archive**: Hides project from main view (recoverable)
-- **Delete**: Permanently removes project and all data
-
----
-
-## Knowledge Base Management
-
-### Creating a Knowledge Base
-
-![Create KB](../images/ui-create-kb.png)
-<!-- PLACEHOLDER: ui-create-kb.png - Create knowledge base dialog -->
-
-1. Click **"+ Add Knowledge Base"**
-2. Enter a name and optional description
-3. Click **"Create"**
-
-### Uploading Documents
-
-![Upload Documents](../images/ui-upload-docs.png)
-<!-- PLACEHOLDER: ui-upload-docs.png - Document upload interface with drag-drop zone -->
-
-Supported formats:
-- **PDF** - Portable Document Format
-- **DOCX** - Microsoft Word
-- **TXT** - Plain text
-- **MD** - Markdown
-
-**Upload methods:**
-- Drag and drop files onto the upload zone
-- Click to browse and select files
-- Upload multiple files at once
-
-### Document Management
-
-![Document List](../images/ui-document-list.png)
-<!-- PLACEHOLDER: ui-document-list.png - List of documents with metadata -->
-
-For each document, you can:
-- View file info (name, size, upload date)
-- Preview content
-- Remove from knowledge base
-
-### Building Indexes
-
-![Build Index](../images/ui-build-index.png)
-<!-- PLACEHOLDER: ui-build-index.png - Index building wizard showing RAG type selection -->
-
-1. Click **"Build Index"** on the knowledge base
-2. Select RAG type:
-   - **Vector Semantic** - Basic semantic search
-   - **Hybrid** - Dense + sparse vectors
-   - **Graph RAG** - Knowledge graph
-   - **Filesystem RAG** - Agentic navigation
-3. Configure parameters (optional)
-4. Click **"Start Indexing"**
-
-### Index Progress
-
-![Index Progress](../images/ui-index-progress.png)
-<!-- PLACEHOLDER: ui-index-progress.png - Indexing progress bar with status -->
-
-The progress view shows:
-- Current phase (loading, chunking, embedding, storing)
-- Progress percentage
-- Estimated time remaining
-- Cancel option
-
-### Index Detail
-
-![Index Detail](../images/ui-index-detail.png)
-<!-- PLACEHOLDER: ui-index-detail.png - Completed index with stats -->
-
-After indexing completes:
-- **Chunk Count**: Number of indexed chunks
-- **Index Size**: Storage used
-- **Build Time**: How long indexing took
-- **Status**: Ready, Failed, Building
-
----
-
-## Test Set Management
-
-### Creating a Test Set
-
-![Create Test Set](../images/ui-create-testset.png)
-<!-- PLACEHOLDER: ui-create-testset.png - Create test set dialog -->
-
-1. Click **"+ Add Test Set"**
-2. Enter name and description
-3. Click **"Create"**
-
-### Adding Test Cases
-
-![Add Test Case](../images/ui-add-testcase.png)
-<!-- PLACEHOLDER: ui-add-testcase.png - Add test case form -->
-
-For each test case:
-- **Question**: The query to evaluate
-- **Expected Answer**: The ground truth answer
-- **Difficulty** (optional): easy, medium, hard
-- **Tags** (optional): For filtering
-
-### Bulk Import
-
-![Import Test Cases](../images/ui-import-testcases.png)
-<!-- PLACEHOLDER: ui-import-testcases.png - JSON import dialog -->
-
-Import from JSON format:
+Import shape:
 
 ```json
-[
-  {
-    "question": "What is RAG?",
-    "expected_answer": "RAG stands for Retrieval-Augmented Generation...",
-    "difficulty": "easy",
-    "tags": ["definition"]
-  }
-]
+{
+  "name": "Smoke tests",
+  "description": "Initial validation cases",
+  "tags": ["smoke"],
+  "test_cases": [
+    {
+      "question": "What does the refund policy allow?",
+      "expected_answer": "Customers can request a refund within the stated policy window.",
+      "ground_truth_context": ["Refund policy source text."],
+      "difficulty": "medium",
+      "category": "policy",
+      "question_type": "factual"
+    }
+  ]
+}
 ```
 
-### AI-Powered Generation
+Generated test cases are not automatically trusted. Review them before using them for
+baseline or release decisions.
 
-![Generate Test Cases](../images/ui-generate-testcases.png)
-<!-- PLACEHOLDER: ui-generate-testcases.png - Test generation wizard -->
+## Evaluations
 
-1. Click **"Generate from KB"**
-2. Select the knowledge base to analyze
-3. Choose difficulty distribution
-4. Set number of questions to generate
-5. Click **"Generate"**
+An evaluation runs selected metrics for every test case in a test set against one ready
+index.
 
-### Reviewing Generated Cases
+The start wizard asks for:
 
-![Review Generated](../images/ui-review-generated.png)
-<!-- PLACEHOLDER: ui-review-generated.png - Generated test cases with approve/reject buttons -->
+- Knowledge base index.
+- Test set.
+- Metric list.
+- Optional name, notes, and tags.
 
-Generated cases require review:
-- **Approve**: Add to test set
-- **Edit**: Modify before adding
-- **Reject**: Discard
+Available metric names:
 
----
+- `faithfulness`
+- `relevancy`
+- `precision`
+- `recall`
+- `g_eval`
 
-## RAG Configuration
+The evaluation progress view streams updates while the backend runner executes. You can
+cancel, pause, resume, or retry evaluations depending on the current state.
 
-### Creating a RAG Config
+## Result Analysis
 
-![Create RAG Config](../images/ui-create-ragconfig.png)
-<!-- PLACEHOLDER: ui-create-ragconfig.png - RAG config creation wizard -->
+Completed evaluations include:
 
-#### Step 1: Basic Info
+- Average metric scores.
+- Overall pass rate.
+- Per-question generated answers.
+- Expected answers.
+- LLM judge reasons when enabled.
+- Retrieval traces.
+- Cost and token usage.
+- Latency metrics.
+- Run manifest snapshots.
 
-- **Name**: Descriptive configuration name
-- **RAG Type**: Select implementation
+Use low-scoring cases to diagnose whether the failure came from retrieval, generation,
+or test-set quality. Use retrieval traces to inspect which chunks were retrieved and in
+which order.
 
-#### Step 2: LLM Settings
+## Comparisons
 
-![LLM Settings](../images/ui-llm-settings.png)
-<!-- PLACEHOLDER: ui-llm-settings.png - LLM provider and model selection -->
+The Comparisons tab compares one baseline evaluation against one or more completed
+evaluations from the same project.
 
-- **Provider**: OpenAI, Anthropic, Ollama, etc.
-- **Model**: Specific model selection
-- **Temperature**: Generation randomness (0.0-1.0)
+Comparison output includes:
 
-#### Step 3: RAG Parameters
+- Metric deltas.
+- Cost and latency differences.
+- Configuration differences.
+- Per-question result deltas.
 
-Parameters vary by RAG type:
+Use comparisons when you change only one major variable at a time, such as RAG type,
+chunk size, model, or provider. This makes the result easier to interpret.
 
-**Vector Semantic:**
-![Vector Params](../images/ui-vector-params.png)
-<!-- PLACEHOLDER: ui-vector-params.png - Vector semantic parameters -->
+## Trends
 
-- Collection name
-- Persist directory
+The Trends tab visualizes evaluation history for a project. Use it to track regressions,
+quality improvements, and efficiency changes across RAG configurations.
 
-**Hybrid Search:**
-![Hybrid Params](../images/ui-hybrid-params.png)
-<!-- PLACEHOLDER: ui-hybrid-params.png - Hybrid search parameters -->
+Trend views include metric history and efficiency-oriented cost/latency views where
+data is available.
 
-- Qdrant URL
-- Collection name
-- Fusion alpha
+## Playground
 
-**Graph RAG:**
-![Graph Params](../images/ui-graph-params.png)
-<!-- PLACEHOLDER: ui-graph-params.png - Graph RAG parameters -->
+The playground lets you query up to four ready indexes at once without creating a test
+set or evaluation. It is useful for quick qualitative checks before spending time and
+tokens on a full run.
 
-- Neo4j URI
-- Credentials
-- Vector index name
+Playground results include:
 
-**Filesystem RAG:**
-![Filesystem Params](../images/ui-filesystem-params.png)
-<!-- PLACEHOLDER: ui-filesystem-params.png - Filesystem RAG parameters -->
+- Answer per index.
+- Retrieved context.
+- Retrieval trace details.
+- Latency and token metrics.
+- Saved query history.
 
-- Max iterations
-- Max tool calls
-- Word threshold
+## Practical Tips
 
----
-
-## Running Evaluations
-
-### Start Evaluation Wizard
-
-![Start Evaluation](../images/ui-start-evaluation.png)
-<!-- PLACEHOLDER: ui-start-evaluation.png - Full evaluation wizard -->
-
-#### Step 1: Select Components
-
-- **Knowledge Base**: Choose indexed KB
-- **Index**: Select specific index (if multiple)
-- **Test Set**: Choose test cases to run
-- **RAG Config**: Select configuration
-
-#### Step 2: Choose Metrics
-
-![Choose Metrics](../images/ui-choose-metrics.png)
-<!-- PLACEHOLDER: ui-choose-metrics.png - Metric selection checkboxes -->
-
-Select which metrics to evaluate:
-- Faithfulness
-- Answer Relevancy
-- Contextual Precision
-- Contextual Recall
-- Correctness (G-Eval)
-
-#### Step 3: Review & Run
-
-![Review Run](../images/ui-review-run.png)
-<!-- PLACEHOLDER: ui-review-run.png - Review summary before starting -->
-
-- Confirm all selections
-- Estimated time and cost
-- Click **"Start Evaluation"**
-
-### Evaluation Progress
-
-![Evaluation Progress](../images/ui-eval-progress.png)
-<!-- PLACEHOLDER: ui-eval-progress.png - Real-time progress view -->
-
-Real-time progress shows:
-- **Current Test Case**: Question being evaluated
-- **Progress Bar**: Completed / Total
-- **Live Metrics**: Running average scores
-- **Token Usage**: API consumption
-- **Cancel**: Stop evaluation
-
-### Controlling Evaluations
-
-| Action | Description |
-|--------|-------------|
-| **Pause** | Suspend and save checkpoint |
-| **Resume** | Continue from checkpoint |
-| **Cancel** | Stop and discard results |
-| **Retry** | Re-run failed evaluation |
-
----
-
-## Analyzing Results
-
-### Results Summary
-
-![Results Summary](../images/ui-results-summary.png)
-<!-- PLACEHOLDER: ui-results-summary.png - Complete results summary with all metric cards -->
-
-The summary view shows:
-- **Metric Cards**: Score for each metric with pass/fail indicator
-- **Distribution Chart**: Score distribution across test cases
-- **Quick Stats**: Pass rate, average scores, token usage
-
-### Metric Cards
-
-![Metric Cards](../images/ui-metric-cards.png)
-<!-- PLACEHOLDER: ui-metric-cards.png - Close-up of metric cards with scores -->
-
-Each card displays:
-- **Score**: 0.0 - 1.0 value
-- **Status**: Pass/Fail based on threshold
-- **Trend**: Comparison to baseline (if set)
-
-### Per-Case Results
-
-![Per-Case Results](../images/ui-per-case-results.png)
-<!-- PLACEHOLDER: ui-per-case-results.png - Expandable results table -->
-
-Click any row to expand:
-- Full question and answer
-- Retrieved context chunks
-- Individual metric scores
-- Explainability button
-
-### Metric Explainability
-
-![Explainability Panel](../images/ui-explainability.png)
-<!-- PLACEHOLDER: ui-explainability.png - Metric explanation panel -->
-
-Click **"Why this score?"** to see:
-- LLM judge reasoning
-- Claims analysis (for Faithfulness)
-- Supporting evidence
-- Improvement suggestions
-
-### Retrieval Trace
-
-![Retrieval Trace](../images/ui-retrieval-trace.png)
-<!-- PLACEHOLDER: ui-retrieval-trace.png - Detailed retrieval trace view -->
-
-The trace viewer shows:
-- **Query**: Original question
-- **Strategy**: Retrieval method used
-- **Chunks**: Retrieved chunks with scores
-- **Timeline**: Processing steps with durations
-
-### Exporting Results
-
-![Export Options](../images/ui-export-results.png)
-<!-- PLACEHOLDER: ui-export-results.png - Export dropdown menu -->
-
-Export formats:
-- **JSON**: Complete structured data
-- **Markdown**: Human-readable report
-- **CSV**: Per-case results for spreadsheets
-
----
-
-## Comparisons & Trends
-
-### Comparing Evaluations
-
-![Comparison View](../images/ui-comparison.png)
-<!-- PLACEHOLDER: ui-comparison.png - Side-by-side evaluation comparison -->
-
-Compare multiple evaluations:
-1. Select evaluations to compare
-2. View side-by-side metrics
-3. Identify winning configuration
-
-### Setting a Baseline
-
-![Set Baseline](../images/ui-set-baseline.png)
-<!-- PLACEHOLDER: ui-set-baseline.png - Baseline selection interface -->
-
-1. Click **"Set as Baseline"** on an evaluation
-2. Future evaluations show delta vs. baseline
-3. Track improvements over time
-
-### Trends Dashboard
-
-![Trends Dashboard](../images/ui-trends-dashboard.png)
-<!-- PLACEHOLDER: ui-trends-dashboard.png - Full trends view with charts -->
-
-The trends view shows:
-- **Line Charts**: Metrics over time
-- **Grouped View**: By RAG type or configuration
-- **Cost Tracking**: Token usage trends
-- **Efficiency Map**: Score vs. cost visualization
-
-### Trend Filters
-
-![Trend Filters](../images/ui-trend-filters.png)
-<!-- PLACEHOLDER: ui-trend-filters.png - Filter options for trends -->
-
-Filter by:
-- Date range
-- RAG type
-- Test set
-- Metric
-
----
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl/Cmd + N` | New project |
-| `Ctrl/Cmd + E` | Start evaluation |
-| `Ctrl/Cmd + S` | Save current form |
-| `Esc` | Close dialog |
-| `?` | Show shortcuts help |
-
----
-
-## Tips & Best Practices
-
-### Organizing Projects
-
-- Use tags to categorize (e.g., "production", "experiment", "v2")
-- Keep related KBs and test sets in the same project
-- Archive completed experiments
-
-### Efficient Evaluations
-
-- Start with fewer metrics during development
-- Use async mode for faster results
-- Set appropriate thresholds
-
-### Result Analysis
-
-- Always check low-scoring cases
-- Use explainability for debugging
-- Compare against baseline regularly
-
----
-
-## Related Documentation
-
-- [Getting Started Guide](getting-started.md) - First steps
-- [Evaluation Guide](evaluation-guide.md) - Deep dive into evaluation
-- [API Reference](../api.md) - Programmatic access
-- [Troubleshooting](troubleshooting.md) - Common issues
+- Start with a small document set and a small test set.
+- Build `vector_semantic` first as a baseline.
+- Use the playground before a full evaluation when testing a new RAG configuration.
+- Keep baseline evaluations stable and compare against them.
+- Prefer archiving over deleting when results need to remain reproducible.
+- Review generated test cases before they influence quality decisions.

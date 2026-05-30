@@ -1,208 +1,154 @@
-# Contributing to RAG Evaluator
+# Contributing
 
-Thank you for your interest in contributing to RAG Evaluator! This document provides guidelines and instructions for contributing to the project, whether you're working on the core RAG logic, the API backend, or the frontend UI.
+Thanks for helping improve RAG Evaluator. This guide covers the development workflow,
+quality checks, and main integration points.
 
-## Table of Contents
-
-- [Code of Conduct](#code-of-conduct)
-- [Project Structure](#project-structure)
-- [Development Environment](#development-environment)
-- [Running the Platform Locally](#running-the-platform-locally)
-- [Code Quality Standards](#code-quality-standards)
-- [Testing Requirements](#testing-requirements)
-- [Adding New RAG Implementations](#adding-new-rag-implementations)
-- [Pull Request Process](#pull-request-process)
-
-## Code of Conduct
-
-This project follows a simple principle: **Be respectful, be collaborative, and focus on improving the project.**
-
-## Project Structure
-
-The project is organized into three main areas:
+## Project Areas
 
 ```text
-RAG-evaluator/
-├── src/rag_evaluator/        # CORE: The shared RAG logic and CLI tool
-│   ├── rag_implementations/  # The actual RAG strategies (Chroma, Hybrid, etc.)
-│   ├── evaluation/           # DeepEval integration
-│   └── ...
-├── platform/                 # PLATFORM: The web application
-│   ├── backend/              # FastAPI application
-│   │   ├── app/              # API logic
-│   │   └── ...
-│   └── frontend/             # React/Vite application
-│       ├── src/              # UI components and logic
-│       └── ...
-├── data/                     # Data storage (gitignored)
-├── docker/                   # Docker configuration
-└── tests/                    # Tests for the Core/CLI
+src/rag_evaluator/        Core RAG implementations, evaluation engine, CLI
+platform/backend/         FastAPI backend
+platform/frontend/        React/Vite frontend
+tests/                    Core test suite
+docs/                     Public documentation
 ```
 
-## Development Environment
+## Prerequisites
 
-### Prerequisites
+- Python 3.11+
+- Node.js 18+
+- `uv`
+- Docker and Docker Compose
 
-- **Python 3.11+**
-- **Node.js 18+** (for frontend)
-- **[uv](https://github.com/astral-sh/uv)** (Python package manager)
-- **Docker** (optional, but recommended for databases)
+## Setup
 
-### 1. Core & CLI Setup
+Core:
 
-This is for working on `src/rag_evaluator` or the CLI.
-
-```bash
-# Install dependencies
+```powershell
 uv sync --all-extras
-
-# Set up environment
-cp .env.example .env
+Copy-Item .env.example .env
 ```
 
-### 2. Backend Setup
+Backend:
 
-The backend is a FastAPI app located in `platform/backend`.
-
-```bash
+```powershell
 cd platform/backend
-
-# Install backend dependencies
-uv sync
-
-# The backend shares the root .env, or you can create one in platform/backend/.env
+uv sync --all-extras
 ```
 
-### 3. Frontend Setup
+Frontend:
 
-The frontend is a React app located in `platform/frontend`.
-
-```bash
+```powershell
 cd platform/frontend
-
-# Install dependencies
 npm install
 ```
 
-## Running the Platform Locally
+## Run Locally
 
-For development, you often want to run services individually to get hot-reloading and debuggers.
+From the repository root:
 
-### 1. Start Infrastructure (Databases)
-
-Use Docker to start the required databases (PostgreSQL, Qdrant, Neo4j) without running the full app containers.
-
-```bash
-# From project root
+```powershell
 docker-compose up -d postgres qdrant neo4j
 ```
 
-### 2. Start Backend (API)
+Backend:
 
-```bash
+```powershell
 cd platform/backend
 uv run python dev_server.py
 ```
-API docs will be at: `http://localhost:8000/api/v1/docs`
 
-### 3. Start Frontend (UI)
+Frontend:
 
-```bash
+```powershell
 cd platform/frontend
 npm run dev
 ```
-The UI will be at: `http://localhost:5173`
 
-## Code Quality Standards
+Open:
 
-We use strict linting and formatting.
+- Frontend: <http://localhost:3000>
+- API docs: <http://localhost:8000/api/v1/docs>
 
-### Python (Core & Backend)
-- **Formatter:** `ruff format`
-- **Linter:** `ruff check`
-- **Type Checker:** `mypy`
+## Quality Checks
 
-```bash
-# Run all checks for Core
-make check
+Core:
 
-# Run all checks for Backend
-cd platform/backend
+```powershell
+uv run pytest
 uv run ruff check .
-uv run mypy .
+uv run mypy src/rag_evaluator
 ```
 
-### TypeScript (Frontend)
-- **Linter:** `eslint`
+Backend:
 
-```bash
+```powershell
+cd platform/backend
+uv run pytest
+uv run ruff check .
+uv run mypy app
+```
+
+Frontend:
+
+```powershell
 cd platform/frontend
 npm run lint
+npm run build
 ```
 
-## Testing Requirements
+Makefile shortcuts from the root:
 
-### Core/CLI Tests
-Located in `tests/`.
-
-```bash
-# Run all core tests
-uv run pytest
+```powershell
+make test
+make lint
+make check
 ```
 
-### Backend Tests
-Located in `platform/backend/tests/`.
+## Backend Model Changes
 
-```bash
+Any change under `platform/backend/app/models/` requires an Alembic migration.
+
+```powershell
 cd platform/backend
-uv run pytest
+uv run alembic revision --autogenerate -m "describe change"
+uv run alembic upgrade head
 ```
 
-### Frontend Tests
-Located in `platform/frontend/src/`.
+SQLite migrations that alter existing tables may need Alembic batch mode.
 
-```bash
-cd platform/frontend
-npm test
-```
+## Adding A RAG Implementation
 
-## Adding New RAG Implementations
+See [Custom RAG Integration](docs/custom_rag_integration.md) for the full guide.
 
-For a comprehensive guide on developing and integrating custom RAG systems, see the **[Custom RAG Integration Guide](docs/custom_rag_integration.md)**.
+At a high level:
 
-### Quick Overview
+1. Add the implementation under `src/rag_evaluator/rag_implementations/`.
+2. Implement `BaseRAG`.
+3. Register the class and schema in `src/rag_evaluator/rag_implementations/registry.py`.
+4. Add platform metadata in `platform/backend/app/services/rag_registry.py`.
+5. Add parameter mapping in `platform/backend/app/services/rag_adapter.py`.
+6. Add index storage mapping and cleanup in `index_build_service.py` if needed.
+7. Add tests and documentation.
 
-To add a new RAG strategy (e.g., "Elasticsearch RAG"):
+## Documentation
 
-1.  **Implement Core Logic:**
-    Create `src/rag_evaluator/rag_implementations/elasticsearch_rag/`. Inherit from `BaseRAG` and implement the required methods: `prepare_documents()`, `query()`, and `get_metrics()`.
+Update docs when behavior, commands, endpoints, configuration, or supported strategies
+change. Keep `README.md` concise and link to detailed pages under `docs/`.
 
-2.  **Register in CLI:**
-    Update `src/rag_evaluator/cli.py` - add your RAG to `get_rag_implementation()` and the CLI argument choices.
+Before submitting documentation changes, scan for:
 
-3.  **Register in Backend (Optional):**
-    If you want it available in the Platform, update `platform/backend/app/services/rag_adapter.py`:
-    - Add to `RAG_TYPE_REGISTRY`
-    - Add to `RAG_TYPE_PARAMETERS`
-    - Add to `get_available_rag_types()`
+- Stale commands.
+- Wrong ports.
+- Placeholder comments.
+- Broken links.
+- Public claims that do not match the current code.
 
-### Developing as a Separate Project
+## Pull Requests
 
-For experimental or novel RAG systems, we recommend developing as a separate project first:
-
-1. Create a standalone project with minimal dependencies
-2. Copy the interface files (`base_rag.py`, `provider_interfaces.py`, `token_tracker.py`)
-3. Develop and test your RAG independently
-4. Integrate when stable by copying to `src/rag_evaluator/rag_implementations/`
-
-See the [Custom RAG Integration Guide](docs/custom_rag_integration.md#developing-as-a-separate-project) for detailed instructions and a project template.
-
-## Pull Request Process
-
-1.  Create a feature branch.
-2.  Ensure all tests pass and code is formatted.
-3.  Submit PR with a clear description of changes.
-4.  Wait for review.
-
----
-**Happy Coding!**
+1. Create a focused branch.
+2. Keep changes scoped to the issue or feature.
+3. Add tests for behavior changes.
+4. Update documentation for user-visible changes.
+5. Run relevant quality checks.
+6. Open a PR with a clear summary and testing notes.

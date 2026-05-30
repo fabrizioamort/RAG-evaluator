@@ -1,112 +1,73 @@
-# RAG Evaluator Platform Documentation
+# RAG Evaluator Documentation
 
-> **Welcome to the RAG Evaluator Platform documentation!**
+This documentation explains how to install, operate, extend, and deploy the RAG
+Evaluator Platform.
 
-This documentation covers everything you need to know about installing, configuring, and using the RAG Evaluator Platform.
+## Start Here
 
----
+| Document | Use it for |
+| --- | --- |
+| [Getting Started](guides/getting-started.md) | First local setup and first evaluation |
+| [Configuration](guides/configuration.md) | Environment variables and provider settings |
+| [UI Guide](guides/ui-guide.md) | Web application workflow |
+| [CLI Reference](cli.md) | Local preparation, evaluation, and reports |
+| [Troubleshooting](guides/troubleshooting.md) | Common setup, indexing, and evaluation issues |
 
-## Quick Links
+## Core Concepts
 
-<table>
-<tr>
-<td width="50%" valign="top">
+| Document | Use it for |
+| --- | --- |
+| [Architecture](ARCHITECTURE.md) | System layout, data flow, and component boundaries |
+| [RAG Strategies](rag_strategies.md) | Built-in RAG implementations and when to use each one |
+| [Metrics](metrics.md) | Faithfulness, relevancy, precision, recall, and G-Eval correctness |
+| [Evaluation Guide](guides/evaluation-guide.md) | Test design, metric selection, and result interpretation |
 
-### Getting Started
+## Reference
 
-- [Quick Start Guide](guides/getting-started.md) - Your first evaluation in 10 minutes
-- [Installation](../README.md#quick-start) - Setup instructions
-- [Configuration](guides/configuration.md) - Environment variables
+| Document | Use it for |
+| --- | --- |
+| [API Reference](api.md) | REST endpoints exposed by the FastAPI backend |
+| [Custom RAG Integration](custom_rag_integration.md) | Adding a new RAG implementation |
+| [Deployment](deployment.md) | Docker, production, and operational guidance |
+| [Security](guides/security.md) | Authentication, secrets, and data handling recommendations |
 
-</td>
-<td width="50%" valign="top">
+## Common Workflows
 
-### Core Concepts
+### Evaluate Documents In The Web UI
 
-- [Architecture Overview](ARCHITECTURE.md) - System design
-- [RAG Strategies](rag_strategies.md) - Available implementations
-- [Evaluation Metrics](metrics.md) - Understanding scores
+1. Follow [Getting Started](guides/getting-started.md).
+2. Create a project.
+3. Upload documents into a knowledge base.
+4. Create a RAG configuration.
+5. Build an index.
+6. Create or import a test set.
+7. Run an evaluation and inspect results.
 
-</td>
-</tr>
-</table>
+### Compare RAG Strategies
 
----
+1. Build one index per RAG strategy for the same knowledge base.
+2. Run each evaluation against the same test set.
+3. Use the project comparison tab to choose a baseline and compared evaluations.
+4. Review aggregate deltas, per-question differences, cost, and latency.
 
-## Documentation Structure
+### Use The CLI
 
-### Guides (How-To)
+1. Add documents under `data/raw`.
+2. Create a JSON test set with a top-level `test_cases` array.
+3. Run `rag-eval prepare`.
+4. Run `rag-eval evaluate`.
+5. Open the generated reports in `reports/` or launch `rag-eval ui`.
 
-Step-by-step instructions for common tasks:
+### Add A New RAG
 
-| Guide | Description |
-|-------|-------------|
-| [Getting Started](guides/getting-started.md) | First-time setup and basic workflow |
-| [Evaluation Guide](guides/evaluation-guide.md) | Designing tests and interpreting results |
-| [UI Guide](guides/ui-guide.md) | Complete walkthrough of the web interface |
-| [Configuration](guides/configuration.md) | All configuration options explained |
-| [Troubleshooting](guides/troubleshooting.md) | Common issues and solutions |
-| [Security](guides/security.md) | Production deployment best practices |
+1. Implement `BaseRAG`.
+2. Register the class and parameter schema in the shared RAG registry.
+3. Update backend parameter metadata if the web UI should expose it.
+4. Add tests and documentation.
 
-### Reference (Technical Details)
+## Repository Links
 
-In-depth technical documentation:
-
-| Document | Description |
-|----------|-------------|
-| [Architecture](ARCHITECTURE.md) | System design, components, data flows |
-| [RAG Strategies](rag_strategies.md) | Vector, Hybrid, Graph, Filesystem RAG |
-| [Metrics](metrics.md) | Evaluation metric definitions |
-| [API Reference](api.md) | REST API endpoints |
-| [CLI Reference](cli.md) | Command-line interface |
-| [Custom RAG Integration](custom_rag_integration.md) | Building your own RAG |
-| [Deployment](deployment.md) | Production deployment |
-
----
-
-## By Use Case
-
-### "I want to evaluate my RAG system"
-
-1. Read the [Getting Started Guide](guides/getting-started.md)
-2. Understand the [Evaluation Metrics](metrics.md)
-3. Follow the [Evaluation Guide](guides/evaluation-guide.md)
-
-### "I want to understand the platform"
-
-1. Read the [Architecture Overview](ARCHITECTURE.md)
-2. Explore the [UI Guide](guides/ui-guide.md)
-3. Check the [API Reference](api.md)
-
-### "I want to deploy to production"
-
-1. Review [Security Best Practices](guides/security.md)
-2. Follow the [Deployment Guide](deployment.md)
-3. Configure via [Configuration Reference](guides/configuration.md)
-
-### "I want to integrate my own RAG"
-
-1. Read [Custom RAG Integration](custom_rag_integration.md)
-2. Understand [RAG Strategies](rag_strategies.md)
-3. Check [Contributing Guidelines](../CONTRIBUTING.md)
-
----
-
-## Additional Resources
-
-- [GitHub Repository](https://github.com/fabrizioamort/RAG-evaluator)
-- [Issue Tracker](https://github.com/fabrizioamort/RAG-evaluator/issues)
-- [Contributing Guide](../CONTRIBUTING.md)
-- [License (MIT)](../LICENSE)
-
----
-
-## Documentation Versions
-
-This documentation corresponds to the latest version of RAG Evaluator Platform.
-
----
-
-<p align="center">
-  <em>Can't find what you're looking for? <a href="https://github.com/fabrizioamort/RAG-evaluator/issues/new">Open an issue</a> and we'll help!</em>
-</p>
+- [README](../README.md)
+- [Contributing](../CONTRIBUTING.md)
+- [License](../LICENSE)
+- [GitHub issues](https://github.com/fabrizioamort/RAG-evaluator/issues)

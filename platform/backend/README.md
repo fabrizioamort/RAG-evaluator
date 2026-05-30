@@ -1,124 +1,123 @@
-# RAG Evaluation Platform - Backend
+# RAG Evaluator Backend
 
-FastAPI backend for the RAG Evaluation Platform.
+FastAPI backend for the RAG Evaluator Platform.
 
-## Prerequisites
+## Responsibilities
 
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/) for dependency management
-- PostgreSQL 16 (production) or SQLite (development)
+- Project, knowledge base, test set, RAG config, index, evaluation, comparison,
+  trend, playground, template, and webhook APIs.
+- Async database access through SQLAlchemy.
+- Background index builds and evaluations.
+- Server-Sent Events for index/evaluation progress.
+- Artifact storage for retrieval traces, contexts, generated-test provenance, and raw metrics.
 
-## Quick Start
+## Setup
 
-### Development (SQLite)
+Run backend commands from `platform/backend`.
 
-```bash
-# Install dependencies
+```powershell
 cd platform/backend
 uv sync --all-extras
+Copy-Item .env.example .env
+```
 
-# Create .env file
-cp .env.example .env
-# Edit .env with your API keys
+For local SQLite, the default is enough:
 
-# Run the development server
+```env
+DATABASE_URL=sqlite+aiosqlite:///./storage/dev.db
+STORAGE_PATH=./storage
+```
+
+For PostgreSQL, start infrastructure from the repository root:
+
+```powershell
+docker-compose up -d postgres
+```
+
+Then set:
+
+```env
+DATABASE_URL=postgresql+asyncpg://rageval:rageval@localhost:5432/rageval
+```
+
+## Run
+
+```powershell
 uv run python dev_server.py
-
-# The API will be available at http://localhost:8000
-# OpenAPI docs at http://localhost:8000/api/v1/docs
 ```
 
-### Production (PostgreSQL + Docker)
+The development launcher starts Uvicorn with reload on port 8000. On Windows it can
+clean up stale listeners:
 
-```bash
-# From the project root
-cd docker
-docker-compose up -d
+```powershell
+uv run python dev_server.py --kill-port 8000
 ```
 
-## Environment Variables
+Open:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | Database connection string | `sqlite+aiosqlite:///./storage/dev.db` |
-| `STORAGE_PATH` | Path for file storage | `./storage` |
-| `LOG_LEVEL` | Logging level (DEBUG/INFO/WARNING/ERROR) | `INFO` |
-| `LOG_FORMAT` | Log format (json/console) | `json` |
-| `OPENAI_API_KEY` | OpenAI API key | - |
-| `ANTHROPIC_API_KEY` | Anthropic API key | - |
-| `OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
-| `CORS_ORIGINS` | Allowed CORS origins (JSON array) | `["http://localhost:3000"]` |
+- API root: <http://localhost:8000>
+- OpenAPI docs: <http://localhost:8000/api/v1/docs>
+- Health: <http://localhost:8000/api/v1/health>
 
-## Database Migrations
+## Tests And Quality
 
-```bash
-# Run migrations
-uv run alembic upgrade head
-
-# Create a new migration
-uv run alembic revision --autogenerate -m "Description"
-
-# Downgrade
-uv run alembic downgrade -1
-```
-
-## Testing
-
-```bash
-# Run all tests
+```powershell
 uv run pytest
-
-# Run with coverage
-uv run pytest --cov=app --cov-report=term-missing
-
-# Run specific test file
-uv run pytest tests/test_api/test_health.py
-```
-
-## Code Quality
-
-```bash
-# Format code
-uv run ruff format .
-
-# Lint code
 uv run ruff check .
-
-# Type checking
 uv run mypy app
 ```
 
-## Project Structure
+Run focused tests:
 
+```powershell
+uv run pytest tests/test_api/test_health.py -q
+uv run pytest tests/test_services/test_rag_adapter.py -q
 ```
+
+## Migrations
+
+```powershell
+uv run alembic upgrade head
+uv run alembic revision --autogenerate -m "describe change"
+uv run alembic downgrade -1
+```
+
+Any model change under `app/models/` requires an Alembic migration. SQLite schema
+changes may require Alembic batch mode.
+
+## Configuration
+
+Important variables:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./storage/dev.db` | Backend database URL. |
+| `STORAGE_PATH` | `./storage` | Documents, indexes, artifacts, reports, logs. |
+| `LOG_LEVEL` | `INFO` | Backend log level. |
+| `LOG_FORMAT` | `json` | `json` or `console`. |
+| `CORS_ORIGINS` | `["http://localhost:3000"]` | Allowed frontend origins. |
+| `OPENAI_API_KEY` | unset | OpenAI key. |
+| `OPENROUTER_API_KEY` | unset | OpenRouter key. |
+| `ANTHROPIC_API_KEY` | unset | Anthropic key. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Local Ollama URL. |
+| `DEFAULT_LLM_PROVIDER` | `openai` | Default provider metadata. |
+| `DEFAULT_LLM_MODEL` | `gpt-4o-mini` | Default backend model. |
+
+See [Configuration](../../docs/guides/configuration.md) for the full reference.
+
+## Structure
+
+```text
 platform/backend/
-├── app/
-│   ├── api/           # API route handlers
-│   ├── models/        # SQLAlchemy ORM models
-│   ├── schemas/       # Pydantic schemas (DTOs)
-│   ├── services/      # Business logic
-│   ├── utils/         # Utilities (logging, etc.)
-│   ├── config.py      # Application settings
-│   ├── database.py    # Database configuration
-│   └── main.py        # FastAPI application
-├── alembic/           # Database migrations
-├── tests/             # Test suite
-└── pyproject.toml     # Project dependencies
+  app/
+    api/          FastAPI routers
+    models/       SQLAlchemy models
+    schemas/      Pydantic schemas
+    services/     Business logic
+    utils/        Logging, errors, templates
+    config.py     Settings
+    database.py   Async database engine/session
+    main.py       FastAPI app
+  alembic/        Migrations
+  tests/          Backend tests
 ```
-
-## API Endpoints
-
-### Health
-
-- `GET /api/v1/health` - Health check
-- `GET /api/v1/health/detail` - Detailed health info
-
-### Projects (Coming in Phase 2)
-
-- `GET /api/v1/projects` - List projects
-- `POST /api/v1/projects` - Create project
-- `GET /api/v1/projects/{id}` - Get project
-- `PUT /api/v1/projects/{id}` - Update project
-- `DELETE /api/v1/projects/{id}` - Delete project
-
-See the OpenAPI documentation at `/api/v1/docs` for the complete API reference.
