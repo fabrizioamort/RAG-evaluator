@@ -14,7 +14,7 @@ class RAGConfigBase(BaseSchema):
     name: str = Field(min_length=1, max_length=255, description="Config name")
     rag_type: str = Field(
         max_length=50,
-        description="RAG implementation type (vector_semantic, hybrid, graph, filesystem)",
+        description="RAG implementation type (vector_semantic, hybrid, graph, filesystem, rlm)",
     )
     parameters: dict[str, Any] = Field(default_factory=dict, description="RAG-specific parameters")
     llm_provider: str = Field(

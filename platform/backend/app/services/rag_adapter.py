@@ -21,6 +21,7 @@ from rag_evaluator.rag_implementations.registry import (
     RAG_TYPES,
     get_rag_class,
 )
+from rag_evaluator.rag_implementations.rlm_rag.rlm_rag import rlm_config_from_rag_config
 
 from app.config import settings
 from app.models.rag_config import RAGConfig as RAGConfigModel
@@ -131,29 +132,28 @@ class RAGAdapterService:
 
         # Get the RAG class
         rag_class = self._get_rag_class(config_model.rag_type)
+        parameters = config_model.parameters or {}
 
         # Build constructor kwargs based on RAG type
         kwargs: dict[str, Any] = {"config": rag_config}
 
         if config_model.rag_type == "vector_semantic":
-            kwargs["collection_name"] = config_model.parameters.get(
+            kwargs["collection_name"] = parameters.get(
                 "collection_name", f"kb_{config_model.project_id}"
             )
             kwargs["persist_directory"] = str(Path(index_path) / "chroma") if index_path else None
 
         elif config_model.rag_type == "vector_hybrid":
-            kwargs["collection_name"] = config_model.parameters.get(
+            kwargs["collection_name"] = parameters.get(
                 "collection_name", f"hybrid_{config_model.project_id}"
             )
             # Qdrant URL from settings or parameters
-            kwargs["qdrant_url"] = config_model.parameters.get("qdrant_url")
+            kwargs["qdrant_url"] = parameters.get("qdrant_url")
 
         elif config_model.rag_type == "graph_rag":
-            kwargs["vector_index_name"] = config_model.parameters.get(
-                "vector_index_name", "chunk_embeddings"
-            )
+            kwargs["vector_index_name"] = parameters.get("vector_index_name", "chunk_embeddings")
             neo4j_uri, neo4j_username, neo4j_password = self._resolve_graph_neo4j_connection(
-                config_model.parameters
+                parameters
             )
             kwargs["neo4j_uri"] = neo4j_uri
             kwargs["neo4j_username"] = neo4j_username
@@ -171,10 +171,18 @@ class RAGAdapterService:
                     / "filesystem_rag"
                 )
             )
-            kwargs["word_threshold"] = config_model.parameters.get("word_threshold", 1000)
-            kwargs["max_iterations"] = config_model.parameters.get("max_iterations", 10)
-            kwargs["max_tool_calls"] = config_model.parameters.get("max_tool_calls", 20)
-            kwargs["max_file_reads"] = config_model.parameters.get("max_file_reads", 10)
+            kwargs["word_threshold"] = parameters.get("word_threshold", 1000)
+            kwargs["max_iterations"] = parameters.get("max_iterations", 10)
+            kwargs["max_tool_calls"] = parameters.get("max_tool_calls", 20)
+            kwargs["max_file_reads"] = parameters.get("max_file_reads", 10)
+
+        elif config_model.rag_type == "rlm_rag":
+            kwargs["rlm_config"] = rlm_config_from_rag_config(rag_config)
+            kwargs["prepared_path"] = (
+                str(Path(index_path) / "rlm_rag")
+                if index_path
+                else str(Path(settings.STORAGE_PATH) / "indexes" / f"{config_model.id}" / "rlm_rag")
+            )
 
         # Create and return the RAG instance
         logger.info(
@@ -300,6 +308,10 @@ class RAGAdapterService:
             kwargs["max_iterations"] = params.get("max_iterations", 10)
             kwargs["max_tool_calls"] = params.get("max_tool_calls", 20)
             kwargs["max_file_reads"] = params.get("max_file_reads", 10)
+
+        elif rag_type == "rlm_rag":
+            kwargs["rlm_config"] = rlm_config_from_rag_config(rag_config)
+            kwargs["prepared_path"] = str(storage_path / "rlm_rag")
 
         logger.info(
             "Creating RAG instance for index",

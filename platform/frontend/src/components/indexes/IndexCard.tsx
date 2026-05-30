@@ -36,7 +36,11 @@ export function IndexCard({ index, onDelete, onRunEvaluation }: IndexCardProps) 
       await api.indexes.delete(index.id)
       onDelete?.()
     } catch (err) {
-      const detail = (err as any)?.response?.data?.detail || (err as Error).message
+      const apiError = err as { response?: { data?: { detail?: unknown } }; message?: string }
+      const detail =
+        typeof apiError.response?.data?.detail === 'string'
+          ? apiError.response.data.detail
+          : apiError.message || 'Unknown error'
       alert('Failed to delete index: ' + detail)
     } finally {
       setIsDeleting(false)
