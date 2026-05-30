@@ -55,7 +55,9 @@ class ChromaSemanticRAG(BaseRAG):
 
         # Initialize OpenAI client with timeout
         self.openai_client = OpenAI(
-            api_key=settings.openai_api_key, timeout=settings.openai_timeout
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+            timeout=settings.openai_timeout,
         )
 
         # Text splitter for chunking documents

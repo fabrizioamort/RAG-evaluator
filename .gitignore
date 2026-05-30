@@ -25,6 +25,11 @@ data/prepared/*
 data/*.json
 !data/test_set.json
 !data/test_set_verify.json
+data/datasets/
+data/legal_rag_bench/
+
+# Local scratch directories
+tmp*/
 
 # Reports
 reports/*
@@ -76,3 +81,4 @@ storage/
 
 # Git worktrees
 .worktrees/
+.claude/worktrees/

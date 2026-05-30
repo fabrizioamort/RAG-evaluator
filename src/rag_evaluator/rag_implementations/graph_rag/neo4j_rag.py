@@ -88,8 +88,13 @@ class Neo4jGraphRAG(BaseRAG):
         embedding_model = self.config.embedding_model or settings.embedding_model
         llm_model = self.config.llm_model or settings.openai_model
 
+        # Build kwargs for OpenAI-compatible base_url (e.g. OpenRouter)
+        openai_kwargs: dict[str, Any] = {}
+        if settings.openai_base_url:
+            openai_kwargs["base_url"] = settings.openai_base_url
+
         # Initialize embedder and LLM
-        self.embedder = OpenAIEmbeddings(model=embedding_model)
+        self.embedder = OpenAIEmbeddings(model=embedding_model, **openai_kwargs)
 
         # LLM configuration for answer generation
         llm_params: dict[str, Any] = {}
@@ -100,6 +105,7 @@ class Neo4jGraphRAG(BaseRAG):
         self.llm = OpenAILLM(
             model_name=llm_model,
             model_params=llm_params,
+            **openai_kwargs,
         )
 
         # Custom Cypher query for graph traversal retrieval

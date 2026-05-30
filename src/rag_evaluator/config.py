@@ -21,6 +21,10 @@ class Settings(BaseSettings):
 
     # LLM Configuration
     openai_api_key: str = Field(default="", description="OpenAI API key")
+    openai_base_url: str | None = Field(
+        default=None,
+        description="Custom base URL for OpenAI-compatible APIs (e.g. https://openrouter.ai/api/v1)",
+    )
     openai_model: str = Field(default="gpt-4-turbo-preview", description="OpenAI model to use")
     embedding_model: str = Field(
         default="text-embedding-3-small", description="OpenAI embedding model"

@@ -293,6 +293,18 @@ class RAGRegistry:
                 supports_base_url=True,
             ),
             LLMProviderInfo(
+                name="openrouter",
+                display_name="OpenRouter",
+                models=[
+                    "openrouter/anthropic/claude-sonnet-4",
+                    "openrouter/google/gemini-2.5-pro",
+                    "openrouter/openai/gpt-5-mini",
+                    "openrouter/meta-llama/llama-4-maverick",
+                ],
+                requires_api_key=True,
+                supports_base_url=False,
+            ),
+            LLMProviderInfo(
                 name="anthropic",
                 display_name="Anthropic",
                 models=["claude-3-5-sonnet-20240620", "claude-3-haiku-20240307"],

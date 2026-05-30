@@ -565,7 +565,11 @@ def llm_analysis(
         DocumentAnalysis with LLM-extracted information
     """
     if client is None:
-        client = OpenAI(api_key=settings.openai_api_key, timeout=settings.openai_timeout)
+        client = OpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+            timeout=settings.openai_timeout,
+        )
 
     if model is None:
         # Use gpt-4o-mini for cost-effective analysis

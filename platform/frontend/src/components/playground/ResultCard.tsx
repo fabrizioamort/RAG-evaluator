@@ -211,7 +211,7 @@ export function ResultCard({ result }: ResultCardProps) {
                           {step.duration_ms.toFixed(1)}ms
                         </span>
                       </div>
-                      {step.input_data && (
+                      {step.input_data !== null && step.input_data !== undefined && (
                         <div className="text-[10px] text-muted-foreground">
                           <span className="font-bold uppercase">Input: </span>
                           {typeof step.input_data === 'string'

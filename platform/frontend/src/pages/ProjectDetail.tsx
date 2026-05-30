@@ -13,6 +13,7 @@ import {
     Loader2,
     AlertCircle,
     Plus,
+    FileUp,
     Play,
     ChevronRight,
     TrendingUp,
@@ -24,6 +25,7 @@ import { useToast } from '@/components/ui/toast-context'
 import { TestSetList } from '@/components/test-sets/TestSetList'
 import { TestSetDetail } from '@/components/test-sets/TestSetDetail'
 import { CreateTestSetDialog } from '@/components/test-sets/CreateTestSetDialog'
+import { ImportTestSetDialog } from '@/components/test-sets/ImportTestSetDialog'
 import { RAGConfigList } from '@/components/rag-configs/RAGConfigList'
 import { RAGConfigDialog } from '@/components/rag-configs/RAGConfigDialog'
 import { KBList } from '@/components/knowledge-bases/KBList'
@@ -104,6 +106,7 @@ function KnowledgeBasesTab({ projectId }: { projectId: string }) {
 function TestSetsTab({ projectId }: { projectId: string }) {
     const [selectedTestSetId, setSelectedTestSetId] = useState<string | null>(null)
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+    const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
     const queryClient = useQueryClient()
     const { success, error } = useToast()
 
@@ -122,6 +125,21 @@ function TestSetsTab({ projectId }: { projectId: string }) {
         },
         onError: () => {
             error('Failed to create test set', 'Please try again.')
+        },
+    })
+
+    const importMutation = useMutation({
+        mutationFn: (data: unknown) => api.testSets.import(projectId, data),
+        onSuccess: (response) => {
+            queryClient.invalidateQueries({ queryKey: ['test-sets', projectId] })
+            const importedName = response.data && typeof response.data === 'object' && 'name' in response.data
+                ? String(response.data.name)
+                : 'Imported test set'
+            success('Test Set imported', `"${importedName}" is ready for evaluation.`)
+            setIsImportDialogOpen(false)
+        },
+        onError: () => {
+            error('Failed to import test set', 'Check that the JSON file contains valid test cases.')
         },
     })
 
@@ -158,19 +176,29 @@ function TestSetsTab({ projectId }: { projectId: string }) {
                     <p className="text-sm text-muted-foreground">Manage collections of questions and answers for evaluation.</p>
                 </div>
                 {testSets.length > 0 && (
-                    <button
-                        onClick={() => setIsCreateDialogOpen(true)}
-                        className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md"
-                    >
-                        <Plus className="h-4 w-4" />
-                        New Test Set
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setIsImportDialogOpen(true)}
+                            className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold hover:bg-accent transition-all"
+                        >
+                            <FileUp className="h-4 w-4" />
+                            Import JSON
+                        </button>
+                        <button
+                            onClick={() => setIsCreateDialogOpen(true)}
+                            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md"
+                        >
+                            <Plus className="h-4 w-4" />
+                            New Test Set
+                        </button>
+                    </div>
                 )}
             </div>
 
             <TestSetList
                 testSets={testSets}
                 onCreateClick={() => setIsCreateDialogOpen(true)}
+                onImportClick={() => setIsImportDialogOpen(true)}
                 onViewDetail={(id) => setSelectedTestSetId(id)}
                 onDelete={(id) => deleteMutation.mutate(id)}
                 onExport={() => {
@@ -183,6 +211,14 @@ function TestSetsTab({ projectId }: { projectId: string }) {
                 onClose={() => setIsCreateDialogOpen(false)}
                 onSubmit={async (data) => {
                     await createMutation.mutateAsync(data)
+                }}
+            />
+
+            <ImportTestSetDialog
+                isOpen={isImportDialogOpen}
+                onClose={() => setIsImportDialogOpen(false)}
+                onSubmit={async (data) => {
+                    await importMutation.mutateAsync(data)
                 }}
             />
         </div>

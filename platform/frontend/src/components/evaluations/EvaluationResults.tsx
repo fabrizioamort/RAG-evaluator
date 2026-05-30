@@ -31,13 +31,26 @@ const formatScore = (val: number | string | null | undefined, decimals: number =
     return isNaN(num) ? 'N/A' : num.toFixed(decimals);
 };
 
-const METRIC_DEFINITIONS = [
+type MetricDefinition = {
+    id: string
+    label: string
+    avgKey: string
+    scoreKey: string
+    reasonKey: string
+    color: string
+    bg: string
+    border: string
+    short: string
+    group: 'retrieval' | 'answer'
+}
+
+const METRIC_DEFINITIONS: MetricDefinition[] = [
     { id: 'faithfulness', label: 'Faithfulness', avgKey: 'faithfulness_avg', scoreKey: 'faithfulness_score', reasonKey: 'faithfulness_reason', color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20', short: 'F', group: 'retrieval' },
     { id: 'relevancy', label: 'Relevancy', avgKey: 'relevancy_avg', scoreKey: 'relevancy_score', reasonKey: 'relevancy_reason', color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/20', short: 'R', group: 'retrieval' },
     { id: 'precision', label: 'Precision', avgKey: 'precision_avg', scoreKey: 'precision_score', reasonKey: 'precision_reason', color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20', short: 'P', group: 'retrieval' },
     { id: 'recall', label: 'Recall', avgKey: 'recall_avg', scoreKey: 'recall_score', reasonKey: 'recall_reason', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/20', short: 'C', group: 'retrieval' },
     { id: 'g_eval', label: 'Correctness', avgKey: 'g_eval_avg', scoreKey: 'g_eval_score', reasonKey: 'g_eval_reason', color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/20', short: 'G', group: 'answer' },
-] as const;
+];
 
 export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsProps) {
     const [page] = useState(1)
@@ -103,7 +116,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
         correctnessMetric,
         ...retrievalMetrics,
         ...otherMetrics,
-    ].filter(Boolean) as typeof METRIC_DEFINITIONS[number][];
+    ].filter(Boolean) as MetricDefinition[];
 
     if (isLoading || !evaluation) {
         return (
