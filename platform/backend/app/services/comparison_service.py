@@ -187,6 +187,9 @@ class ComparisonService:
         baseline_summary = self._eval_to_summary_metrics(baseline_eval)
         baseline_cost = self._eval_to_cost_metrics(baseline_eval)
         baseline_performance = self._eval_to_performance_metrics(baseline_eval)
+        baseline_rag_config_name = (
+            baseline_eval.rag_config.name if baseline_eval.rag_config else None
+        )
 
         comparison_results: list[EvaluationComparisonResult] = []
 
@@ -224,6 +227,8 @@ class ComparisonService:
 
         return AggregateMetrics(
             baseline_evaluation_id=baseline_eval.id,
+            baseline_evaluation_name=baseline_eval.notes,
+            baseline_rag_config_name=baseline_rag_config_name,
             baseline_summary=baseline_summary,
             baseline_cost=baseline_cost,
             baseline_performance=baseline_performance,
@@ -274,6 +279,7 @@ class ComparisonService:
                     "relevancy": baseline_result.relevancy_score,
                     "precision": baseline_result.precision_score,
                     "recall": baseline_result.recall_score,
+                    "g_eval": baseline_result.g_eval_score,
                     "latency_seconds": baseline_result.latency_seconds,
                     "generated_answer": baseline_result.generated_answer,
                 }
@@ -290,6 +296,7 @@ class ComparisonService:
                         "relevancy": compared_result.relevancy_score,
                         "precision": compared_result.precision_score,
                         "recall": compared_result.recall_score,
+                        "g_eval": compared_result.g_eval_score,
                         "latency_seconds": compared_result.latency_seconds,
                         "generated_answer": compared_result.generated_answer,
                     }

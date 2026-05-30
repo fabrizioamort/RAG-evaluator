@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   FolderOpen,
   FlaskConical,
-  GitCompare,
   TrendingUp,
   Settings,
   Database,
@@ -17,7 +16,6 @@ const navigation = [
   { name: 'Indexes', href: '/indexes', icon: Database },
   { name: 'Playground', href: '/playground', icon: Beaker },
   { name: 'Evaluations', href: '/evaluations', icon: FlaskConical },
-  { name: 'Comparisons', href: '/comparisons', icon: GitCompare },
   { name: 'Trends', href: '/trends', icon: TrendingUp },
 ]
 

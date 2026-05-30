@@ -95,6 +95,12 @@ class AggregateMetrics(BaseSchema):
     """Schema for aggregate comparison metrics."""
 
     baseline_evaluation_id: UUID = Field(description="Baseline evaluation ID")
+    baseline_evaluation_name: str | None = Field(
+        default=None, description="Baseline evaluation name/notes"
+    )
+    baseline_rag_config_name: str | None = Field(
+        default=None, description="Baseline RAG config name"
+    )
     baseline_summary: SummaryMetrics | None = Field(default=None)
     baseline_cost: CostMetrics | None = Field(default=None)
     baseline_performance: PerformanceMetrics | None = Field(default=None)
