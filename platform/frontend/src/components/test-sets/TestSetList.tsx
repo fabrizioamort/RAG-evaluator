@@ -1,9 +1,10 @@
-import { FileText, Plus, Trash2, Download } from 'lucide-react'
+import { FileText, Plus, Trash2, Download, FileUp } from 'lucide-react'
 import { TestSet } from '@/api/client'
 
 interface TestSetListProps {
     testSets: TestSet[]
     onCreateClick: () => void
+    onImportClick: () => void
     onViewDetail: (id: string) => void
     onDelete: (id: string) => void
     onExport: (id: string) => void
@@ -12,6 +13,7 @@ interface TestSetListProps {
 export function TestSetList({
     testSets,
     onCreateClick,
+    onImportClick,
     onViewDetail,
     onDelete,
     onExport
@@ -26,13 +28,22 @@ export function TestSetList({
                 <p className="mt-2 max-w-sm text-sm text-muted-foreground leading-relaxed">
                     Create your first test set to start evaluating your RAG configurations.
                 </p>
-                <button
-                    onClick={onCreateClick}
-                    className="mt-6 flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md active:scale-95"
-                >
-                    <Plus className="h-4 w-4" />
-                    Create Test Set
-                </button>
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                    <button
+                        onClick={onImportClick}
+                        className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md active:scale-95"
+                    >
+                        <FileUp className="h-4 w-4" />
+                        Import JSON
+                    </button>
+                    <button
+                        onClick={onCreateClick}
+                        className="flex items-center gap-2 rounded-lg border border-border bg-card px-6 py-2.5 text-sm font-semibold hover:bg-accent transition-all active:scale-95"
+                    >
+                        <Plus className="h-4 w-4" />
+                        Create Empty Set
+                    </button>
+                </div>
             </div>
         )
     }
