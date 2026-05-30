@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections.abc import Generator
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -237,6 +238,11 @@ class RLMFilesystemRAG(BaseRAG):
         self._metrics: dict[str, Any] = {}
         self._use_simple_mode: bool = False
 
+        # The RLM agent holds mutable per-query state (budget, REPL namespace,
+        # conversation). Serialize queries so concurrent evaluation tasks that
+        # share one instance cannot clobber each other's state.
+        self._query_lock = threading.Lock()
+
         logger.info(
             f"RLMFilesystemRAG initialized: "
             f"security_mode={self.rlm_config.security_mode}, "
@@ -371,33 +377,36 @@ class RLMFilesystemRAG(BaseRAG):
                 "Documents not prepared. Call prepare_documents() first."
             )
 
-        self.reset_token_usage()
+        # Serialize: the agent's budget/REPL/conversation state is shared on
+        # this instance and is not safe for concurrent queries.
+        with self._query_lock:
+            self.reset_token_usage()
 
-        # Route to appropriate implementation
-        if self._use_simple_mode and self._simple_rag:
-            result = self._simple_rag.query(question, top_k)
-            result["metadata"]["security_mode"] = self.rlm_config.security_mode
-            return result
+            # Route to appropriate implementation
+            if self._use_simple_mode and self._simple_rag:
+                result = self._simple_rag.query(question, top_k)
+                result["metadata"]["security_mode"] = self.rlm_config.security_mode
+                return result
 
-        if self._agent is None:
-            raise RuntimeError("Agent not initialized")
+            if self._agent is None:
+                raise RuntimeError("Agent not initialized")
 
-        response = self._agent.query(question)
+            response = self._agent.query(question)
 
-        return {
-            "answer": response.answer,
-            "context": response.context,
-            "metadata": {
-                "retrieval_time": response.retrieval_time,
-                "generation_time": response.generation_time,
-                "sources": response.sources,
-                "confidence": response.confidence,
-                "token_usage": self._token_usage.to_dict(),
-                "trace": response.trace,
-                "mode": "rlm_agent",
-                "security_mode": self.rlm_config.security_mode,
-            },
-        }
+            return {
+                "answer": response.answer,
+                "context": response.context,
+                "metadata": {
+                    "retrieval_time": response.retrieval_time,
+                    "generation_time": response.generation_time,
+                    "sources": response.sources,
+                    "confidence": response.confidence,
+                    "token_usage": self._token_usage.to_dict(),
+                    "trace": response.trace,
+                    "mode": "rlm_agent",
+                    "security_mode": self.rlm_config.security_mode,
+                },
+            }
 
     def query_with_trace(self, question: str, top_k: int = 5) -> dict[str, Any]:
         result = self.query(question, top_k)

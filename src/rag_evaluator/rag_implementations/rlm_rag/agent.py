@@ -135,6 +135,9 @@ class FilesystemTools:
         self.budget = budget
         self.config = config
         self._accessed_files: list[str] = []
+        # Actual content the agent retrieved this query (for reporting/metrics).
+        self._retrieved: list[dict[str, str]] = []  # {"source", "content"} from reads
+        self._grep_hits: list[dict[str, str]] = []   # {"source", "content"} from grep
 
         # Load indexes into memory
         self._catalog = self._load_json("_meta/catalog.json")
@@ -249,6 +252,9 @@ class FilesystemTools:
         # Record access
         self.budget.record_file_read()
         self._accessed_files.append(path)
+        self._retrieved.append(
+            {"source": self._doc_id_from_path(path), "content": content[:1500]}
+        )
 
         return content
 
@@ -350,11 +356,15 @@ class FilesystemTools:
                 content = file_path.read_text(encoding="utf-8")
                 for i, line in enumerate(content.split("\n")):
                     if compiled.search(line):
+                        rel_path = str(file_path.relative_to(self.prepared_path))
                         results.append({
-                            "file": str(file_path.relative_to(self.prepared_path)),
+                            "file": rel_path,
                             "line": i + 1,  # 1-indexed to match read_file/read_document
                             "content": line[:200],
                         })
+                        self._grep_hits.append(
+                            {"source": self._doc_id_from_path(rel_path), "content": line[:200]}
+                        )
                         if len(results) >= max_results:
                             return results
             except Exception:
@@ -379,6 +389,50 @@ class FilesystemTools:
         files = self._accessed_files.copy()
         self._accessed_files = []
         return files
+
+    @staticmethod
+    def _doc_id_from_path(path: str) -> str:
+        """Derive a document id from a file path (handles both separators)."""
+        name = path.replace("\\", "/").rstrip("/").split("/")[-1]
+        if name.endswith(".md"):
+            name = name[:-3]
+        if name.endswith("_summary"):
+            name = name[: -len("_summary")]
+        return name
+
+    def get_retrieved_context(self) -> list[str]:
+        """Return distinct content snippets the agent actually retrieved.
+
+        Prefers full reads; falls back to grep match lines when the agent only
+        searched. Used as the retrieval context for evaluation metrics.
+        """
+        source = self._retrieved if self._retrieved else self._grep_hits
+        seen: set[str] = set()
+        out: list[str] = []
+        for item in source:
+            content = item["content"]
+            if content and content not in seen:
+                seen.add(content)
+                out.append(content)
+            if len(out) >= 20:
+                break
+        return out
+
+    def get_retrieved_sources(self) -> list[str]:
+        """Return distinct document ids the agent retrieved from."""
+        source = self._retrieved if self._retrieved else self._grep_hits
+        out: list[str] = []
+        for item in source:
+            sid = item["source"]
+            if sid and sid not in out:
+                out.append(sid)
+        return out
+
+    def reset_tracking(self) -> None:
+        """Clear per-query retrieval tracking."""
+        self._accessed_files = []
+        self._retrieved = []
+        self._grep_hits = []
 
     def _load_json(self, rel_path: str) -> dict[str, Any]:
         """Load JSON file or return empty dict."""
@@ -721,6 +775,7 @@ class RLMAgent:
         start_time = time.time()
         self.budget.reset()
         self.repl.reset()
+        self.tools.reset_tracking()
 
         # Initialize trace
         trace: dict[str, Any] = {
@@ -834,13 +889,24 @@ class RLMAgent:
         if not isinstance(sources_used, list):
             sources_used = [str(sources_used)]
 
+        # Fall back to what the agent actually retrieved when the LLM didn't
+        # populate sources_used explicitly.
+        if not sources_used:
+            sources_used = self.tools.get_retrieved_sources()
+
+        # Retrieval context = the document content the agent actually read or
+        # matched. Fall back to the conversation if it retrieved nothing.
+        retrieved_context = self.tools.get_retrieved_context()
+        if not retrieved_context:
+            retrieved_context = messages_to_context(messages)
+
         # Collect files accessed
         trace["files_accessed"] = list(set(self.tools.get_accessed_files()))
         trace["total_steps"] = len(trace["steps"])
 
         return RLMResponse(
             answer=str(final_answer),
-            context=messages_to_context(messages),
+            context=retrieved_context,
             sources=sources_used,
             confidence=str(confidence),
             retrieval_time=time.time() - start_time,

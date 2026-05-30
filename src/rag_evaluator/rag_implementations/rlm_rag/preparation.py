@@ -406,7 +406,10 @@ class DocumentProcessor:
                     {"role": "user", "content": f"Document content:\n\n{truncated}"}
                 ],
                 temperature=0.0,
-                max_tokens=500,
+                # Headroom for reasoning models: gpt-5 worker models spend the
+                # token budget on internal reasoning first, so a small cap
+                # yields empty content. Non-reasoning models stop early anyway.
+                max_tokens=2000,
             )
 
             # Track tokens
@@ -484,7 +487,9 @@ class DocumentProcessor:
                     {"role": "user", "content": content[:4000]}
                 ],
                 temperature=0.0,
-                max_tokens=100,
+                # Headroom for reasoning models (see _generate_summary): the
+                # tiny JSON output still needs budget left after reasoning.
+                max_tokens=2000,
             )
 
             # Track tokens
