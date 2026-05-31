@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
-import { AlertCircle, FileUp, Loader2, X } from 'lucide-react'
+import { AlertCircle, FileUp, Loader2 } from 'lucide-react'
+import { DialogShell } from '@/components/ui/DialogShell'
 
 type ImportedCase = {
     question?: unknown
@@ -179,30 +180,42 @@ export function ImportTestSetDialog({ isOpen, onClose, onSubmit }: ImportTestSet
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm transition-opacity animate-in fade-in"
-                onClick={handleClose}
-            />
-
-            <div className="relative w-full max-w-xl rounded-xl border border-border bg-card p-8 shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="mb-6 flex items-center justify-between">
-                    <div>
-                        <h2 className="text-2xl font-bold tracking-tight">Import Test Set</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                            Upload a RAG Evaluator JSON test set.
-                        </p>
-                    </div>
+        <DialogShell
+            isOpen={isOpen}
+            title="Import Test Set"
+            description="Upload a RAG Evaluator JSON test set."
+            onClose={handleClose}
+            size="lg"
+            closeDisabled={isSubmitting}
+            footer={(
+                <div className="flex justify-end gap-3">
                     <button
+                        type="button"
                         onClick={handleClose}
                         disabled={isSubmitting}
-                        className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+                        className="rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
                     >
-                        <X className="h-5 w-5" />
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        form="import-test-set-form"
+                        disabled={!payload || isSubmitting}
+                        className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                    >
+                        {isSubmitting ? (
+                            <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Importing...
+                            </>
+                        ) : (
+                            'Import'
+                        )}
                     </button>
                 </div>
-
-                <form onSubmit={handleSubmit} className="space-y-6">
+            )}
+        >
+                <form id="import-test-set-form" onSubmit={handleSubmit} className="space-y-6">
                     <label className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background/60 px-6 py-8 text-center transition-colors hover:bg-accent">
                         <FileUp className="h-9 w-9 text-primary" />
                         <span className="mt-4 text-sm font-semibold">
@@ -236,33 +249,7 @@ export function ImportTestSetDialog({ isOpen, onClose, onSubmit }: ImportTestSet
                             </div>
                         </div>
                     )}
-
-                    <div className="flex justify-end gap-3 border-t border-border pt-4">
-                        <button
-                            type="button"
-                            onClick={handleClose}
-                            disabled={isSubmitting}
-                            className="rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={!payload || isSubmitting}
-                            className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    Importing...
-                                </>
-                            ) : (
-                                'Import'
-                            )}
-                        </button>
-                    </div>
                 </form>
-            </div>
-        </div>
+        </DialogShell>
     )
 }

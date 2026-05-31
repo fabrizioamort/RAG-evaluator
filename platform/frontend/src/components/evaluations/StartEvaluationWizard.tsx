@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { X, Play, Loader2, Database, FileText, ChevronRight, ChevronLeft, LucideIcon, Layers, Calendar, CheckSquare, Square, Info } from 'lucide-react'
+import { Play, Loader2, Database, FileText, ChevronRight, ChevronLeft, LucideIcon, Layers, Calendar, CheckSquare, Square, Info } from 'lucide-react'
 import { api, KnowledgeBase, TestSet, KnowledgeBaseIndex, EvaluationCreate, RAGTypeInfo, RAGTypeParameter } from '@/api/client'
 import { cn } from '@/lib/utils'
+import { DialogShell } from '@/components/ui/DialogShell'
 
 interface StartEvaluationWizardProps {
     projectId: string
@@ -189,14 +190,21 @@ export function StartEvaluationWizard({
 
     if (!isOpen) return null
 
+    const isIndexLocked = Boolean(initialIndexId)
     const steps: { id: Step; label: string; icon: LucideIcon }[] = [
         { id: 'testset', label: 'Test Set', icon: FileText },
-        { id: 'kb', label: 'Knowledge Base', icon: Database },
-        { id: 'index', label: 'Index', icon: Layers },
+        ...(!isIndexLocked ? [
+            { id: 'kb' as Step, label: 'Knowledge Base', icon: Database },
+            { id: 'index' as Step, label: 'Index', icon: Layers },
+        ] : []),
         { id: 'overrides', label: 'Query', icon: Info },
         { id: 'metrics', label: 'Metrics', icon: CheckSquare },
         { id: 'review', label: 'Review', icon: Play }
     ]
+
+    const currentStepIndex = steps.findIndex(s => s.id === step)
+    const previousStep = currentStepIndex > 0 ? steps[currentStepIndex - 1]?.id : undefined
+    const nextStep = currentStepIndex >= 0 ? steps[currentStepIndex + 1]?.id : undefined
 
     const getParamValue = (param: RAGTypeParameter) => {
         return indexSnapshot.parameters?.[param.name] ?? param.default ?? ''
@@ -240,24 +248,66 @@ export function StartEvaluationWizard({
     )
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
-                onClick={onClose}
-            />
-            <div className="relative w-full max-w-3xl rounded-xl border border-border bg-card shadow-2xl animate-in zoom-in-95 duration-200">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-border p-6">
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                        <Play className="h-5 w-5 text-primary fill-primary" />
-                        Launch Evaluation
-                    </h2>
-                    <button onClick={onClose} className="rounded-md p-1 hover:bg-muted transition-colors">
-                        <X className="h-5 w-5" />
+        <DialogShell
+            isOpen={isOpen}
+            title="Launch Evaluation"
+            icon={<Play className="h-5 w-5 text-primary fill-primary" />}
+            onClose={onClose}
+            size="xl"
+            closeDisabled={isStarting}
+            bodyClassName="p-0"
+            footer={(
+                <div className="flex items-center justify-between">
+                    <button
+                        onClick={() => {
+                            if (previousStep) setStep(previousStep)
+                        }}
+                        disabled={!previousStep || isStarting}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-30"
+                    >
+                        <ChevronLeft className="h-4 w-4" /> Back
                     </button>
-                </div>
 
-                {/* Stepper */}
+                    <div className="flex gap-3">
+                        <button
+                            onClick={onClose}
+                            disabled={isStarting}
+                            className="px-6 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+
+                        {step === 'review' ? (
+                            <button
+                                onClick={handleStart}
+                                disabled={isStarting}
+                                className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50"
+                            >
+                                {isStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
+                                {isStarting ? 'Launching...' : 'Start Now'}
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => {
+                                    if (nextStep) setStep(nextStep)
+                                }}
+                                disabled={
+                                    !nextStep ||
+                                    (step === 'testset' && !selectedTestSet) ||
+                                    (step === 'kb' && !selectedKb) ||
+                                    (step === 'index' && !selectedIndex) ||
+                                    (step === 'overrides' && (!queryModel || !judgeModel || queryTopK < 1))
+                                }
+                                className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
+                            >
+                                Continue <ChevronRight className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+        >
+            {/* Stepper */}
                 <div className="flex items-center justify-center bg-muted/30 px-6 py-4 border-b border-border">
                     {steps.map((s, i) => (
                         <React.Fragment key={s.id}>
@@ -606,65 +656,6 @@ export function StartEvaluationWizard({
                         </>
                     )}
                 </div>
-
-
-                {/* Footer */}
-                <div className="flex items-center justify-between border-t border-border p-6 bg-muted/20 rounded-b-xl">
-                    <button
-                        onClick={() => {
-                            if (step === 'review') setStep('metrics')
-                            else if (step === 'metrics') setStep('overrides')
-                            else if (step === 'overrides') setStep('index')
-                            else if (step === 'index') setStep('kb')
-                            else if (step === 'kb') setStep('testset')
-                        }}
-                        disabled={step === 'testset' || isStarting}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-30"
-                    >
-                        <ChevronLeft className="h-4 w-4" /> Back
-                    </button>
-
-                    <div className="flex gap-3">
-                        <button
-                            onClick={onClose}
-                            disabled={isStarting}
-                            className="px-6 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-50"
-                        >
-                            Cancel
-                        </button>
-
-                        {step === 'review' ? (
-                            <button
-                                onClick={handleStart}
-                                disabled={isStarting}
-                                className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50"
-                            >
-                                {isStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
-                                {isStarting ? 'Launching...' : 'Start Now'}
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => {
-                                    if (step === 'testset') setStep('kb')
-                                    else if (step === 'kb') setStep('index')
-                                    else if (step === 'index') setStep('overrides')
-                                    else if (step === 'overrides') setStep('metrics')
-                                    else if (step === 'metrics') setStep('review')
-                                }}
-                                disabled={
-                                    (step === 'testset' && !selectedTestSet) ||
-                                    (step === 'kb' && !selectedKb) ||
-                                    (step === 'index' && !selectedIndex) ||
-                                    (step === 'overrides' && (!queryModel || !judgeModel || queryTopK < 1))
-                                }
-                                className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
-                            >
-                                Continue <ChevronRight className="h-4 w-4" />
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
+        </DialogShell>
     )
 }

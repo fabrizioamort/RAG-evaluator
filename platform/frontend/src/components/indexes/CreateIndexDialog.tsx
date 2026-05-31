@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api, RAGConfig } from '../../api/client'
-import { X, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import { DialogShell } from '@/components/ui/DialogShell'
 
 interface CreateIndexDialogProps {
   knowledgeBaseId: string
@@ -54,38 +55,54 @@ export function CreateIndexDialog({ knowledgeBaseId, projectId, onClose, onCreat
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-md w-full p-6 relative">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-        >
-          <X className="h-5 w-5" />
-        </button>
-
-        <h2 className="text-xl font-semibold mb-4">Create New Index</h2>
-
+    <DialogShell
+      isOpen
+      title="Create New Index"
+      onClose={onClose}
+      closeDisabled={submitting}
+      footer={!loading && (
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-lg px-4 py-2 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="create-index-form"
+            disabled={submitting || !selectedConfigId}
+            className="flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {submitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+            Create Index
+          </button>
+        </div>
+      )}
+    >
         {loading ? (
           <div className="flex justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form id="create-index-form" onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-red-50 text-red-700 p-3 rounded-md text-sm">
+              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                 {error}
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-sm font-medium text-foreground">
                 RAG Configuration
               </label>
               <select
                 required
                 value={selectedConfigId}
                 onChange={(e) => setSelectedConfigId(e.target.value)}
-                className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full rounded-md border border-input bg-background p-2 outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="">Select a configuration...</option>
                 {ragConfigs.map(config => (
@@ -97,7 +114,7 @@ export function CreateIndexDialog({ knowledgeBaseId, projectId, onClose, onCreat
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-sm font-medium text-foreground">
                 Name (Optional)
               </label>
               <input
@@ -105,42 +122,23 @@ export function CreateIndexDialog({ knowledgeBaseId, projectId, onClose, onCreat
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Auto-generated if empty"
-                className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full rounded-md border border-input bg-background p-2 outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-sm font-medium text-foreground">
                 Description (Optional)
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full rounded-md border border-input bg-background p-2 outline-none focus:ring-2 focus:ring-ring"
               />
-            </div>
-
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting || !selectedConfigId}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center"
-              >
-                {submitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Create Index
-              </button>
             </div>
           </form>
         )}
-      </div>
-    </div>
+    </DialogShell>
   )
 }

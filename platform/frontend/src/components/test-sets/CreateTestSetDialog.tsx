@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { X, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { TestSetCreate } from '@/api/client'
+import { DialogShell } from '@/components/ui/DialogShell'
 
 interface CreateTestSetDialogProps {
     isOpen: boolean
@@ -36,29 +37,41 @@ export function CreateTestSetDialog({ isOpen, onClose, onSubmit }: CreateTestSet
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Backdrop */}
-            <div
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm transition-opacity animate-in fade-in"
-                onClick={onClose}
-            />
-
-            {/* Dialog Content */}
-            <div className="relative w-full max-w-lg rounded-xl border border-border bg-card p-8 shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between mb-6">
-                    <div>
-                        <h2 className="text-2xl font-bold tracking-tight">Create Test Set</h2>
-                        <p className="text-sm text-muted-foreground mt-1">Define a new collection of test cases for evaluation.</p>
-                    </div>
+        <DialogShell
+            isOpen={isOpen}
+            title="Create Test Set"
+            description="Define a new collection of test cases for evaluation."
+            onClose={onClose}
+            closeDisabled={isSubmitting}
+            footer={(
+                <div className="flex justify-end gap-3">
                     <button
+                        type="button"
                         onClick={onClose}
-                        className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                        disabled={isSubmitting}
+                        className="rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
                     >
-                        <X className="h-5 w-5" />
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        form="create-test-set-form"
+                        disabled={isSubmitting || !name.trim()}
+                        className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                    >
+                        {isSubmitting ? (
+                            <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Creating...
+                            </>
+                        ) : (
+                            'Create'
+                        )}
                     </button>
                 </div>
-
-                <form onSubmit={handleSubmit} className="space-y-6">
+            )}
+        >
+                <form id="create-test-set-form" onSubmit={handleSubmit} className="space-y-6">
                     <div className="space-y-2">
                         <label htmlFor="name" className="text-sm font-semibold text-foreground">
                             Name
@@ -87,32 +100,7 @@ export function CreateTestSetDialog({ isOpen, onClose, onSubmit }: CreateTestSet
                             className="w-full min-h-[120px] rounded-lg border border-input bg-background px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all resize-none"
                         />
                     </div>
-
-                    <div className="flex justify-end gap-3 pt-4 border-t border-border">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-muted transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isSubmitting || !name.trim()}
-                            className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    Creating...
-                                </>
-                            ) : (
-                                'Create'
-                            )}
-                        </button>
-                    </div>
                 </form>
-            </div>
-        </div>
+        </DialogShell>
     )
 }

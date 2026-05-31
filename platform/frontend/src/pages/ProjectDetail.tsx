@@ -17,10 +17,12 @@ import {
     Play,
     ChevronRight,
     TrendingUp,
-    GitCompare
+    GitCompare,
+    Layers,
+    CheckCircle2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { api, KnowledgeBaseCreate, Evaluation, RAGConfig } from '@/api/client'
+import { api, KnowledgeBaseCreate, Evaluation, KnowledgeBaseIndex, Project, RAGConfig } from '@/api/client'
 import { useToast } from '@/components/ui/toast-context'
 import { TestSetList } from '@/components/test-sets/TestSetList'
 import { TestSetDetail } from '@/components/test-sets/TestSetDetail'
@@ -37,6 +39,237 @@ import { TrendChart } from '@/components/trends/TrendChart'
 import { EfficiencyMap } from '@/components/trends/EfficiencyMap'
 import { ComparisonsTab } from '@/components/comparisons/ComparisonsTab'
 import { EditProjectDialog } from '@/components/projects/EditProjectDialog'
+import { IndexCard } from '@/components/indexes/IndexCard'
+
+function ProjectOverviewTab({
+    project,
+    onSelectTab,
+}: {
+    project: Project
+    onSelectTab: (tabId: string, params?: Record<string, string>) => void
+}) {
+    const { data: kbsData, isLoading: isLoadingKbs } = useQuery({
+        queryKey: ['knowledge-bases', project.id],
+        queryFn: () => api.knowledgeBases.list(project.id),
+        enabled: !!project.id,
+    })
+    const { data: indexesData, isLoading: isLoadingIndexes } = useQuery({
+        queryKey: ['indexes', project.id],
+        queryFn: () => api.indexes.list({ project_id: project.id, limit: 100 }),
+        enabled: !!project.id,
+    })
+    const { data: testSetsData, isLoading: isLoadingTestSets } = useQuery({
+        queryKey: ['test-sets', project.id],
+        queryFn: () => api.testSets.list(project.id),
+        enabled: !!project.id,
+    })
+    const { data: ragConfigsData, isLoading: isLoadingConfigs } = useQuery({
+        queryKey: ['rag-configs', project.id],
+        queryFn: () => api.ragConfigs.list(project.id),
+        enabled: !!project.id,
+    })
+    const { data: evaluationsData, isLoading: isLoadingEvaluations } = useQuery({
+        queryKey: ['evaluations', project.id],
+        queryFn: () => api.evaluations.list(project.id),
+        enabled: !!project.id,
+    })
+
+    const kbs = kbsData?.data.items ?? []
+    const indexes = indexesData?.data.items ?? []
+    const testSets = testSetsData?.data.items ?? []
+    const ragConfigs = ragConfigsData?.data.items ?? []
+    const evaluations = evaluationsData?.data.items ?? []
+    const documentCount = kbs.reduce((sum, kb) => sum + kb.document_count, 0)
+    const readyIndexes = indexes.filter(index => index.status === 'ready')
+    const hasBaseline = evaluations.some(evaluation => evaluation.is_baseline)
+    const isLoading = isLoadingKbs || isLoadingIndexes || isLoadingTestSets || isLoadingConfigs || isLoadingEvaluations
+
+    const readiness = [
+        {
+            id: 'kb',
+            label: 'Knowledge bases',
+            value: kbs.length,
+            complete: kbs.length > 0,
+            action: kbs.length > 0 ? 'Manage KBs' : 'Create KB',
+            icon: Database,
+        },
+        {
+            id: 'kb',
+            label: 'Documents',
+            value: documentCount,
+            complete: documentCount > 0,
+            action: documentCount > 0 ? 'Review documents' : 'Upload documents',
+            icon: FileText,
+        },
+        {
+            id: 'rags',
+            label: 'RAG configs',
+            value: ragConfigs.length,
+            complete: ragConfigs.length > 0,
+            action: ragConfigs.length > 0 ? 'Manage configs' : 'Create config',
+            icon: Settings2,
+        },
+        {
+            id: 'indexes',
+            label: 'Ready indexes',
+            value: readyIndexes.length,
+            complete: readyIndexes.length > 0,
+            action: readyIndexes.length > 0 ? 'View indexes' : 'Build index',
+            icon: Layers,
+        },
+        {
+            id: 'tests',
+            label: 'Test sets',
+            value: testSets.length,
+            complete: testSets.length > 0,
+            action: testSets.length > 0 ? 'Manage tests' : 'Create test set',
+            icon: FileText,
+        },
+        {
+            id: 'evals',
+            label: 'Evaluations',
+            value: evaluations.length,
+            complete: evaluations.length > 0,
+            action: evaluations.length > 0 ? 'View evaluations' : 'Launch evaluation',
+            icon: FlaskConical,
+        },
+        {
+            id: 'evals',
+            label: 'Baseline',
+            value: hasBaseline ? 1 : 0,
+            complete: hasBaseline,
+            action: hasBaseline ? 'View baseline' : 'Set baseline',
+            icon: CheckCircle2,
+        },
+    ]
+
+    const nextStep = readiness.find(item => !item.complete)
+
+    if (isLoading) {
+        return (
+            <div className="flex justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+            </div>
+        )
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="rounded-xl border border-border bg-card p-6">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <h2 className="text-xl font-semibold">Project Readiness</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Follow the setup path from documents and RAG config to an index, test set, evaluation, and baseline.
+                        </p>
+                    </div>
+                    {nextStep ? (
+                        <button
+                            onClick={() => onSelectTab(nextStep.id)}
+                            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                        >
+                            <ChevronRight className="h-4 w-4" />
+                            {nextStep.action}
+                        </button>
+                    ) : (
+                        <div className="inline-flex items-center gap-2 rounded-lg bg-green-500/10 px-4 py-2 text-sm font-semibold text-green-700">
+                            <CheckCircle2 className="h-4 w-4" />
+                            Ready for comparison
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="grid gap-3">
+                {readiness.map((item) => (
+                    <button
+                        key={`${item.label}-${item.id}`}
+                        onClick={() => onSelectTab(item.id)}
+                        className="flex items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/50 hover:bg-accent/40"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className={cn(
+                                'flex h-10 w-10 items-center justify-center rounded-lg',
+                                item.complete ? 'bg-green-500/10 text-green-600' : 'bg-muted text-muted-foreground'
+                            )}>
+                                <item.icon className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <p className="font-semibold">{item.label}</p>
+                                <p className="text-xs text-muted-foreground">{item.action}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <span className="text-lg font-bold tabular-nums">{item.value}</span>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                    </button>
+                ))}
+            </div>
+        </div>
+    )
+}
+
+function ProjectIndexesTab({ projectId }: { projectId: string }) {
+    const navigate = useNavigate()
+    const queryClient = useQueryClient()
+
+    const { data, isLoading } = useQuery({
+        queryKey: ['indexes', projectId],
+        queryFn: () => api.indexes.list({ project_id: projectId, limit: 100 }),
+        enabled: !!projectId,
+    })
+
+    const runEvaluationFromIndex = (index: KnowledgeBaseIndex) => {
+        const params = new URLSearchParams({
+            tab: 'evals',
+            startEval: '1',
+            kbId: index.knowledge_base_id,
+            indexId: index.id,
+        })
+        navigate(`/projects/${projectId}?${params.toString()}`)
+    }
+
+    if (isLoading) {
+        return (
+            <div className="flex justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+            </div>
+        )
+    }
+
+    const indexes = data?.data.items ?? []
+
+    return (
+        <div className="space-y-6">
+            <div>
+                <h2 className="text-xl font-semibold">Indexes</h2>
+                <p className="text-sm text-muted-foreground">Review build status and launch evaluations from ready indexes.</p>
+            </div>
+
+            {indexes.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/50 py-20">
+                    <Layers className="h-10 w-10 text-muted-foreground/50" />
+                    <h3 className="mt-5 text-xl font-semibold">No indexes yet</h3>
+                    <p className="mt-2 max-w-sm text-center text-muted-foreground">
+                        Create a knowledge base and RAG config, then build an index to make it available for evaluation.
+                    </p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                    {indexes.map((index) => (
+                        <IndexCard
+                            key={index.id}
+                            index={{ ...index, project_id: index.project_id ?? projectId }}
+                            onDelete={() => queryClient.invalidateQueries({ queryKey: ['indexes', projectId] })}
+                            onRunEvaluation={index.status === 'ready' ? () => runEvaluationFromIndex(index) : undefined}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    )
+}
 
 function KnowledgeBasesTab({ projectId }: { projectId: string }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -104,6 +337,7 @@ function KnowledgeBasesTab({ projectId }: { projectId: string }) {
 }
 
 function TestSetsTab({ projectId }: { projectId: string }) {
+    const navigate = useNavigate()
     const [selectedTestSetId, setSelectedTestSetId] = useState<string | null>(null)
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
     const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
@@ -199,7 +433,7 @@ function TestSetsTab({ projectId }: { projectId: string }) {
                 testSets={testSets}
                 onCreateClick={() => setIsCreateDialogOpen(true)}
                 onImportClick={() => setIsImportDialogOpen(true)}
-                onViewDetail={(id) => setSelectedTestSetId(id)}
+                onViewDetail={(id) => navigate(`/projects/${projectId}/test-sets/${id}`)}
                 onDelete={(id) => deleteMutation.mutate(id)}
                 onExport={() => {
                     // Export logic handled in detail, or add here if needed for list
@@ -356,6 +590,7 @@ function EvaluationsTab({
     initialKnowledgeBaseId?: string
     initialIndexId?: string
 }) {
+    const navigate = useNavigate()
     const [isWizardOpen, setIsWizardOpen] = useState(false)
     const [activeEvaluationId, setActiveEvaluationId] = useState<string | null>(null)
     const [hasAutoOpened, setHasAutoOpened] = useState(false)
@@ -461,7 +696,7 @@ function EvaluationsTab({
                         <div
                             key={evalItem.id}
                             className="group relative flex items-center justify-between rounded-xl border border-border bg-card p-4 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer"
-                            onClick={() => setActiveEvaluationId(evalItem.id)}
+                            onClick={() => navigate(`/projects/${projectId}/evaluations/${evalItem.id}`)}
                         >
                             <div className="flex items-center gap-4">
                                 <div className={cn(
@@ -530,8 +765,8 @@ function EvaluationsTab({
                 isOpen={isWizardOpen}
                 onClose={() => setIsWizardOpen(false)}
                 onStarted={(id) => {
-                    setActiveEvaluationId(id)
                     queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
+                    navigate(`/projects/${projectId}/evaluations/${id}`)
                 }}
                 initialKnowledgeBaseId={initialKnowledgeBaseId}
                 initialIndexId={initialIndexId}
@@ -608,9 +843,11 @@ function TrendsTab({ projectId }: { projectId: string }) {
 }
 
 const tabs = [
+    { id: 'overview', name: 'Overview', icon: CheckCircle2 },
     { id: 'kb', name: 'Knowledge Bases', icon: Database },
-    { id: 'tests', name: 'Test Sets', icon: FileText },
     { id: 'rags', name: 'RAG Configs', icon: Settings2 },
+    { id: 'indexes', name: 'Indexes', icon: Layers },
+    { id: 'tests', name: 'Test Sets', icon: FileText },
     { id: 'evals', name: 'Evaluations', icon: FlaskConical },
     { id: 'compare', name: 'Comparisons', icon: GitCompare },
     { id: 'trends', name: 'Trends', icon: TrendingUp },
@@ -619,8 +856,7 @@ const tabs = [
 export function ProjectDetail() {
     const { id } = useParams<{ id: string }>()
     const navigate = useNavigate()
-    const [searchParams] = useSearchParams()
-    const [activeTab, setActiveTab] = useState('kb')
+    const [searchParams, setSearchParams] = useSearchParams()
     const [isEditOpen, setIsEditOpen] = useState(false)
     const queryClient = useQueryClient()
     const { success, error } = useToast()
@@ -635,12 +871,18 @@ export function ProjectDetail() {
     const shouldLaunchEval = searchParams.get('startEval') === '1'
     const initialKnowledgeBaseId = searchParams.get('kbId') || undefined
     const initialIndexId = searchParams.get('indexId') || undefined
+    const activeTab = tabParam && tabs.some(tab => tab.id === tabParam) ? tabParam : 'overview'
 
-    useEffect(() => {
-        if (tabParam && tabs.some(tab => tab.id === tabParam)) {
-            setActiveTab(tabParam)
+    const selectTab = (tabId: string) => {
+        const next = new URLSearchParams(searchParams)
+        next.set('tab', tabId)
+        if (tabId !== 'evals') {
+            next.delete('startEval')
+            next.delete('kbId')
+            next.delete('indexId')
         }
-    }, [tabParam])
+        setSearchParams(next)
+    }
 
     const updateMutation = useMutation({
         mutationFn: (data: Parameters<typeof api.projects.update>[1]) => {
@@ -659,6 +901,28 @@ export function ProjectDetail() {
             error('Failed to update project', 'Please try again.')
         },
     })
+
+    const archiveMutation = useMutation({
+        mutationFn: () => {
+            if (!id) {
+                return Promise.reject(new Error('Project id is missing'))
+            }
+            return api.projects.archive(id)
+        },
+        onSuccess: (response) => {
+            queryClient.invalidateQueries({ queryKey: ['project', id] })
+            queryClient.invalidateQueries({ queryKey: ['projects'] })
+            success('Project archived', `"${response.data.name}" has been archived.`)
+        },
+        onError: () => {
+            error('Failed to archive project', 'Please try again.')
+        },
+    })
+
+    const handleArchive = () => {
+        if (!confirm('Archive this project? It will be hidden from active project lists.')) return
+        archiveMutation.mutate()
+    }
 
     if (isLoading) {
         return (
@@ -723,8 +987,12 @@ export function ProjectDetail() {
                     >
                         Edit Project
                     </button>
-                    <button className="rounded-lg bg-destructive/10 text-destructive border border-destructive/20 px-4 py-2 text-sm font-medium hover:bg-destructive/20 transition-colors">
-                        Archive
+                    <button
+                        onClick={handleArchive}
+                        disabled={archiveMutation.isPending || p.status === 'archived'}
+                        className="rounded-lg bg-destructive/10 text-destructive border border-destructive/20 px-4 py-2 text-sm font-medium hover:bg-destructive/20 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {p.status === 'archived' ? 'Archived' : archiveMutation.isPending ? 'Archiving...' : 'Archive'}
                     </button>
                 </div>
             </div>
@@ -735,7 +1003,7 @@ export function ProjectDetail() {
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
+                            onClick={() => selectTab(tab.id)}
                             className={cn(
                                 "flex items-center gap-2 py-4 text-sm font-medium border-b-2 transition-all",
                                 activeTab === tab.id
@@ -752,9 +1020,11 @@ export function ProjectDetail() {
 
             {/* Tab Content */}
             <div className="mt-6">
+                {activeTab === 'overview' && <ProjectOverviewTab project={p} onSelectTab={selectTab} />}
                 {activeTab === 'kb' && <KnowledgeBasesTab projectId={p.id} />}
                 {activeTab === 'tests' && <TestSetsTab projectId={p.id} />}
                 {activeTab === 'rags' && <RAGConfigsTab projectId={p.id} />}
+                {activeTab === 'indexes' && <ProjectIndexesTab projectId={p.id} />}
                 {activeTab === 'evals' && (
                     <EvaluationsTab
                         projectId={p.id}

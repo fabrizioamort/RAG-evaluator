@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import { X, Database, Loader2 } from 'lucide-react'
+import { Database, Loader2 } from 'lucide-react'
 import { KnowledgeBaseCreate } from '@/api/client'
+import { DialogShell } from '@/components/ui/DialogShell'
 
 interface CreateKBDialogProps {
     isOpen: boolean
@@ -34,26 +35,42 @@ export function CreateKBDialog({ isOpen, onClose, onSubmit }: CreateKBDialogProp
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
-                onClick={onClose}
-            />
-            <div className="relative w-full max-w-md rounded-xl border border-border bg-card shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between border-b border-border p-6">
-                    <div className="flex items-center gap-2">
-                        <Database className="h-5 w-5 text-primary" />
-                        <h2 className="text-xl font-semibold">New Knowledge Base</h2>
-                    </div>
+        <DialogShell
+            isOpen={isOpen}
+            title="New Knowledge Base"
+            icon={<Database className="h-5 w-5 text-primary" />}
+            onClose={onClose}
+            size="sm"
+            closeDisabled={isSubmitting}
+            footer={(
+                <div className="flex justify-end gap-3">
                     <button
+                        type="button"
                         onClick={onClose}
-                        className="rounded-md p-1 hover:bg-muted text-muted-foreground transition-colors"
+                        disabled={isSubmitting}
+                        className="rounded-md px-4 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
                     >
-                        <X className="h-5 w-5" />
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        form="create-kb-form"
+                        disabled={isSubmitting || !name}
+                        className="inline-flex items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50"
+                    >
+                        {isSubmitting ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Creating...
+                            </>
+                        ) : (
+                            'Create'
+                        )}
                     </button>
                 </div>
-
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            )}
+        >
+                <form id="create-kb-form" onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-2">
                         <label htmlFor="kb-name" className="text-sm font-medium">
                             Name
@@ -80,32 +97,7 @@ export function CreateKBDialog({ isOpen, onClose, onSubmit }: CreateKBDialogProp
                             className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         />
                     </div>
-
-                    <div className="flex justify-end gap-3 pt-4 border-t border-border mt-4">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="px-4 py-2 text-sm font-medium hover:bg-accent rounded-md transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isSubmitting || !name}
-                            className="inline-flex items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Creating...
-                                </>
-                            ) : (
-                                'Create'
-                            )}
-                        </button>
-                    </div>
                 </form>
-            </div>
-        </div>
+        </DialogShell>
     )
 }

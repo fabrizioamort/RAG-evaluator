@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { X, Tag as TagIcon, Loader2 } from 'lucide-react'
 import { Project, ProjectUpdate } from '@/api/client'
+import { DialogShell } from '@/components/ui/DialogShell'
 
 interface EditProjectDialogProps {
     isOpen: boolean
@@ -63,23 +64,40 @@ export function EditProjectDialog({ isOpen, project, onClose, onSubmit }: EditPr
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-            <div
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
-                onClick={onClose}
-            />
-            <div className="relative w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between border-b border-border p-6">
-                    <h2 className="text-xl font-semibold">Edit Project</h2>
+        <DialogShell
+            isOpen={isOpen}
+            title="Edit Project"
+            onClose={onClose}
+            closeDisabled={isSubmitting}
+            footer={(
+                <div className="flex justify-end gap-3">
                     <button
+                        type="button"
                         onClick={onClose}
-                        className="rounded-md p-1 hover:bg-muted text-muted-foreground transition-colors"
+                        disabled={isSubmitting}
+                        className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
                     >
-                        <X className="h-5 w-5" />
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        form="edit-project-form"
+                        disabled={isSubmitting || !name.trim()}
+                        className="inline-flex items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                    >
+                        {isSubmitting ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            'Save Changes'
+                        )}
                     </button>
                 </div>
-
-                <form onSubmit={handleSubmit} className="p-6 space-y-6">
+            )}
+        >
+                <form id="edit-project-form" onSubmit={handleSubmit} className="space-y-6">
                     <div className="space-y-2">
                         <label htmlFor="edit-project-name" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                             Project Name
@@ -133,32 +151,7 @@ export function EditProjectDialog({ isOpen, project, onClose, onSubmit }: EditPr
                             />
                         </div>
                     </div>
-
-                    <div className="flex justify-end gap-3 pt-4 border-t border-border">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground px-4 py-2"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isSubmitting || !name.trim()}
-                            className="inline-flex items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Saving...
-                                </>
-                            ) : (
-                                'Save Changes'
-                            )}
-                        </button>
-                    </div>
                 </form>
-            </div>
-        </div>
+        </DialogShell>
     )
 }

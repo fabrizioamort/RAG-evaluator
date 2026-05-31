@@ -1,14 +1,14 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GitCompare, Plus, Loader2, Calendar, Trash2, ChevronRight } from 'lucide-react'
 import { api } from '@/api/client'
 import { useToast } from '@/components/ui/toast-context'
 import { CreateComparisonDialog } from './CreateComparisonDialog'
-import { ComparisonDetail } from './ComparisonDetail'
 
 export function ComparisonsTab({ projectId }: { projectId: string }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false)
-    const [activeComparisonId, setActiveComparisonId] = useState<string | null>(null)
+    const navigate = useNavigate()
     const queryClient = useQueryClient()
     const { success, error } = useToast()
 
@@ -26,10 +26,6 @@ export function ComparisonsTab({ projectId }: { projectId: string }) {
         },
         onError: () => error('Failed to delete', 'Please try again.'),
     })
-
-    if (activeComparisonId) {
-        return <ComparisonDetail comparisonId={activeComparisonId} onBack={() => setActiveComparisonId(null)} />
-    }
 
     if (isLoading) {
         return (
@@ -84,7 +80,7 @@ export function ComparisonsTab({ projectId }: { projectId: string }) {
                             <div
                                 key={c.id}
                                 className="group relative flex items-center justify-between rounded-xl border border-border bg-card p-4 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer"
-                                onClick={() => setActiveComparisonId(c.id)}
+                                onClick={() => navigate(`/projects/${projectId}/comparisons/${c.id}`)}
                             >
                                 <div className="flex items-center gap-4">
                                     <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -129,7 +125,7 @@ export function ComparisonsTab({ projectId }: { projectId: string }) {
                 onCreated={(id) => {
                     setIsDialogOpen(false)
                     queryClient.invalidateQueries({ queryKey: ['comparisons', projectId] })
-                    setActiveComparisonId(id)
+                    navigate(`/projects/${projectId}/comparisons/${id}`)
                 }}
             />
         </div>

@@ -193,10 +193,17 @@ export function IndexDetail() {
                     <div className="space-y-3">
                         <div>
                             <span className="text-sm text-gray-500 block">Original RAG Config</span>
-                            <Link to={`/rag-configs/${index.rag_config_id}`} className="text-blue-600 hover:underline flex items-center">
-                                <Cpu className="h-4 w-4 mr-2" />
-                                {index.rag_config_name}
-                            </Link>
+                            {index.project_id ? (
+                                <Link to={`/projects/${index.project_id}?tab=rags`} className="text-blue-600 hover:underline flex items-center">
+                                    <Cpu className="h-4 w-4 mr-2" />
+                                    {index.rag_config_name}
+                                </Link>
+                            ) : (
+                                <span className="flex items-center text-sm font-medium text-gray-900">
+                                    <Cpu className="h-4 w-4 mr-2 text-gray-400" />
+                                    {index.rag_config_name}
+                                </span>
+                            )}
                         </div>
 
                         <div className="bg-gray-50 p-3 rounded-md text-sm font-mono overflow-auto max-h-[300px]">

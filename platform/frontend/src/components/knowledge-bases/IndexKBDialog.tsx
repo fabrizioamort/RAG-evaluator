@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { X, Play, Loader2, Cpu, Database } from 'lucide-react'
+import { Play, Loader2, Cpu, Database } from 'lucide-react'
 import { api, RAGConfig } from '@/api/client'
 import { cn } from '@/lib/utils'
+import { DialogShell } from '@/components/ui/DialogShell'
 
 interface IndexKBDialogProps {
     projectId: string
@@ -45,30 +46,41 @@ export function IndexKBDialog({ projectId, kbName, isOpen, onClose, onConfirm }:
     if (!isOpen) return null
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
-                onClick={onClose}
-            />
-            <div className="relative w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl animate-in zoom-in-95 duration-200">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-border p-6">
-                    <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                            <Database className="h-5 w-5" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-bold">Index Knowledge Base</h2>
-                            <p className="text-xs text-muted-foreground truncate max-w-[300px]">{kbName}</p>
-                        </div>
-                    </div>
-                    <button onClick={onClose} className="rounded-md p-1 hover:bg-muted transition-colors" disabled={isStarting}>
-                        <X className="h-5 w-5" />
+        <DialogShell
+            isOpen={isOpen}
+            title="Index Knowledge Base"
+            description={kbName}
+            icon={(
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Database className="h-5 w-5" />
+                </span>
+            )}
+            onClose={onClose}
+            closeDisabled={isStarting}
+            footer={(
+                <div className="flex items-center justify-end gap-3">
+                    <button
+                        onClick={onClose}
+                        disabled={isStarting}
+                        className="px-6 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleConfirm}
+                        disabled={!selectedId || isStarting}
+                        className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50"
+                    >
+                        {isStarting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <Play className="h-4 w-4 fill-current" />
+                        )}
+                        {isStarting ? 'Starting...' : 'Start Indexing'}
                     </button>
                 </div>
-
-                {/* Content */}
-                <div className="p-6">
+            )}
+        >
                     <div className="mb-4 text-sm font-medium">Select RAG Configuration for Indexing</div>
 
                     {isLoading ? (
@@ -108,31 +120,6 @@ export function IndexKBDialog({ projectId, kbName, isOpen, onClose, onConfirm }:
                             ))}
                         </div>
                     )}
-                </div>
-
-                {/* Footer */}
-                <div className="flex items-center justify-end gap-3 border-t border-border p-6 bg-muted/20 rounded-b-xl">
-                    <button
-                        onClick={onClose}
-                        disabled={isStarting}
-                        className="px-6 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-50"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleConfirm}
-                        disabled={!selectedId || isStarting}
-                        className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50"
-                    >
-                        {isStarting ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Play className="h-4 w-4 fill-current" />
-                        )}
-                        {isStarting ? 'Starting...' : 'Start Indexing'}
-                    </button>
-                </div>
-            </div>
-        </div>
+        </DialogShell>
     )
 }

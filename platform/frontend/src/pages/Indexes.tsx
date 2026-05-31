@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, KnowledgeBaseIndex } from '../api/client'
 import { IndexCard } from '../components/indexes/IndexCard'
 import { Search, Filter, Loader2 } from 'lucide-react'
 
 export function Indexes() {
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [indexes, setIndexes] = useState<KnowledgeBaseIndex[]>([])
   const [loading, setLoading] = useState(true)
 
   const statusFilter = searchParams.get('status') || ''
-  const search = searchParams.get('search') || '' // Not supported by API yet
+  const search = searchParams.get('search') || ''
 
   const fetchIndexes = useCallback(async () => {
     setLoading(true)
@@ -32,11 +33,41 @@ export function Indexes() {
   }, [fetchIndexes])
 
   const handleFilterChange = (status: string) => {
-    if (status) {
-      setSearchParams({ status })
-    } else {
-      setSearchParams({})
-    }
+    const next = new URLSearchParams(searchParams)
+    if (status) next.set('status', status)
+    else next.delete('status')
+    setSearchParams(next)
+  }
+
+  const handleSearchChange = (value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value.trim()) next.set('search', value)
+    else next.delete('search')
+    setSearchParams(next)
+  }
+
+  const filteredIndexes = indexes.filter((index) => {
+    const query = search.trim().toLowerCase()
+    if (!query) return true
+
+    return [
+      index.name,
+      index.knowledge_base_name,
+      index.rag_config_name,
+      index.status,
+    ].some((value) => value?.toLowerCase().includes(query))
+  })
+
+  const runEvaluationFromIndex = (index: KnowledgeBaseIndex) => {
+    if (!index.project_id) return
+
+    const params = new URLSearchParams({
+      tab: 'evals',
+      startEval: '1',
+      kbId: index.knowledge_base_id,
+      indexId: index.id,
+    })
+    navigate(`/projects/${index.project_id}?${params.toString()}`)
   }
 
   return (
@@ -56,10 +87,7 @@ export function Indexes() {
             placeholder="Search indexes..."
             className="w-full pl-9 pr-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
             value={search}
-            onChange={() => {
-              // client side filtering or update query
-            }}
-            disabled // Disabled for now as API doesn't support search text
+            onChange={(event) => handleSearchChange(event.target.value)}
           />
         </div>
         <div className="relative w-48">
@@ -82,24 +110,21 @@ export function Indexes() {
         <div className="flex justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
         </div>
-      ) : indexes.length === 0 ? (
+      ) : filteredIndexes.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed">
           <p className="text-gray-500">No indexes found.</p>
-          <p className="text-sm text-gray-400 mt-1">Go to a Knowledge Base to create an index.</p>
+          <p className="text-sm text-gray-400 mt-1">
+            {search ? 'Clear search or filters to see more indexes.' : 'Go to a Knowledge Base to create an index.'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {indexes.map(index => (
+          {filteredIndexes.map(index => (
             <IndexCard
               key={index.id}
               index={index}
               onDelete={fetchIndexes}
-              onRunEvaluation={() => {
-                // Navigate to new eval with this index pre-selected?
-                // Or open dialog?
-                // For now just console log
-                console.log('Run eval for', index.id)
-              }}
+              onRunEvaluation={index.project_id ? () => runEvaluationFromIndex(index) : undefined}
             />
           ))}
         </div>

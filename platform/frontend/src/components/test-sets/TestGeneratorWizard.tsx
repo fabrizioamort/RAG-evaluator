@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
-    X,
     Sparkles,
     Loader2,
     Database,
@@ -13,6 +12,7 @@ import {
 } from 'lucide-react'
 import { api, TestGenerationConfig } from '@/api/client'
 import { cn } from '@/lib/utils'
+import { DialogShell } from '@/components/ui/DialogShell'
 
 interface TestGeneratorWizardProps {
     testSetId: string
@@ -142,6 +142,9 @@ export function TestGeneratorWizard({
         { id: 'templates', label: 'Templates', icon: Sparkles },
         { id: 'review', label: 'Review', icon: CheckCircle2 },
     ]
+    const currentStepIndex = steps.findIndex(s => s.id === step)
+    const previousStep = currentStepIndex > 0 ? steps[currentStepIndex - 1]?.id : undefined
+    const nextStep = currentStepIndex >= 0 ? steps[currentStepIndex + 1]?.id : undefined
 
     const canProceed = () => {
         switch (step) {
@@ -159,27 +162,64 @@ export function TestGeneratorWizard({
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
-                onClick={onClose}
-            />
-            <div className="relative w-full max-w-2xl rounded-xl border border-border bg-card shadow-2xl animate-in zoom-in-95 duration-200">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-border p-6">
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                        <Sparkles className="h-5 w-5 text-primary" />
-                        Generate Test Cases
-                    </h2>
+        <DialogShell
+            isOpen={isOpen}
+            title="Generate Test Cases"
+            icon={<Sparkles className="h-5 w-5 text-primary" />}
+            onClose={onClose}
+            size="lg"
+            closeDisabled={startGenerationMutation.isPending}
+            bodyClassName="p-0"
+            footer={(
+                <div className="flex items-center justify-between">
                     <button
-                        onClick={onClose}
-                        className="rounded-md p-1 hover:bg-muted transition-colors"
+                        onClick={() => {
+                            if (previousStep) setStep(previousStep)
+                        }}
+                        disabled={!previousStep || startGenerationMutation.isPending}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-30"
                     >
-                        <X className="h-5 w-5" />
+                        <ChevronLeft className="h-4 w-4" /> Back
                     </button>
-                </div>
 
-                {/* Stepper */}
+                    <div className="flex gap-3">
+                        <button
+                            onClick={onClose}
+                            disabled={startGenerationMutation.isPending}
+                            className="px-6 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+
+                        {step === 'review' ? (
+                            <button
+                                onClick={handleStart}
+                                disabled={startGenerationMutation.isPending}
+                                className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50"
+                            >
+                                {startGenerationMutation.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Sparkles className="h-4 w-4" />
+                                )}
+                                {startGenerationMutation.isPending ? 'Starting...' : 'Generate'}
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => {
+                                    if (nextStep) setStep(nextStep)
+                                }}
+                                disabled={!canProceed() || !nextStep}
+                                className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
+                            >
+                                Continue <ChevronRight className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+        >
+            {/* Stepper */}
                 <div className="flex items-center justify-center bg-muted/30 px-6 py-4 border-b border-border">
                     {steps.map((s, i) => (
                         <React.Fragment key={s.id}>
@@ -493,59 +533,6 @@ export function TestGeneratorWizard({
                         </>
                     )}
                 </div>
-
-                {/* Footer */}
-                <div className="flex items-center justify-between border-t border-border p-6 bg-muted/20 rounded-b-xl">
-                    <button
-                        onClick={() => {
-                            if (step === 'review') setStep('templates')
-                            else if (step === 'templates') setStep('config')
-                            else if (step === 'config') setStep('kb')
-                        }}
-                        disabled={step === 'kb' || startGenerationMutation.isPending}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-30"
-                    >
-                        <ChevronLeft className="h-4 w-4" /> Back
-                    </button>
-
-                    <div className="flex gap-3">
-                        <button
-                            onClick={onClose}
-                            disabled={startGenerationMutation.isPending}
-                            className="px-6 py-2 text-sm font-medium hover:bg-accent rounded-lg transition-colors disabled:opacity-50"
-                        >
-                            Cancel
-                        </button>
-
-                        {step === 'review' ? (
-                            <button
-                                onClick={handleStart}
-                                disabled={startGenerationMutation.isPending}
-                                className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50"
-                            >
-                                {startGenerationMutation.isPending ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Sparkles className="h-4 w-4" />
-                                )}
-                                {startGenerationMutation.isPending ? 'Starting...' : 'Generate'}
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => {
-                                    if (step === 'kb') setStep('config')
-                                    else if (step === 'config') setStep('templates')
-                                    else if (step === 'templates') setStep('review')
-                                }}
-                                disabled={!canProceed()}
-                                className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
-                            >
-                                Continue <ChevronRight className="h-4 w-4" />
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
+        </DialogShell>
     )
 }

@@ -162,7 +162,7 @@ export function Playground() {
 
       {/* Index Selection */}
       <div className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold mb-2">Select RAG Systems to Compare</h2>
+        <h2 className="text-lg font-semibold mb-2">Select Indexes to Compare</h2>
         <p className="text-sm text-muted-foreground mb-4">
           Choose up to 4 indexes to query and compare side-by-side
         </p>

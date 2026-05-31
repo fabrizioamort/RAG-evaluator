@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { X, Loader2, Save } from 'lucide-react'
+import { Loader2, Save } from 'lucide-react'
 import { TestCase, TestCaseCreate } from '@/api/client'
+import { DialogShell } from '@/components/ui/DialogShell'
 
 interface TestCaseDialogProps {
     isOpen: boolean
@@ -57,31 +58,45 @@ export function TestCaseDialog({ isOpen, onClose, onSubmit, testCase }: TestCase
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm transition-opacity animate-in fade-in"
-                onClick={onClose}
-            />
-
-            <div className="relative w-full max-w-2xl rounded-xl border border-border bg-card p-8 shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between mb-8">
-                    <div>
-                        <h2 className="text-2xl font-bold tracking-tight">
-                            {testCase ? 'Edit Test Case' : 'Add Test Case'}
-                        </h2>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            {testCase ? 'Update the details of this test case.' : 'Create a new manual test case for evaluation.'}
-                        </p>
-                    </div>
+        <DialogShell
+            isOpen={isOpen}
+            title={testCase ? 'Edit Test Case' : 'Add Test Case'}
+            description={testCase ? 'Update the details of this test case.' : 'Create a new manual test case for evaluation.'}
+            onClose={onClose}
+            size="lg"
+            closeDisabled={isSubmitting}
+            footer={(
+                <div className="flex justify-end gap-3">
                     <button
+                        type="button"
                         onClick={onClose}
-                        className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                        disabled={isSubmitting}
+                        className="rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
                     >
-                        <X className="h-5 w-5" />
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        form="test-case-form"
+                        disabled={isSubmitting}
+                        className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                    >
+                        {isSubmitting ? (
+                            <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            <>
+                                <Save className="h-4 w-4" />
+                                Save Case
+                            </>
+                        )}
                     </button>
                 </div>
-
-                <form onSubmit={handleSubmit} className="space-y-6">
+            )}
+        >
+                <form id="test-case-form" onSubmit={handleSubmit} className="space-y-6">
                     <div className="space-y-2">
                         <label className="text-sm font-semibold text-foreground">Question</label>
                         <textarea
@@ -143,35 +158,7 @@ export function TestCaseDialog({ isOpen, onClose, onSubmit, testCase }: TestCase
                             />
                         </div>
                     </div>
-
-                    <div className="flex justify-end gap-3 pt-6 border-t border-border">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-muted transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="flex items-center gap-2 rounded-lg bg-primary px-8 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md active:scale-95 disabled:opacity-50"
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    Saving...
-                                </>
-                            ) : (
-                                <>
-                                    <Save className="h-4 w-4" />
-                                    Save Case
-                                </>
-                            )}
-                        </button>
-                    </div>
                 </form>
-            </div>
-        </div>
+        </DialogShell>
     )
 }
