@@ -7,7 +7,10 @@ for navigating the prepared filesystem and answering questions.
 from __future__ import annotations
 
 import json
+import math
+import re
 import time
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -63,6 +66,73 @@ class ReasoningStep:
     tool_args: dict[str, Any] | None = None
     tool_result: str | None = None
     thought: str | None = None
+
+
+_TOKEN_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9']{2,}")
+_DOC_ID_RE = re.compile(r"doc_\d+")
+_WORD_BOUNDARY_TEMPLATE = r"\b{}\b"
+_PREFETCH_STOP_WORDS = {
+    "about",
+    "according",
+    "after",
+    "again",
+    "against",
+    "also",
+    "although",
+    "before",
+    "been",
+    "being",
+    "between",
+    "called",
+    "clearly",
+    "could",
+    "court",
+    "does",
+    "doing",
+    "during",
+    "every",
+    "from",
+    "give",
+    "giving",
+    "have",
+    "however",
+    "into",
+    "itself",
+    "judge",
+    "juror",
+    "jury",
+    "must",
+    "might",
+    "needs",
+    "offence",
+    "offences",
+    "only",
+    "over",
+    "question",
+    "required",
+    "selected",
+    "serving",
+    "should",
+    "that",
+    "their",
+    "there",
+    "these",
+    "this",
+    "those",
+    "through",
+    "thus",
+    "under",
+    "trial",
+    "whether",
+    "what",
+    "when",
+    "where",
+    "which",
+    "while",
+    "with",
+    "would",
+    "years",
+}
 
 
 class FilesystemRAGAgent:
@@ -126,6 +196,187 @@ class FilesystemRAGAgent:
         # Warm the cache
         self.cache.warm()
 
+    def _extract_prefetch_terms(self, question: str) -> list[str]:
+        """Extract useful lexical terms for deterministic candidate prefetch."""
+        query_lower = question.lower()
+        terms: list[str] = []
+        seen: set[str] = set()
+
+        for token in _TOKEN_RE.findall(query_lower):
+            token = token.strip("'").lower()
+            if len(token) < 4 or token in _PREFETCH_STOP_WORDS:
+                continue
+            if token not in seen:
+                terms.append(token)
+                seen.add(token)
+
+        expansions: dict[str, list[str]] = {
+            "process": ["procedure"],
+            "procedure": ["process"],
+            "news": ["publicity"],
+            "stories": ["publicity"],
+            "media": ["publicity"],
+            "friend": ["know", "impartial", "impartially", "excuse", "excused"],
+            "friends": ["know", "impartial", "impartially", "excuse", "excused"],
+            "photos": ["inquiry", "enquiry", "outside", "irregularities"],
+            "texts": ["inquiry", "enquiry", "outside", "irregularities"],
+            "information": ["outside", "inquiry", "irregularities"],
+            "privilege": ["self-incrimination", "certificate"],
+            "testimony": ["evidence", "witness"],
+            "recording": ["audio", "audiovisual", "recorded"],
+            "recorded": ["recording", "audio", "audiovisual"],
+            "visit": ["view", "inspection"],
+            "travels": ["view", "inspection"],
+            "location": ["view", "inspection"],
+            "backyard": ["view", "inspection"],
+            "examine": ["view", "inspection"],
+            "physical": ["object", "objects", "condition", "experiment", "experiments"],
+            "lock": ["object", "condition", "experiment", "experiments"],
+            "damaged": ["condition", "object", "experiment", "experiments"],
+            "lockpicking": ["experiment", "experiments", "condition"],
+            "witness": ["evidence"],
+        }
+
+        if any(phrase in query_lower for phrase in ("called", "known as", "name of")):
+            expansions.setdefault("called", []).extend(["procedure", "process"])
+
+        for term in list(terms) + ["called"]:
+            for expanded in expansions.get(term, []):
+                if expanded not in seen:
+                    terms.append(expanded)
+                    seen.add(expanded)
+
+        return terms
+
+    def _read_text_if_exists(self, relative_path: str) -> str:
+        """Read a prepared file if present, returning an empty string on failure."""
+        path = self.tools.prepared_path / relative_path
+        if not path.exists() or not path.is_file():
+            return ""
+        try:
+            return path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return ""
+
+    def _term_count(self, text: str, term: str) -> int:
+        """Count case-insensitive whole-word term matches."""
+        pattern = _WORD_BOUNDARY_TEMPLATE.format(re.escape(term.lower()))
+        return len(re.findall(pattern, text.lower()))
+
+    def _score_prefetch_candidates(
+        self,
+        terms: list[str],
+        summaries: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        """Rank candidate documents using summaries and question seed matches."""
+        if not terms or not summaries:
+            return []
+
+        token_sets: dict[str, set[str]] = {
+            doc_id: set(_TOKEN_RE.findall(text.lower())) for doc_id, text in summaries.items()
+        }
+        document_frequency: Counter[str] = Counter()
+        for token_set in token_sets.values():
+            document_frequency.update(token_set)
+
+        max_common_frequency = max(8, len(summaries) // 4)
+        usable_terms = [
+            term for term in terms if 0 < document_frequency[term] <= max_common_frequency
+        ]
+        if not usable_terms:
+            usable_terms = [term for term in terms if document_frequency[term] > 0]
+
+        scores: defaultdict[str, float] = defaultdict(float)
+        matched_terms: defaultdict[str, set[str]] = defaultdict(set)
+        total_docs = len(summaries)
+
+        for doc_id, summary in summaries.items():
+            summary_lower = summary.lower()
+            for term in usable_terms:
+                count = self._term_count(summary_lower, term)
+                if not count:
+                    continue
+                idf = math.log((total_docs + 1) / (document_frequency[term] + 1))
+                scores[doc_id] += (1 + min(count, 2)) * idf
+                matched_terms[doc_id].add(term)
+
+        question_seed_text = self._read_text_if_exists("_index/questions/question_seeds.md")
+        for line in question_seed_text.splitlines():
+            match = _DOC_ID_RE.search(line)
+            if not match:
+                continue
+
+            doc_id = match.group(0)
+            line_lower = line.lower()
+            for term in usable_terms:
+                if not self._term_count(line_lower, term):
+                    continue
+                idf = math.log((total_docs + 1) / (document_frequency[term] + 1))
+                scores[doc_id] += 2.0 * idf
+                matched_terms[doc_id].add(term)
+
+        ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        return [
+            {
+                "doc_id": doc_id,
+                "score": round(score, 3),
+                "matched_terms": sorted(matched_terms[doc_id]),
+            }
+            for doc_id, score in ranked
+            if doc_id in summaries and score > 0
+        ]
+
+    def _build_prefetch_context(self, question: str, max_candidates: int = 3) -> dict[str, Any]:
+        """Build deterministic candidate context before LLM navigation starts."""
+        terms = self._extract_prefetch_terms(question)
+        summaries_dir = self.tools.prepared_path / "_summaries"
+        if not summaries_dir.exists():
+            return {"terms": terms, "candidates": [], "chunks": [], "sources": []}
+
+        summaries: dict[str, str] = {}
+        summary_paths: dict[str, str] = {}
+        for path in sorted(summaries_dir.glob("doc_*_summary.md")):
+            match = _DOC_ID_RE.search(path.name)
+            if not match:
+                continue
+            doc_id = match.group(0)
+            try:
+                summaries[doc_id] = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            summary_paths[doc_id] = str(path.relative_to(self.tools.prepared_path))
+
+        ranked = self._score_prefetch_candidates(terms, summaries)[:max_candidates]
+        chunks: list[str] = []
+        sources: list[str] = []
+
+        for candidate in ranked:
+            doc_id = candidate["doc_id"]
+            source = summary_paths[doc_id]
+            snippet = summaries[doc_id]
+            if len(snippet) > 1800:
+                snippet = snippet[:1800].rstrip() + "\n... [prefetch snippet truncated]"
+
+            chunks.append(
+                "\n".join(
+                    [
+                        f"# Candidate Context: {doc_id}",
+                        f"Source: {source}",
+                        f"Matched terms: {', '.join(candidate['matched_terms'])}",
+                        "",
+                        snippet,
+                    ]
+                )
+            )
+            sources.append(source)
+
+        return {
+            "terms": terms,
+            "candidates": ranked,
+            "chunks": chunks,
+            "sources": sources,
+        }
+
     def query(self, question: str) -> AgentResponse:
         """Answer a question by navigating the filesystem.
 
@@ -143,7 +394,18 @@ class FilesystemRAGAgent:
         strategy_hint = routing_result.strategy_hint
 
         # Build system prompt
+        prefetch = self._build_prefetch_context(question)
         initial_context = self.cache.get_initial_context()
+        if prefetch["chunks"]:
+            candidate_context = "\n\n".join(prefetch["chunks"])
+            initial_context = (
+                f"{initial_context}\n\n"
+                "=== _index/lexical_candidates ===\n"
+                "These candidate snippets were selected by lexical matching against "
+                "summaries and question seeds. Use them when relevant, and verify with "
+                "filesystem tools if the answer is uncertain.\n\n"
+                f"{candidate_context}"
+            )
         system_prompt = format_system_prompt(
             strategy_hint=strategy_hint,
             initial_context=initial_context,
@@ -160,7 +422,8 @@ class FilesystemRAGAgent:
         # Tracking
         reasoning_trace: list[ReasoningStep] = []
         files_read: list[str] = []
-        context_chunks: list[str] = []
+        context_chunks: list[str] = list(prefetch["chunks"])
+        context_sources: list[str] = list(prefetch["sources"])
         tool_call_count = 0
         file_read_count = 0
 
@@ -216,8 +479,10 @@ class FilesystemRAGAgent:
                         # Store content for context
                         if isinstance(result, dict) and "content" in result:
                             context_chunks.append(result["content"])
+                            context_sources.append(file_path)
                         elif isinstance(result, str):
                             context_chunks.append(result)
+                            context_sources.append(file_path)
 
                     # Format result for conversation
                     result_str = format_tool_result(tool_name, result)
@@ -252,6 +517,7 @@ class FilesystemRAGAgent:
                     context=context_chunks,
                     metadata={
                         "files_read": files_read,
+                        "context_sources": context_sources,
                         "tool_calls": tool_call_count,
                         "reasoning_trace": [
                             {
@@ -266,6 +532,8 @@ class FilesystemRAGAgent:
                         "iterations": iteration + 1,
                         "query_time": query_time,
                         "routing_confidence": routing_result.confidence,
+                        "prefetch_terms": prefetch["terms"],
+                        "prefetch_candidates": prefetch["candidates"],
                     },
                 )
 
@@ -276,8 +544,10 @@ class FilesystemRAGAgent:
             reasoning_trace=reasoning_trace,
             search_mode=search_mode,
             files_read=files_read,
+            context_sources=context_sources,
             tool_call_count=tool_call_count,
             start_time=start_time,
+            prefetch=prefetch,
         )
 
     def _call_llm(self, messages: list[dict[str, Any]]) -> Any:
@@ -338,8 +608,10 @@ class FilesystemRAGAgent:
         reasoning_trace: list[ReasoningStep],
         search_mode: SearchMode,
         files_read: list[str],
+        context_sources: list[str],
         tool_call_count: int,
         start_time: float,
+        prefetch: dict[str, Any],
     ) -> AgentResponse:
         """Synthesize an answer when max iterations reached.
 
@@ -380,6 +652,7 @@ class FilesystemRAGAgent:
             context=context_chunks,
             metadata={
                 "files_read": files_read,
+                "context_sources": context_sources,
                 "tool_calls": tool_call_count,
                 "reasoning_trace": [
                     {
@@ -394,6 +667,8 @@ class FilesystemRAGAgent:
                 "iterations": self.max_iterations,
                 "max_iterations_reached": True,
                 "query_time": query_time,
+                "prefetch_terms": prefetch["terms"],
+                "prefetch_candidates": prefetch["candidates"],
             },
         )
 

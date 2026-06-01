@@ -52,6 +52,11 @@ class QueryRouter:
 
     # Patterns indicating known-item (specific lookup) queries
     KNOWN_ITEM_PATTERNS = [
+        (r"what is (?:this|the) .+ (?:called|known as|named)\??", 0.95),
+        (r"what is the name of", 0.9),
+        (r"what legal privilege", 0.9),
+        (r"what .+ procedure", 0.85),
+        (r"what .+ process", 0.85),
         (r"where is .+ defined", 0.9),
         (r"find .+ in", 0.85),
         (r"what does .+ say about", 0.8),

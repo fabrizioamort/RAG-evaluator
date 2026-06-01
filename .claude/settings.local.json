@@ -4,7 +4,9 @@
       "Bash(Select-Object FullName)",
       "Bash(tree:*)",
       "Bash(find:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(uv run *)",
+      "PowerShell(uv run *)"
     ],
     "deny": [],
     "ask": []

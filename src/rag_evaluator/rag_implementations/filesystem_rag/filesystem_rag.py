@@ -148,22 +148,9 @@ class FilesystemRAG(BaseRAG):
             max_file_reads=self.max_file_reads,
         )
 
-    def retrieve(self, question: str, top_k: int = 5) -> RetrievedContext:
-        """Retrieve context using LLM-guided filesystem navigation.
-
-        The agent navigates indexes and documents to gather relevant context.
-        Note: top_k is ignored for filesystem RAG as the agent determines
-        what to retrieve based on the query.
-
-        Args:
-            question: The question to retrieve context for
-            top_k: Ignored for filesystem RAG
-
-        Returns:
-            RetrievedContext with chunks and trace information
-        """
+    def _ensure_agent(self) -> FilesystemRAGAgent:
+        """Return an initialized agent, loading an existing prepared index if needed."""
         if self._agent is None:
-            # Try to initialize if prepared path exists
             if Path(self.prepared_path).exists():
                 self._initialize_agent()
             else:
@@ -172,31 +159,32 @@ class FilesystemRAG(BaseRAG):
                     f"or ensure prepared path exists: {self.prepared_path}"
                 )
 
-        # Ensure agent is initialized (for type checker)
         if self._agent is None:
             raise RuntimeError("Agent initialization failed")
+        return self._agent
 
-        start_time = time.time()
-
-        # Execute query through agent
-        response = self._agent.query(question)
-
-        retrieval_time = time.time() - start_time
-
-        # Build chunk details from context
-        chunk_details = []
+    def _context_from_agent_response(
+        self,
+        question: str,
+        response: Any,
+        retrieval_time: float,
+    ) -> RetrievedContext:
+        """Convert an agent response into standardized retrieved context and trace."""
+        context_sources = response.metadata.get("context_sources") or response.metadata.get(
+            "files_read", []
+        )
         files_read = response.metadata.get("files_read", [])
 
+        chunk_details = []
         for i, chunk in enumerate(response.context):
-            # Try to determine source from files_read
-            source = files_read[i] if i < len(files_read) else f"agent_context_{i}"
+            source = context_sources[i] if i < len(context_sources) else f"agent_context_{i}"
 
             chunk_details.append(
                 RetrievedChunk(
                     content=chunk,
                     document_id=source,
                     chunk_id=f"fs_chunk_{i}",
-                    score=1.0 - (i * 0.05),  # Agent-retrieved, decreasing relevance
+                    score=max(0.0, 1.0 - (i * 0.05)),
                     rank=i,
                     source=source,
                     metadata={
@@ -205,24 +193,33 @@ class FilesystemRAG(BaseRAG):
                 )
             )
 
-        # Build trace from agent's reasoning
-        reasoning_trace = response.metadata.get("reasoning_trace", [])
         trace = RetrievalTrace(
             strategy="agentic",
             total_duration_ms=retrieval_time * 1000,
         )
 
-        # Add routing step
         trace.add_step(
             step_type="query_routing",
             input_data={"query": question},
             output_refs=[],
-            duration_ms=0,  # Included in overall time
-            metadata={"search_mode": response.metadata.get("search_mode", "unknown")},
+            duration_ms=0,
+            metadata={
+                "search_mode": response.metadata.get("search_mode", "unknown"),
+                "routing_confidence": response.metadata.get("routing_confidence"),
+            },
         )
 
-        # Add navigation steps from reasoning trace
-        for i, step in enumerate(reasoning_trace):
+        prefetch_candidates = response.metadata.get("prefetch_candidates", [])
+        if prefetch_candidates:
+            trace.add_step(
+                step_type="lexical_prefetch",
+                input_data={"terms": response.metadata.get("prefetch_terms", [])},
+                output_refs=[candidate["doc_id"] for candidate in prefetch_candidates],
+                duration_ms=0,
+                metadata={"candidates": prefetch_candidates},
+            )
+
+        for i, step in enumerate(response.metadata.get("reasoning_trace", [])):
             trace.add_step(
                 step_type="agent_step",
                 input_data={"step_number": i + 1},
@@ -231,7 +228,6 @@ class FilesystemRAG(BaseRAG):
                 metadata={"reasoning": step},
             )
 
-        # Add file read steps
         for file_path in files_read:
             trace.add_step(
                 step_type="file_read",
@@ -248,6 +244,50 @@ class FilesystemRAG(BaseRAG):
             trace=trace,
             retrieval_time=retrieval_time,
         )
+
+    def _track_agent_response(self, question: str, response: Any) -> None:
+        """Track query metrics and estimated token use for an agent response."""
+        query_metric = {
+            "question": question,
+            "query_time": response.metadata.get("query_time", 0.0),
+            "tool_calls": response.metadata.get("tool_calls", 0),
+            "files_read": len(response.metadata.get("files_read", [])),
+            "search_mode": response.metadata.get("search_mode", "unknown"),
+            "iterations": response.metadata.get("iterations", 0),
+        }
+        with self._metrics_lock:
+            self._query_metrics.append(query_metric)
+            self._total_queries += 1
+
+        estimated_prompt = len(question) * response.metadata.get("iterations", 1) * 10
+        estimated_completion = len(response.answer) // 4
+        self._token_usage.add_prompt_tokens(estimated_prompt)
+        self._token_usage.add_completion_tokens(estimated_completion)
+
+    def retrieve(self, question: str, top_k: int = 5) -> RetrievedContext:
+        """Retrieve context using LLM-guided filesystem navigation.
+
+        The agent navigates indexes and documents to gather relevant context.
+        Note: top_k is ignored for filesystem RAG as the agent determines
+        what to retrieve based on the query.
+
+        Args:
+            question: The question to retrieve context for
+            top_k: Ignored for filesystem RAG
+
+        Returns:
+            RetrievedContext with chunks and trace information
+        """
+        agent = self._ensure_agent()
+
+        start_time = time.time()
+
+        # Execute query through agent
+        response = agent.query(question)
+
+        retrieval_time = time.time() - start_time
+
+        return self._context_from_agent_response(question, response, retrieval_time)
 
     def _retrieve_only(self, question: str, top_k: int = 5) -> dict[str, Any]:
         """Perform retrieval without generation.
@@ -363,41 +403,13 @@ Answer:"""
         # Reset token usage for this query
         self.reset_token_usage()
 
-        if self._agent is None:
-            # Try to initialize if prepared path exists
-            if Path(self.prepared_path).exists():
-                self._initialize_agent()
-            else:
-                raise ValueError(
-                    "Agent not initialized. Call prepare_documents() first, "
-                    f"or ensure prepared path exists: {self.prepared_path}"
-                )
-
-        # Ensure agent is initialized (for type checker)
-        if self._agent is None:
-            raise RuntimeError("Agent initialization failed")
+        agent = self._ensure_agent()
 
         # Execute query
-        response = self._agent.query(question)
+        response = agent.query(question)
 
         # Track metrics
-        query_metric = {
-            "question": question,
-            "query_time": response.metadata.get("query_time", 0.0),
-            "tool_calls": response.metadata.get("tool_calls", 0),
-            "files_read": len(response.metadata.get("files_read", [])),
-            "search_mode": response.metadata.get("search_mode", "unknown"),
-            "iterations": response.metadata.get("iterations", 0),
-        }
-        with self._metrics_lock:
-            self._query_metrics.append(query_metric)
-            self._total_queries += 1
-
-        # Estimate token usage from agent activity
-        estimated_prompt = len(question) * response.metadata.get("iterations", 1) * 10
-        estimated_completion = len(response.answer) // 4
-        self._token_usage.add_prompt_tokens(estimated_prompt)
-        self._token_usage.add_completion_tokens(estimated_completion)
+        self._track_agent_response(question, response)
 
         # Return in standard RAG format
         return {
@@ -411,8 +423,46 @@ Answer:"""
                 "search_mode": response.metadata.get("search_mode", "unknown"),
                 "iterations": response.metadata.get("iterations", 0),
                 "reasoning_trace": response.metadata.get("reasoning_trace", []),
+                "context_sources": response.metadata.get("context_sources", []),
+                "prefetch_candidates": response.metadata.get("prefetch_candidates", []),
                 "token_usage": self._token_usage.to_dict(),
             },
+        }
+
+    def query_with_trace(self, question: str, top_k: int = 5) -> dict[str, Any]:
+        """Query with a single agent pass and an aligned retrieval trace.
+
+        Filesystem RAG interleaves retrieval and generation in the same agent
+        loop. The base implementation would call retrieve() and then generate(),
+        which invokes the agent twice and can produce an answer that does not
+        match the stored trace.
+        """
+        self.reset_token_usage()
+        agent = self._ensure_agent()
+
+        start_time = time.time()
+        response = agent.query(question)
+        elapsed = time.time() - start_time
+
+        self._track_agent_response(question, response)
+        context = self._context_from_agent_response(question, response, elapsed)
+
+        return {
+            "answer": response.answer,
+            "context": context.chunks,
+            "metadata": {
+                "retrieval_time": context.retrieval_time,
+                "generation_time": 0.0,
+                "token_usage": self._token_usage.to_dict(),
+                "chunks_retrieved": len(context.chunks),
+                "files_read": response.metadata.get("files_read", []),
+                "tool_calls": response.metadata.get("tool_calls", 0),
+                "search_mode": response.metadata.get("search_mode", "unknown"),
+                "iterations": response.metadata.get("iterations", 0),
+                "context_sources": response.metadata.get("context_sources", []),
+                "prefetch_candidates": response.metadata.get("prefetch_candidates", []),
+            },
+            "retrieval_trace": context.trace.to_dict(),
         }
 
     def get_metrics(self) -> dict[str, Any]:

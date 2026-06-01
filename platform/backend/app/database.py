@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.pool import NullPool, StaticPool
+from sqlalchemy.pool import NullPool, StaticPool  # StaticPool kept for :memory: test DBs
 
 from app.config import settings
 
@@ -25,10 +25,10 @@ class Base(DeclarativeBase):
 def get_engine_options() -> dict[str, Any]:
     """Get database engine options based on database type."""
     if settings.is_sqlite:
-        # SQLite-specific options for async
+        pool_class = StaticPool if ":memory:" in settings.DATABASE_URL else NullPool
         return {
             "connect_args": {"check_same_thread": False},
-            "poolclass": StaticPool,
+            "poolclass": pool_class,
             "echo": settings.DEBUG,
         }
     else:

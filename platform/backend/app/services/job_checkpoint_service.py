@@ -59,8 +59,8 @@ class JobCheckpointService:
             last_heartbeat=datetime.now(timezone.utc),
         )
         self.db.add(job)
+        await self.db.flush()  # generate the UUID before commit
         await self.db.commit()
-        await self.db.refresh(job)
         return job
 
     async def update_progress(
