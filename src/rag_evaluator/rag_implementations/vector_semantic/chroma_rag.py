@@ -327,21 +327,22 @@ Question: {question}
 Answer:"""
 
         # Call OpenAI API
+        from rag_evaluator.common.llm_utils import get_safe_llm_params
+
         model = self.config.llm_model or settings.openai_model
-        completion_params: dict[str, Any] = {
-            "model": model,
-            "messages": [
+        completion_params = get_safe_llm_params(
+            model,
+            temperature=0.0,
+            reasoning_effort=self.config.llm_reasoning_effort,
+            model=model,
+            messages=[
                 {
                     "role": "system",
                     "content": "You are a helpful assistant that answers questions based on the provided context.",
                 },
                 {"role": "user", "content": prompt},
             ],
-        }
-
-        # Only add temperature for models that support it (not gpt-5-nano)
-        if "nano" not in model.lower():
-            completion_params["temperature"] = 0.0
+        )
 
         response = self.openai_client.chat.completions.create(**completion_params)
 

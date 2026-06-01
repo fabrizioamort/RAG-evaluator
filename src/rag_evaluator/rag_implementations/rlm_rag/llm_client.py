@@ -473,6 +473,8 @@ class LLMClient:
         }
         if temperature is not None:
             params["temperature"] = temperature
+        if model == self.config.orchestrator_model and self.config.orchestrator_reasoning_effort:
+            params["reasoning_effort"] = self.config.orchestrator_reasoning_effort
         return self.client.chat.completions.create(**params)
 
     def _is_unsupported_max_tokens(self, error: Exception, param_name: str) -> bool:

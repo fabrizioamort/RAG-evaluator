@@ -240,6 +240,7 @@ export interface RAGConfig {
   llm_provider: string
   llm_model: string
   llm_base_url: string | null
+  llm_reasoning_effort: string | null
   embedding_model: string
   created_at: string
 }
@@ -251,6 +252,7 @@ export interface RAGConfigCreate {
   llm_provider?: string
   llm_model?: string
   llm_base_url?: string
+  llm_reasoning_effort?: string | null
   embedding_model?: string
 }
 

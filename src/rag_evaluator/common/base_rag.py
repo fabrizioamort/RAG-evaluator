@@ -33,6 +33,7 @@ class RAGConfig:
     llm_model: str = "gpt-4o-mini"
     llm_base_url: str | None = None
     embedding_model: str = "text-embedding-3-small"
+    llm_reasoning_effort: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization.
@@ -48,6 +49,7 @@ class RAGConfig:
             "llm_model": self.llm_model,
             "llm_base_url": self.llm_base_url,
             "embedding_model": self.embedding_model,
+            "llm_reasoning_effort": self.llm_reasoning_effort,
         }
 
     @classmethod
@@ -68,6 +70,7 @@ class RAGConfig:
             llm_model=data.get("llm_model", "gpt-4o-mini"),
             llm_base_url=data.get("llm_base_url"),
             embedding_model=data.get("embedding_model", "text-embedding-3-small"),
+            llm_reasoning_effort=data.get("llm_reasoning_effort"),
         )
 
 

@@ -83,6 +83,9 @@ class RLMConfig:
     # === Observability ===
     log_level: str = "INFO"
 
+    # === Reasoning ===
+    orchestrator_reasoning_effort: str | None = None
+
     def __post_init__(self) -> None:
         """Validate configuration values."""
         errors = []
@@ -152,6 +155,9 @@ def rlm_config_from_rag_config(config: RAGConfig) -> RLMConfig:
     params = dict(config.parameters or {})
     if not params.get("orchestrator_model") or params["orchestrator_model"] == "RAG config llm_model":
         params["orchestrator_model"] = config.llm_model
+
+    if config.llm_reasoning_effort and "orchestrator_reasoning_effort" not in params:
+        params["orchestrator_reasoning_effort"] = config.llm_reasoning_effort
 
     field_names = {field.name for field in fields(RLMConfig)}
     rlm_params = {key: value for key, value in params.items() if key in field_names}

@@ -31,16 +31,20 @@ def is_reasoning_model(model_name: str) -> bool:
 
 
 def get_safe_llm_params(
-    model_name: str, temperature: float | None = None, **kwargs: Any
+    model_name: str,
+    temperature: float | None = None,
+    reasoning_effort: str | None = None,
+    **kwargs: Any,
 ) -> dict[str, Any]:
     """Get parameters that are safe for the specified model.
 
-    Specifically handles removing temperature for reasoning models
-    that do not support it.
+    Handles removing temperature for reasoning models and forwards
+    reasoning_effort when set.
 
     Args:
         model_name: Name of the LLM model.
         temperature: Requested temperature.
+        reasoning_effort: Reasoning effort level (low/medium/high).
         **kwargs: Additional LLM parameters.
 
     Returns:
@@ -49,14 +53,15 @@ def get_safe_llm_params(
     params = kwargs.copy()
 
     if is_reasoning_model(model_name):
-        # Reasoning models don't support temperature (must be default or omitted)
         if "temperature" in params:
             params.pop("temperature")
     else:
-        # Standard models use the provided temperature or default to 0.0
         if temperature is not None:
             params["temperature"] = temperature
         elif "temperature" not in params:
             params["temperature"] = 0.0
+
+    if reasoning_effort is not None:
+        params["reasoning_effort"] = reasoning_effort
 
     return params

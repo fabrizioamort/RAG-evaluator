@@ -26,6 +26,11 @@ class RAGConfigBase(BaseSchema):
     llm_base_url: str | None = Field(
         default=None, max_length=500, description="Custom LLM API base URL"
     )
+    llm_reasoning_effort: str | None = Field(
+        default=None,
+        max_length=20,
+        description="Reasoning effort level (low, medium, high) for supported models",
+    )
     embedding_model: str = Field(
         default="text-embedding-3-small",
         max_length=100,
@@ -48,6 +53,9 @@ class RAGConfigUpdate(BaseSchema):
     llm_model: str | None = Field(default=None, max_length=100, description="LLM model")
     llm_base_url: str | None = Field(
         default=None, max_length=500, description="Custom LLM API base URL"
+    )
+    llm_reasoning_effort: str | None = Field(
+        default=None, max_length=20, description="Reasoning effort level"
     )
     embedding_model: str | None = Field(default=None, max_length=100, description="Embedding model")
 

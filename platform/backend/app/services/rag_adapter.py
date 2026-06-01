@@ -145,6 +145,7 @@ class RAGAdapterService:
             llm_model=config_model.llm_model,
             llm_base_url=config_model.llm_base_url,
             embedding_model=getattr(config_model, "embedding_model", "text-embedding-3-small"),
+            llm_reasoning_effort=getattr(config_model, "llm_reasoning_effort", None),
         )
 
         # Get the RAG class
@@ -296,6 +297,7 @@ class RAGAdapterService:
             llm_model=config_snapshot.get("llm_model", "gpt-4o-mini"),
             llm_base_url=config_snapshot.get("llm_base_url"),
             embedding_model=config_snapshot.get("embedding_model", "text-embedding-3-small"),
+            llm_reasoning_effort=config_snapshot.get("llm_reasoning_effort"),
         )
 
         rag_type = config_snapshot.get("rag_type", "")
@@ -369,6 +371,7 @@ class RAGAdapterService:
         build_snapshot.setdefault("llm_provider", "openai")
         build_snapshot.setdefault("llm_model", "gpt-4o-mini")
         build_snapshot.setdefault("llm_base_url", None)
+        build_snapshot.setdefault("llm_reasoning_effort", None)
         build_snapshot.setdefault(
             "embedding_model",
             getattr(index, "embedding_model", None) or "text-embedding-3-small",

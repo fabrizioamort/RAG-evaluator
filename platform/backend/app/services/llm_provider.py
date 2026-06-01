@@ -60,6 +60,7 @@ class LLMProviderService:
         base_url: str | None = None,
         temperature: float = 0.0,
         max_tokens: int | None = None,
+        reasoning_effort: str | None = None,
         **kwargs: Any,
     ) -> LLMCompletionResponse:
         """Get a chat completion from an LLM.
@@ -71,6 +72,7 @@ class LLMProviderService:
             base_url: Custom API base URL (e.g., for Ollama)
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
+            reasoning_effort: Reasoning effort level (low/medium/high) for supported models
             **kwargs: Additional provider-specific parameters
 
         Returns:
@@ -92,6 +94,9 @@ class LLMProviderService:
         actual_temp: float | None = temperature
         if is_reasoning:
             actual_temp = None
+
+        if reasoning_effort is not None:
+            kwargs["reasoning_effort"] = reasoning_effort
 
         try:
             response = await litellm.acompletion(

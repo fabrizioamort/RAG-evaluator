@@ -146,6 +146,7 @@ class FilesystemRAG(BaseRAG):
             max_iterations=self.max_iterations,
             max_tool_calls=self.max_tool_calls,
             max_file_reads=self.max_file_reads,
+            reasoning_effort=self.config.llm_reasoning_effort if self.config else None,
         )
 
     def _ensure_agent(self) -> FilesystemRAGAgent:

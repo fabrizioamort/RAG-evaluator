@@ -161,6 +161,7 @@ class FilesystemRAGAgent:
         max_tool_calls: int = 20,
         max_file_reads: int = 10,
         client: OpenAI | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         """Initialize the filesystem RAG agent.
 
@@ -171,12 +172,14 @@ class FilesystemRAGAgent:
             max_tool_calls: Maximum total tool calls per query
             max_file_reads: Maximum file read operations per query
             client: Optional pre-configured OpenAI client
+            reasoning_effort: Reasoning effort level (low/medium/high)
         """
         self.prepared_path = prepared_path
         self.llm_model = llm_model
         self.max_iterations = max_iterations
         self.max_tool_calls = max_tool_calls
         self.max_file_reads = max_file_reads
+        self.reasoning_effort = reasoning_effort
 
         # Initialize components
         self.tools = FilesystemRAGTools(prepared_path)
@@ -570,8 +573,7 @@ class FilesystemRAGAgent:
             "tool_choice": "auto",
         }
 
-        # Apply safe parameters (handles temperature for reasoning models)
-        kwargs = get_safe_llm_params(self.llm_model, **kwargs)
+        kwargs = get_safe_llm_params(self.llm_model, reasoning_effort=self.reasoning_effort, **kwargs)
 
         return self.client.chat.completions.create(**kwargs)
 
@@ -640,7 +642,7 @@ class FilesystemRAGAgent:
             "model": self.llm_model,
             "messages": messages,  # type: ignore[arg-type]
         }
-        kwargs = get_safe_llm_params(self.llm_model, temperature=0.0, **kwargs)
+        kwargs = get_safe_llm_params(self.llm_model, temperature=0.0, reasoning_effort=self.reasoning_effort, **kwargs)
 
         response = self.client.chat.completions.create(**kwargs)
 

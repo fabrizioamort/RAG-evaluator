@@ -15,6 +15,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
     const [ragType, setRagType] = useState('vector_semantic')
     const [provider, setProvider] = useState('openai')
     const [model, setModel] = useState('')
+    const [reasoningEffort, setReasoningEffort] = useState<string>('')
     const [embeddingModel, setEmbeddingModel] = useState('text-embedding-3-small')
     const [parameters, setParameters] = useState<Record<string, unknown>>({})
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -43,6 +44,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
             setRagType(config.rag_type)
             setProvider(config.llm_provider)
             setModel(config.llm_model)
+            setReasoningEffort(config.llm_reasoning_effort || '')
             setEmbeddingModel(config.embedding_model)
             setParameters(config.parameters)
         } else {
@@ -50,6 +52,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
             setRagType('vector_semantic')
             setProvider('openai')
             setModel('gpt-4o-mini')
+            setReasoningEffort('')
             setEmbeddingModel('text-embedding-3-small')
             setParameters({})
         }
@@ -86,6 +89,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                 rag_type: ragType,
                 llm_provider: provider,
                 llm_model: model,
+                llm_reasoning_effort: reasoningEffort || null,
                 embedding_model: embeddingModel,
                 parameters,
             })
@@ -228,6 +232,23 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                                             <option key={m} value={m}>{m}</option>
                                         ))}
                                     </select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold">Reasoning Effort</label>
+                                    <select
+                                        value={reasoningEffort}
+                                        onChange={(e) => setReasoningEffort(e.target.value)}
+                                        className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
+                                    >
+                                        <option value="">Default (model decides)</option>
+                                        <option value="low">Low — faster, less thorough</option>
+                                        <option value="medium">Medium — balanced</option>
+                                        <option value="high">High — slower, most thorough</option>
+                                    </select>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Applies to OpenAI reasoning models (o1, o3, gpt-5) and OpenRouter/DeepSeek.
+                                    </p>
                                 </div>
 
                                 <div className="space-y-2">
