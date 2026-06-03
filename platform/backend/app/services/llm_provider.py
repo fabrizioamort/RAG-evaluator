@@ -58,6 +58,7 @@ class LLMProviderService:
         messages: list[dict[str, str]],
         provider: str | None = None,
         base_url: str | None = None,
+        api_key: str | None = None,
         temperature: float = 0.0,
         max_tokens: int | None = None,
         reasoning_effort: str | None = None,
@@ -70,6 +71,7 @@ class LLMProviderService:
             messages: List of chat messages
             provider: Explicit provider name (optional)
             base_url: Custom API base URL (e.g., for Ollama)
+            api_key: Explicit API key (preferred over env-based resolution)
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
             reasoning_effort: Reasoning effort level (low/medium/high) for supported models
@@ -97,6 +99,11 @@ class LLMProviderService:
 
         if reasoning_effort is not None:
             kwargs["reasoning_effort"] = reasoning_effort
+
+        # Passing an explicit api_key uses litellm's well-tested credential path
+        # instead of env-based pickup.
+        if api_key is not None:
+            kwargs["api_key"] = api_key
 
         try:
             response = await litellm.acompletion(

@@ -45,10 +45,12 @@ class SafeDeepEvalLLM(DeepEvalBaseLLM):
         model_name: str,
         provider_name: str | None = None,
         base_url: str | None = None,
+        api_key: str | None = None,
     ) -> None:
         self.model_name = model_name
         self.provider_name = provider_name
         self.base_url = base_url
+        self.api_key = api_key
         self.provider = LLMProviderService()
 
     def get_model_name(self) -> str:
@@ -86,6 +88,7 @@ class SafeDeepEvalLLM(DeepEvalBaseLLM):
                 messages=[{"role": "user", "content": prompt}],
                 provider=self.provider_name,
                 base_url=self.base_url,
+                api_key=self.api_key,
                 **completion_kwargs,
             )
             content = response.content
@@ -188,6 +191,7 @@ class EvaluationRunner:
         llm_model: str,
         provider: str | None = None,
         base_url: str | None = None,
+        api_key: str | None = None,
     ) -> List[Any]:
         """Initialize DeepEval metrics based on evaluation configuration."""
         include_reason = settings.EVAL_INCLUDE_REASON
@@ -196,7 +200,10 @@ class EvaluationRunner:
             if config_value is not None:
                 include_reason = bool(config_value)
         safe_model = SafeDeepEvalLLM(
-            model_name=llm_model, provider_name=provider, base_url=base_url
+            model_name=llm_model,
+            provider_name=provider,
+            base_url=base_url,
+            api_key=api_key,
         )
 
         # Get selected metrics from config, fallback to all
@@ -292,6 +299,8 @@ class EvaluationRunner:
                 )
                 top_k = effective.top_k
                 llm_model = effective.generation_model
+                gen_provider = effective.effective_config_snapshot.get("llm_provider", "openai")
+                gen_base_url = effective.effective_config_snapshot.get("llm_base_url")
             else:
                 # Fallback to legacy KB + RAG config approach
                 assert self.evaluation.rag_config is not None
@@ -302,14 +311,20 @@ class EvaluationRunner:
                     else None,
                 )
                 llm_model = self.evaluation.rag_config.llm_model
+                gen_provider = self.evaluation.rag_config.llm_provider
+                gen_base_url = self.evaluation.rag_config.llm_base_url
 
-            # 3. Initialize metrics (judge bucket: own provider/model)
+            # 3. Initialize metrics (judge bucket: own provider/model).
+            # Resolve explicit credentials so litellm uses its well-tested
+            # credential path (env-based pickup hits a broken OpenRouter path).
+            # The judge follows the generation endpoint when it shares its provider.
             judge_model = self.evaluation.eval_judge_model or llm_model
-            judge_provider = self.evaluation.eval_judge_provider or None
-            judge_base_url = None
-            if judge_provider == "ollama":
-                judge_base_url = resolve_provider_endpoint(judge_provider).base_url
-            metrics = self._initialize_metrics(judge_model, judge_provider, judge_base_url)
+            judge_provider = self.evaluation.eval_judge_provider or gen_provider
+            base_override = gen_base_url if judge_provider == gen_provider else None
+            endpoint = resolve_provider_endpoint(judge_provider, base_override)
+            metrics = self._initialize_metrics(
+                judge_model, judge_provider, endpoint.base_url, endpoint.api_key
+            )
 
             # 4. Process test cases
             start_index = job.progress_current

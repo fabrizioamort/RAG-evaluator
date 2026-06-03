@@ -34,7 +34,9 @@ def resolve_provider_endpoint(
 
     if name == "openrouter":
         default_url: str | None = "https://openrouter.ai/api/v1"
-        api_key = settings.OPENROUTER_API_KEY
+        # Fall back to OPENAI_API_KEY: OpenRouter keys are often stored there
+        # together with an OpenRouter base_url (OpenAI-compatible usage).
+        api_key = settings.OPENROUTER_API_KEY or settings.OPENAI_API_KEY
     elif name == "ollama":
         default_url = f"{settings.OLLAMA_BASE_URL.rstrip('/')}/v1"
         api_key = "ollama"  # OpenAI client requires a non-empty key
