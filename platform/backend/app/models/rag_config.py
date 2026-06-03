@@ -35,6 +35,10 @@ class RAGConfig(BaseModelNoUpdate):
     embedding_model: Mapped[str] = mapped_column(
         String(100), default="text-embedding-3-small", nullable=False
     )
+    embedding_provider: Mapped[str] = mapped_column(
+        String(50), default="openai", nullable=False
+    )
+    embedding_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="rag_configs")

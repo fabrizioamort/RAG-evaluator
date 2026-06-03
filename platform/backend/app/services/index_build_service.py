@@ -201,6 +201,8 @@ class IndexBuildService:
             "llm_model": rag_config.llm_model,
             "llm_base_url": rag_config.llm_base_url,
             "embedding_model": rag_config.embedding_model,
+            "embedding_provider": rag_config.embedding_provider,
+            "embedding_base_url": rag_config.embedding_base_url,
         }
 
     async def build_index(

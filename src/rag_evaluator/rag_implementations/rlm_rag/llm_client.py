@@ -223,11 +223,12 @@ class LLMClient:
         self.config = config
         self.token_usage = token_usage
 
-        # Initialize OpenAI client
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Initialize OpenAI-compatible client (endpoint resolved from config,
+        # falling back to the OPENAI_API_KEY env var).
+        api_key = config.llm_api_key or os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
-        self.client = OpenAI(api_key=api_key)
+            raise ValueError("No API key set (config.llm_api_key or OPENAI_API_KEY)")
+        self.client = OpenAI(api_key=api_key, base_url=config.llm_base_url)
 
         # Circuit breaker
         self._circuit = CircuitBreaker(CircuitConfig(

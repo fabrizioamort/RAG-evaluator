@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Play, Loader2, Database, FileText, ChevronRight, ChevronLeft, LucideIcon, Layers, Calendar, CheckSquare, Square, Info } from 'lucide-react'
-import { api, KnowledgeBase, TestSet, KnowledgeBaseIndex, EvaluationCreate, RAGTypeInfo, RAGTypeParameter } from '@/api/client'
+import { api, KnowledgeBase, TestSet, KnowledgeBaseIndex, EvaluationCreate, RAGTypeInfo, RAGTypeParameter, LLMProviderInfo } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { DialogShell } from '@/components/ui/DialogShell'
 
@@ -59,8 +59,11 @@ export function StartEvaluationWizard({
     const [selectedMetrics, setSelectedMetrics] = useState<string[]>(AVAILABLE_METRICS.map(m => m.id))
     const [evaluationName, setEvaluationName] = useState<string>('')
     const [includeReason, setIncludeReason] = useState(true)
+    const [providers, setProviders] = useState<LLMProviderInfo[]>([])
     const [queryModel, setQueryModel] = useState('')
+    const [queryProvider, setQueryProvider] = useState('')
     const [judgeModel, setJudgeModel] = useState('')
+    const [judgeProvider, setJudgeProvider] = useState('')
     const [queryTopK, setQueryTopK] = useState(5)
     const [queryParams, setQueryParams] = useState<Record<string, unknown>>({})
 
@@ -71,14 +74,16 @@ export function StartEvaluationWizard({
     const loadData = useCallback(async () => {
         setIsLoading(true)
         try {
-            const [kbRes, tsRes, ragTypeRes] = await Promise.all([
+            const [kbRes, tsRes, ragTypeRes, providerRes] = await Promise.all([
                 api.knowledgeBases.list(projectId),
                 api.testSets.list(projectId),
-                api.ragConfigs.getTypes()
+                api.ragConfigs.getTypes(),
+                api.ragConfigs.getLLMProviders(),
             ])
             setKbs(kbRes.data.items)
             setTestSets(tsRes.data.items)
             setRagTypes(ragTypeRes.data)
+            setProviders(providerRes.data)
         } catch (error) {
             console.error('Failed to load evaluation requirements:', error)
         } finally {
@@ -97,7 +102,9 @@ export function StartEvaluationWizard({
             setEvaluationName('')
             setIncludeReason(true)
             setQueryModel('')
+            setQueryProvider('')
             setJudgeModel('')
+            setJudgeProvider('')
             setQueryTopK(5)
             setQueryParams({})
             setIndexes([])
@@ -145,9 +152,11 @@ export function StartEvaluationWizard({
 
         const snapshot = (selectedIndexInfo.config_snapshot ?? {}) as {
             llm_model?: string
+            llm_provider?: string
             parameters?: Record<string, unknown>
         }
         const defaultModel = snapshot.llm_model || 'gpt-4o-mini'
+        const defaultProvider = snapshot.llm_provider || 'openai'
         const defaults: Record<string, unknown> = {}
         queryParamDefs.forEach(param => {
             const snapshotValue = snapshot.parameters?.[param.name]
@@ -156,7 +165,9 @@ export function StartEvaluationWizard({
         })
 
         setQueryModel(defaultModel)
+        setQueryProvider(defaultProvider)
         setJudgeModel(defaultModel)
+        setJudgeProvider(defaultProvider)
         setQueryTopK(5)
         setQueryParams(defaults)
     }, [selectedIndexInfo, queryParamDefs])
@@ -172,10 +183,12 @@ export function StartEvaluationWizard({
                 include_reason: includeReason,
                 query_overrides: {
                     llm_model: queryModel || undefined,
+                    llm_provider: queryProvider || undefined,
                     top_k: queryTopK,
                     parameters: queryParams,
                 },
                 eval_judge_model: judgeModel || undefined,
+                eval_judge_provider: judgeProvider || undefined,
             }
             const res = await api.evaluations.create(data)
             onStarted(res.data.id)
@@ -464,7 +477,19 @@ export function StartEvaluationWizard({
                                     </div>
 
                                     <div className="grid gap-4 sm:grid-cols-3">
-                                        <div className="space-y-1.5 sm:col-span-2">
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">Generation Provider</label>
+                                            <select
+                                                value={queryProvider}
+                                                onChange={(e) => setQueryProvider(e.target.value)}
+                                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                            >
+                                                {providers.map(p => (
+                                                    <option key={p.name} value={p.name}>{p.display_name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-muted-foreground uppercase">RAG Model</label>
                                             <input
                                                 value={queryModel}
@@ -483,7 +508,19 @@ export function StartEvaluationWizard({
                                                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                             />
                                         </div>
-                                        <div className="space-y-1.5 sm:col-span-3">
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">Judge Provider</label>
+                                            <select
+                                                value={judgeProvider}
+                                                onChange={(e) => setJudgeProvider(e.target.value)}
+                                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                            >
+                                                {providers.map(p => (
+                                                    <option key={p.name} value={p.name}>{p.display_name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1.5 sm:col-span-2">
                                             <label className="text-xs font-bold text-muted-foreground uppercase">Judge Model</label>
                                             <input
                                                 value={judgeModel}
@@ -492,6 +529,9 @@ export function StartEvaluationWizard({
                                             />
                                         </div>
                                     </div>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Generation and judge can use different providers. For RLM, orchestrator/worker models appear below as query parameters.
+                                    </p>
 
                                     {queryParamDefs.length > 0 && (
                                         <div className="grid gap-4 rounded-lg border border-border p-4">

@@ -242,6 +242,8 @@ export interface RAGConfig {
   llm_base_url: string | null
   llm_reasoning_effort: string | null
   embedding_model: string
+  embedding_provider: string
+  embedding_base_url: string | null
   created_at: string
 }
 
@@ -254,6 +256,8 @@ export interface RAGConfigCreate {
   llm_base_url?: string
   llm_reasoning_effort?: string | null
   embedding_model?: string
+  embedding_provider?: string
+  embedding_base_url?: string | null
 }
 
 export interface RAGTypeParameter {
@@ -283,6 +287,7 @@ export interface LLMProviderInfo {
   models: string[]
   requires_api_key: boolean
   supports_base_url: boolean
+  supports_embeddings: boolean
 }
 
 export interface SummaryMetrics {
@@ -315,12 +320,15 @@ export interface Evaluation {
   metric_config?: { metrics: string[] } | null
   query_overrides: QueryOverrides
   eval_judge_model: string | null
+  eval_judge_provider: string | null
   result_count: number
   created_at: string
 }
 
 export interface QueryOverrides {
   llm_model?: string
+  llm_provider?: string
+  llm_base_url?: string
   top_k?: number
   parameters?: Record<string, unknown>
 }
@@ -333,6 +341,7 @@ export interface EvaluationCreate {
   include_reason?: boolean
   query_overrides?: QueryOverrides
   eval_judge_model?: string
+  eval_judge_provider?: string
   notes?: string
   tags?: string[]
 }

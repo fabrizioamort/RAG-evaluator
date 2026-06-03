@@ -43,11 +43,10 @@ RAG_TYPES: dict[str, dict[str, str]] = {
 }
 
 # Top-level fields that are frozen into an index and cannot be overridden when
-# querying an existing index.
+# querying an existing index. Generation provider/base_url/model are NOT frozen:
+# generation happens at query time, so they can be switched per evaluation.
 BUILD_TIME_TOP_LEVEL_FIELDS = {
     "rag_type",
-    "llm_provider",
-    "llm_base_url",
     "embedding_model",
     "storage_path",
 }
@@ -414,7 +413,7 @@ def validate_query_overrides(rag_type: str, overrides: Any) -> dict[str, Any]:
     """
     data = _as_override_dict(overrides)
     normalized: dict[str, Any] = {}
-    allowed_top_level = {"llm_model", "top_k", "parameters"}
+    allowed_top_level = {"llm_model", "llm_provider", "llm_base_url", "top_k", "parameters"}
 
     for key in data:
         if key in allowed_top_level:
@@ -428,6 +427,18 @@ def validate_query_overrides(rag_type: str, overrides: Any) -> dict[str, Any]:
         if not isinstance(llm_model, str) or not llm_model.strip():
             raise ValueError("Query override `llm_model` must be a non-empty string.")
         normalized["llm_model"] = llm_model.strip()
+
+    llm_provider = data.get("llm_provider")
+    if llm_provider is not None:
+        if not isinstance(llm_provider, str) or not llm_provider.strip():
+            raise ValueError("Query override `llm_provider` must be a non-empty string.")
+        normalized["llm_provider"] = llm_provider.strip()
+
+    llm_base_url = data.get("llm_base_url")
+    if llm_base_url is not None:
+        if not isinstance(llm_base_url, str) or not llm_base_url.strip():
+            raise ValueError("Query override `llm_base_url` must be a non-empty string.")
+        normalized["llm_base_url"] = llm_base_url.strip()
 
     top_k = data.get("top_k")
     if top_k is not None:

@@ -15,7 +15,6 @@ from neo4j_graphrag.indexes import create_vector_index
 from neo4j_graphrag.llm.openai_llm import OpenAILLM
 
 from rag_evaluator.common.document_loaders import create_loader
-from rag_evaluator.config import settings
 from rag_evaluator.rag_implementations.graph_rag.neo4j_connection import (
     create_verified_neo4j_driver,
 )
@@ -33,6 +32,8 @@ class GraphIndexer:
         embedding_model: str,
         vector_index_name: str = "chunk_embeddings",
         label_prefix: str | None = None,
+        llm_client_kwargs: dict[str, str] | None = None,
+        embedding_client_kwargs: dict[str, str] | None = None,
     ) -> None:
         """Initialize the graph indexer.
 
@@ -44,6 +45,8 @@ class GraphIndexer:
             embedding_model: Embedding model name
             vector_index_name: Name of the Neo4j vector index
             label_prefix: Optional prefix for Neo4j labels for isolation
+            llm_client_kwargs: OpenAI client kwargs (api_key/base_url) for the LLM
+            embedding_client_kwargs: OpenAI client kwargs for the embedder
         """
         self.neo4j_uri = neo4j_uri
         self.neo4j_username = neo4j_username
@@ -52,6 +55,8 @@ class GraphIndexer:
         self.embedding_model = embedding_model
         self.vector_index_name = vector_index_name
         self.label_prefix = label_prefix
+        self.llm_client_kwargs = llm_client_kwargs or {}
+        self.embedding_client_kwargs = embedding_client_kwargs or {}
         self.chunk_label = self._prefix_label(DEFAULT_CHUNK_NODE_LABEL)
         self.document_label = self._prefix_label(DEFAULT_DOCUMENT_NODE_LABEL)
 
@@ -218,17 +223,13 @@ class GraphIndexer:
         if "nano" not in self.llm_model.lower() and "o1" not in self.llm_model.lower():
             llm_params["temperature"] = 0
 
-        openai_kwargs: dict[str, Any] = {}
-        if settings.openai_base_url:
-            openai_kwargs["base_url"] = settings.openai_base_url
-
         llm = OpenAILLM(
             model_name=self.llm_model,
             model_params=llm_params,
-            **openai_kwargs,
+            **self.llm_client_kwargs,
         )
 
-        embedder = OpenAIEmbeddings(model=self.embedding_model, **openai_kwargs)
+        embedder = OpenAIEmbeddings(model=self.embedding_model, **self.embedding_client_kwargs)
 
         schema = self._build_schema()
         lexical_graph_config = self._build_lexical_graph_config()

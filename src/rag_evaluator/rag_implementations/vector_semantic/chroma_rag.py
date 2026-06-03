@@ -8,10 +8,10 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 from langchain_core.documents import Document as LangChainDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from openai import OpenAI
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
 from rag_evaluator.common.document_loaders import create_loader
+from rag_evaluator.common.openai_client import embedding_client, llm_client
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievalTrace,
@@ -53,12 +53,10 @@ class ChromaSemanticRAG(BaseRAG):
             metadata={"hnsw:space": "cosine"},
         )
 
-        # Initialize OpenAI client with timeout
-        self.openai_client = OpenAI(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-            timeout=settings.openai_timeout,
-        )
+        # Initialize OpenAI-compatible clients (generation and embeddings are
+        # independent endpoints resolved from the config).
+        self.openai_client = llm_client(self.config)
+        self.embedding_client = embedding_client(self.config)
 
         # Text splitter for chunking documents
         chunk_size = self.config.parameters.get("chunk_size", 1000)
@@ -83,6 +81,8 @@ class ChromaSemanticRAG(BaseRAG):
             self.client = None  # type: ignore[assignment]
             if hasattr(self, "openai_client"):
                 self.openai_client.close()
+            if hasattr(self, "embedding_client"):
+                self.embedding_client.close()
         except Exception:
             pass
 
@@ -96,7 +96,7 @@ class ChromaSemanticRAG(BaseRAG):
             Embedding vector
         """
         model = self.config.embedding_model or settings.embedding_model
-        response = self.openai_client.embeddings.create(model=model, input=text)
+        response = self.embedding_client.embeddings.create(model=model, input=text)
         # Track embedding tokens
         if hasattr(response, "usage") and response.usage:
             self._token_usage.add_embedding_tokens(response.usage.total_tokens)

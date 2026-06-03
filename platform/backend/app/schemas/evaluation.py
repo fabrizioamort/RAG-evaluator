@@ -145,6 +145,11 @@ class EvaluationCreate(EvaluationBase):
         max_length=100,
         description="DeepEval judge model; defaults to the effective RAG generation model",
     )
+    eval_judge_provider: str | None = Field(
+        default=None,
+        max_length=50,
+        description="DeepEval judge provider; defaults to the generation provider",
+    )
     # knowledge_base_id and rag_config_id are removed as they are derived from the index
 
 
@@ -181,6 +186,7 @@ class EvaluationResponse(EvaluationBase, BaseResponseSchema):
         description="Query-time overrides used by this evaluation",
     )
     eval_judge_model: str | None = Field(default=None, description="DeepEval judge model")
+    eval_judge_provider: str | None = Field(default=None, description="DeepEval judge provider")
     error_message: str | None = Field(default=None, description="Error if failed")
 
     # Counts

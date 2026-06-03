@@ -86,6 +86,10 @@ class RLMConfig:
     # === Reasoning ===
     orchestrator_reasoning_effort: str | None = None
 
+    # === Endpoint (OpenAI-compatible) ===
+    llm_base_url: str | None = None
+    llm_api_key: str | None = None
+
     def __post_init__(self) -> None:
         """Validate configuration values."""
         errors = []
@@ -158,6 +162,11 @@ def rlm_config_from_rag_config(config: RAGConfig) -> RLMConfig:
 
     if config.llm_reasoning_effort and "orchestrator_reasoning_effort" not in params:
         params["orchestrator_reasoning_effort"] = config.llm_reasoning_effort
+
+    if config.llm_base_url and "llm_base_url" not in params:
+        params["llm_base_url"] = config.llm_base_url
+    if config.llm_api_key and "llm_api_key" not in params:
+        params["llm_api_key"] = config.llm_api_key
 
     field_names = {field.name for field in fields(RLMConfig)}
     rlm_params = {key: value for key, value in params.items() if key in field_names}

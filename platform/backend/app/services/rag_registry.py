@@ -59,6 +59,7 @@ class RAGRegistry:
                 models=["gpt-5.1", "gpt-5-mini", "gpt-5-nano"],
                 requires_api_key=True,
                 supports_base_url=True,
+                supports_embeddings=True,
             ),
             LLMProviderInfo(
                 name="openrouter",
@@ -68,9 +69,11 @@ class RAGRegistry:
                     "openrouter/google/gemini-2.5-pro",
                     "openrouter/openai/gpt-5-mini",
                     "openrouter/meta-llama/llama-4-maverick",
+                    "openrouter/deepseek/deepseek-v4-flash",
                 ],
                 requires_api_key=True,
                 supports_base_url=False,
+                supports_embeddings=False,
             ),
             LLMProviderInfo(
                 name="anthropic",
@@ -78,6 +81,7 @@ class RAGRegistry:
                 models=["claude-3-5-sonnet-20240620", "claude-3-haiku-20240307"],
                 requires_api_key=True,
                 supports_base_url=False,
+                supports_embeddings=False,
             ),
             LLMProviderInfo(
                 name="ollama",
@@ -85,5 +89,6 @@ class RAGRegistry:
                 models=["llama3", "mistral", "phi3"],
                 requires_api_key=False,
                 supports_base_url=True,
+                supports_embeddings=True,
             ),
         ]

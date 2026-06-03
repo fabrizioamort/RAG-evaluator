@@ -15,6 +15,16 @@ class QueryOverrides(BaseSchema):
         max_length=100,
         description="RAG generation/orchestration model override",
     )
+    llm_provider: str | None = Field(
+        default=None,
+        max_length=50,
+        description="RAG generation provider override (OpenAI-compatible)",
+    )
+    llm_base_url: str | None = Field(
+        default=None,
+        max_length=500,
+        description="RAG generation base URL override",
+    )
     top_k: int | None = Field(
         default=None,
         ge=1,

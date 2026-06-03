@@ -30,6 +30,7 @@ from app.services.artifact_store import ArtifactStore, get_artifact_store
 from app.services.job_checkpoint_service import get_checkpoint_service
 from app.services.job_event_log import get_job_event_log
 from app.services.llm_provider import LLMProviderService
+from app.services.provider_resolver import resolve_provider_endpoint
 from app.services.rag_adapter import get_rag_adapter_service
 from app.utils.logging_config import get_logger
 
@@ -39,8 +40,15 @@ logger = get_logger(__name__)
 class SafeDeepEvalLLM(DeepEvalBaseLLM):
     """DeepEval LLM wrapper that uses our safe LLMProviderService."""
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        provider_name: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
         self.model_name = model_name
+        self.provider_name = provider_name
+        self.base_url = base_url
         self.provider = LLMProviderService()
 
     def get_model_name(self) -> str:
@@ -76,6 +84,8 @@ class SafeDeepEvalLLM(DeepEvalBaseLLM):
             response = await self.provider.completion(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
+                provider=self.provider_name,
+                base_url=self.base_url,
                 **completion_kwargs,
             )
             content = response.content
@@ -173,14 +183,21 @@ class EvaluationRunner:
 
         self.test_cases = sorted(self.evaluation.test_set.test_cases, key=lambda x: x.created_at)
 
-    def _initialize_metrics(self, llm_model: str) -> List[Any]:
+    def _initialize_metrics(
+        self,
+        llm_model: str,
+        provider: str | None = None,
+        base_url: str | None = None,
+    ) -> List[Any]:
         """Initialize DeepEval metrics based on evaluation configuration."""
         include_reason = settings.EVAL_INCLUDE_REASON
         if self.evaluation and self.evaluation.metric_config:
             config_value = self.evaluation.metric_config.get("include_reason")
             if config_value is not None:
                 include_reason = bool(config_value)
-        safe_model = SafeDeepEvalLLM(model_name=llm_model)
+        safe_model = SafeDeepEvalLLM(
+            model_name=llm_model, provider_name=provider, base_url=base_url
+        )
 
         # Get selected metrics from config, fallback to all
         selected_metrics = ["faithfulness", "relevancy", "precision", "recall", "g_eval"]
@@ -286,9 +303,13 @@ class EvaluationRunner:
                 )
                 llm_model = self.evaluation.rag_config.llm_model
 
-            # 3. Initialize metrics
+            # 3. Initialize metrics (judge bucket: own provider/model)
             judge_model = self.evaluation.eval_judge_model or llm_model
-            metrics = self._initialize_metrics(judge_model)
+            judge_provider = self.evaluation.eval_judge_provider or None
+            judge_base_url = None
+            if judge_provider == "ollama":
+                judge_base_url = resolve_provider_endpoint(judge_provider).base_url
+            metrics = self._initialize_metrics(judge_model, judge_provider, judge_base_url)
 
             # 4. Process test cases
             start_index = job.progress_current

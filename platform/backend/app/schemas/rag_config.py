@@ -36,6 +36,14 @@ class RAGConfigBase(BaseSchema):
         max_length=100,
         description="Embedding model used for index build artifacts",
     )
+    embedding_provider: str = Field(
+        default="openai",
+        max_length=50,
+        description="Embedding provider (OpenAI-compatible). Frozen into each index.",
+    )
+    embedding_base_url: str | None = Field(
+        default=None, max_length=500, description="Custom embedding API base URL"
+    )
 
 
 class RAGConfigCreate(RAGConfigBase):
@@ -58,6 +66,12 @@ class RAGConfigUpdate(BaseSchema):
         default=None, max_length=20, description="Reasoning effort level"
     )
     embedding_model: str | None = Field(default=None, max_length=100, description="Embedding model")
+    embedding_provider: str | None = Field(
+        default=None, max_length=50, description="Embedding provider"
+    )
+    embedding_base_url: str | None = Field(
+        default=None, max_length=500, description="Custom embedding API base URL"
+    )
 
 
 class RAGConfigResponse(RAGConfigBase, BaseResponseSchema):
@@ -122,4 +136,8 @@ class LLMProviderInfo(BaseSchema):
     requires_api_key: bool = Field(default=True, description="Whether API key is required")
     supports_base_url: bool = Field(
         default=False, description="Whether custom base URL is supported"
+    )
+    supports_embeddings: bool = Field(
+        default=False,
+        description="Whether the provider exposes OpenAI-compatible embeddings",
     )

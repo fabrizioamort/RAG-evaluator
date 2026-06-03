@@ -10,6 +10,10 @@ from neo4j_graphrag.llm.openai_llm import OpenAILLM
 from neo4j_graphrag.retrievers import VectorCypherRetriever
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
+from rag_evaluator.common.openai_client import (
+    embedding_openai_kwargs,
+    llm_openai_kwargs,
+)
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievalTrace,
@@ -88,13 +92,13 @@ class Neo4jGraphRAG(BaseRAG):
         embedding_model = self.config.embedding_model or settings.embedding_model
         llm_model = self.config.llm_model or settings.openai_model
 
-        # Build kwargs for OpenAI-compatible base_url (e.g. OpenRouter)
-        openai_kwargs: dict[str, Any] = {}
-        if settings.openai_base_url:
-            openai_kwargs["base_url"] = settings.openai_base_url
+        # OpenAI-compatible client kwargs resolved from config (provider/base_url/
+        # api_key); generation and embeddings can target different endpoints.
+        llm_kwargs = llm_openai_kwargs(self.config)
+        embed_kwargs = embedding_openai_kwargs(self.config)
 
         # Initialize embedder and LLM
-        self.embedder = OpenAIEmbeddings(model=embedding_model, **openai_kwargs)
+        self.embedder = OpenAIEmbeddings(model=embedding_model, **embed_kwargs)
 
         # LLM configuration for answer generation
         llm_params: dict[str, Any] = {}
@@ -105,7 +109,7 @@ class Neo4jGraphRAG(BaseRAG):
         self.llm = OpenAILLM(
             model_name=llm_model,
             model_params=llm_params,
-            **openai_kwargs,
+            **llm_kwargs,
         )
 
         # Custom Cypher query for graph traversal retrieval
@@ -181,6 +185,8 @@ class Neo4jGraphRAG(BaseRAG):
             embedding_model=embedding_model,
             vector_index_name=self.vector_index_name,
             label_prefix=self.label_prefix,
+            llm_client_kwargs=llm_openai_kwargs(self.config),
+            embedding_client_kwargs=embedding_openai_kwargs(self.config),
         )
 
         print(f"\nIndexing documents from: {documents_path}")

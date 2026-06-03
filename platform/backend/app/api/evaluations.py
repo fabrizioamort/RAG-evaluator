@@ -88,6 +88,7 @@ def _evaluation_to_response(eval_model: Evaluation, result_count: int = 0) -> Ev
         tags=eval_model.tags if isinstance(eval_model.tags, list) else [],
         query_overrides=eval_model.query_overrides or {},
         eval_judge_model=eval_model.eval_judge_model,
+        eval_judge_provider=eval_model.eval_judge_provider,
         error_message=eval_model.error_message,
         created_at=eval_model.created_at,
         metric_config=eval_model.metric_config,
@@ -161,6 +162,8 @@ async def create_evaluation(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     eval_judge_model = evaluation_data.eval_judge_model or effective.generation_model
+    generation_provider = effective.effective_config_snapshot.get("llm_provider", "openai")
+    eval_judge_provider = evaluation_data.eval_judge_provider or generation_provider
 
     manifest = RunManifest(
         rag_config_snapshot={
@@ -218,6 +221,7 @@ async def create_evaluation(
         metric_config=metric_config,
         query_overrides=effective.query_overrides,
         eval_judge_model=eval_judge_model,
+        eval_judge_provider=eval_judge_provider,
     )
     if not evaluation.test_set_id:
         evaluation.test_set_id = test_set.id

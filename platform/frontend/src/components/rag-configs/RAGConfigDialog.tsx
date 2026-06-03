@@ -17,6 +17,8 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
     const [model, setModel] = useState('')
     const [reasoningEffort, setReasoningEffort] = useState<string>('')
     const [embeddingModel, setEmbeddingModel] = useState('text-embedding-3-small')
+    const [embeddingProvider, setEmbeddingProvider] = useState('openai')
+    const [embeddingBaseUrl, setEmbeddingBaseUrl] = useState('')
     const [parameters, setParameters] = useState<Record<string, unknown>>({})
     const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -35,6 +37,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
 
     const types = typesResponse?.data || []
     const providers = providersResponse?.data || []
+    const embeddingProviders = providers.filter(p => p.supports_embeddings)
     const selectedTypeInfo = types.find(t => t.name === ragType)
     const selectedProviderInfo = providers.find(p => p.name === provider)
 
@@ -46,6 +49,8 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
             setModel(config.llm_model)
             setReasoningEffort(config.llm_reasoning_effort || '')
             setEmbeddingModel(config.embedding_model)
+            setEmbeddingProvider(config.embedding_provider || 'openai')
+            setEmbeddingBaseUrl(config.embedding_base_url || '')
             setParameters(config.parameters)
         } else {
             setName('')
@@ -54,6 +59,8 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
             setModel('gpt-4o-mini')
             setReasoningEffort('')
             setEmbeddingModel('text-embedding-3-small')
+            setEmbeddingProvider('openai')
+            setEmbeddingBaseUrl('')
             setParameters({})
         }
     }, [config, isOpen])
@@ -91,6 +98,8 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                 llm_model: model,
                 llm_reasoning_effort: reasoningEffort || null,
                 embedding_model: embeddingModel,
+                embedding_provider: embeddingProvider,
+                embedding_base_url: embeddingBaseUrl || null,
                 parameters,
             })
             onClose()
@@ -252,6 +261,22 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                                 </div>
 
                                 <div className="space-y-2">
+                                    <label className="text-sm font-semibold">Embedding Provider</label>
+                                    <select
+                                        value={embeddingProvider}
+                                        onChange={(e) => setEmbeddingProvider(e.target.value)}
+                                        className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
+                                    >
+                                        {embeddingProviders.map(p => (
+                                            <option key={p.name} value={p.name}>{p.display_name}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Independent from the generation provider. OpenAI-compatible only.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-2">
                                     <label className="text-sm font-semibold">Embedding Model</label>
                                     <input
                                         type="text"
@@ -262,6 +287,17 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                                     <p className="text-[11px] text-muted-foreground">
                                         Build-time value frozen into each new index.
                                     </p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold">Embedding Base URL <span className="font-normal text-muted-foreground">(optional)</span></label>
+                                    <input
+                                        type="text"
+                                        value={embeddingBaseUrl}
+                                        onChange={(e) => setEmbeddingBaseUrl(e.target.value)}
+                                        placeholder="Provider default"
+                                        className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
+                                    />
                                 </div>
                             </div>
                         </div>

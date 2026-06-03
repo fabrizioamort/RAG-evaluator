@@ -32,6 +32,7 @@ from rag_evaluator.rag_implementations.rlm_rag.rlm_rag import rlm_config_from_ra
 
 from app.config import settings
 from app.models.rag_config import RAGConfig as RAGConfigModel
+from app.services.provider_resolver import resolve_provider_endpoint
 from app.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -105,6 +106,25 @@ class RAGAdapterService:
         """
         return get_rag_class(rag_type)
 
+    def _apply_provider_credentials(self, rag_config: RAGConfig) -> None:
+        """Resolve provider -> base_url/api_key for generation and embeddings.
+
+        API keys are injected at runtime only; they are never stored in config
+        snapshots. An explicit base_url on the config takes precedence over the
+        provider default.
+        """
+        llm_endpoint = resolve_provider_endpoint(
+            rag_config.llm_provider, rag_config.llm_base_url
+        )
+        rag_config.llm_base_url = llm_endpoint.base_url
+        rag_config.llm_api_key = llm_endpoint.api_key
+
+        embedding_endpoint = resolve_provider_endpoint(
+            rag_config.embedding_provider, rag_config.embedding_base_url
+        )
+        rag_config.embedding_base_url = embedding_endpoint.base_url
+        rag_config.embedding_api_key = embedding_endpoint.api_key
+
     def _resolve_graph_neo4j_connection(
         self, params: dict[str, Any] | None
     ) -> tuple[str, str, str]:
@@ -145,8 +165,11 @@ class RAGAdapterService:
             llm_model=config_model.llm_model,
             llm_base_url=config_model.llm_base_url,
             embedding_model=getattr(config_model, "embedding_model", "text-embedding-3-small"),
+            embedding_provider=getattr(config_model, "embedding_provider", "openai"),
+            embedding_base_url=getattr(config_model, "embedding_base_url", None),
             llm_reasoning_effort=getattr(config_model, "llm_reasoning_effort", None),
         )
+        self._apply_provider_credentials(rag_config)
 
         # Get the RAG class
         rag_class = self._get_rag_class(config_model.rag_type)
@@ -297,8 +320,11 @@ class RAGAdapterService:
             llm_model=config_snapshot.get("llm_model", "gpt-4o-mini"),
             llm_base_url=config_snapshot.get("llm_base_url"),
             embedding_model=config_snapshot.get("embedding_model", "text-embedding-3-small"),
+            embedding_provider=config_snapshot.get("embedding_provider", "openai"),
+            embedding_base_url=config_snapshot.get("embedding_base_url"),
             llm_reasoning_effort=config_snapshot.get("llm_reasoning_effort"),
         )
+        self._apply_provider_credentials(rag_config)
 
         rag_type = config_snapshot.get("rag_type", "")
         if rag_type not in RAG_TYPES:
@@ -376,6 +402,8 @@ class RAGAdapterService:
             "embedding_model",
             getattr(index, "embedding_model", None) or "text-embedding-3-small",
         )
+        build_snapshot.setdefault("embedding_provider", "openai")
+        build_snapshot.setdefault("embedding_base_url", None)
         if rag_type == "graph_rag":
             build_snapshot["parameters"].setdefault(
                 "extraction_model", build_snapshot["llm_model"]
@@ -407,6 +435,12 @@ class RAGAdapterService:
                 and "orchestrator_model" not in normalized_overrides.get("parameters", {})
             ):
                 effective_parameters["orchestrator_model"] = normalized_overrides["llm_model"]
+
+        # Generation provider/base_url can be switched at query time.
+        if normalized_overrides.get("llm_provider"):
+            effective_snapshot["llm_provider"] = normalized_overrides["llm_provider"]
+        if normalized_overrides.get("llm_base_url") is not None:
+            effective_snapshot["llm_base_url"] = normalized_overrides["llm_base_url"]
 
         top_k = int(normalized_overrides.get("top_k", 5))
         generation_model = effective_snapshot.get("llm_model", "gpt-4o-mini")

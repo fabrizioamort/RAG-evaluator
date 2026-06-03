@@ -32,7 +32,11 @@ class RAGConfig:
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o-mini"
     llm_base_url: str | None = None
+    llm_api_key: str | None = None
     embedding_model: str = "text-embedding-3-small"
+    embedding_provider: str = "openai"
+    embedding_base_url: str | None = None
+    embedding_api_key: str | None = None
     llm_reasoning_effort: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -49,6 +53,8 @@ class RAGConfig:
             "llm_model": self.llm_model,
             "llm_base_url": self.llm_base_url,
             "embedding_model": self.embedding_model,
+            "embedding_provider": self.embedding_provider,
+            "embedding_base_url": self.embedding_base_url,
             "llm_reasoning_effort": self.llm_reasoning_effort,
         }
 
@@ -70,6 +76,8 @@ class RAGConfig:
             llm_model=data.get("llm_model", "gpt-4o-mini"),
             llm_base_url=data.get("llm_base_url"),
             embedding_model=data.get("embedding_model", "text-embedding-3-small"),
+            embedding_provider=data.get("embedding_provider", "openai"),
+            embedding_base_url=data.get("embedding_base_url"),
             llm_reasoning_effort=data.get("llm_reasoning_effort"),
         )
 

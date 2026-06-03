@@ -7,12 +7,12 @@ from typing import Any
 from fastembed import SparseTextEmbedding
 from langchain_core.documents import Document as LangChainDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from openai import OpenAI
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.exceptions import UnexpectedResponse
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
 from rag_evaluator.common.document_loaders import create_loader
+from rag_evaluator.common.openai_client import embedding_client, llm_client
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievalTrace,
@@ -55,12 +55,10 @@ class HybridSearchRAG(BaseRAG):
                     "so that minor versions differ by at most 1."
                 )
 
-        # Initialize OpenAI client for dense embeddings
-        self.openai_client = OpenAI(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-            timeout=settings.openai_timeout,
-        )
+        # Initialize OpenAI-compatible clients (generation and dense embeddings
+        # are independent endpoints resolved from the config).
+        self.openai_client = llm_client(self.config)
+        self.embedding_client = embedding_client(self.config)
 
         # Initialize FastEmbed for sparse embeddings (SPLADE)
         self.sparse_model = SparseTextEmbedding(
@@ -93,6 +91,8 @@ class HybridSearchRAG(BaseRAG):
                 self.client = None  # type: ignore[assignment]
             if hasattr(self, "openai_client") and self.openai_client:
                 self.openai_client.close()
+            if hasattr(self, "embedding_client") and self.embedding_client:
+                self.embedding_client.close()
         except Exception:
             pass
 
@@ -135,7 +135,7 @@ class HybridSearchRAG(BaseRAG):
             Dense embedding vector (1536 dimensions)
         """
         model = self.config.embedding_model or settings.embedding_model
-        response = self.openai_client.embeddings.create(
+        response = self.embedding_client.embeddings.create(
             model=model,
             input=text,
         )
@@ -176,9 +176,9 @@ class HybridSearchRAG(BaseRAG):
         """
         texts = [chunk.page_content for chunk in batch_chunks]
 
-        # Batch dense embeddings (OpenAI)
+        # Batch dense embeddings (OpenAI-compatible)
         model = self.config.embedding_model or settings.embedding_model
-        dense_response = self.openai_client.embeddings.create(
+        dense_response = self.embedding_client.embeddings.create(
             model=model,
             input=texts,
         )

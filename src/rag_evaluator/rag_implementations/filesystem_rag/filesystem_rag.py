@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
+from rag_evaluator.common.openai_client import llm_client
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievalTrace,
@@ -146,6 +147,7 @@ class FilesystemRAG(BaseRAG):
             max_iterations=self.max_iterations,
             max_tool_calls=self.max_tool_calls,
             max_file_reads=self.max_file_reads,
+            client=llm_client(self.config),
             reasoning_effort=self.config.llm_reasoning_effort if self.config else None,
         )
 
