@@ -29,6 +29,7 @@ class RAGConfigBase(BaseSchema):
     llm_reasoning_effort: str | None = Field(
         default=None,
         max_length=20,
+        pattern="^(low|medium|high)$",
         description="Reasoning effort level (low, medium, high) for supported models",
     )
     embedding_model: str = Field(
@@ -63,7 +64,10 @@ class RAGConfigUpdate(BaseSchema):
         default=None, max_length=500, description="Custom LLM API base URL"
     )
     llm_reasoning_effort: str | None = Field(
-        default=None, max_length=20, description="Reasoning effort level"
+        default=None,
+        max_length=20,
+        pattern="^(low|medium|high)$",
+        description="Reasoning effort level",
     )
     embedding_model: str | None = Field(default=None, max_length=100, description="Embedding model")
     embedding_provider: str | None = Field(
@@ -133,6 +137,10 @@ class LLMProviderInfo(BaseSchema):
     name: str = Field(description="Provider identifier")
     display_name: str = Field(description="Human-readable name")
     models: list[str] = Field(description="Available model names")
+    model_capabilities: dict[str, dict[str, bool]] = Field(
+        default_factory=dict,
+        description="Model capability metadata keyed by model name",
+    )
     requires_api_key: bool = Field(default=True, description="Whether API key is required")
     supports_base_url: bool = Field(
         default=False, description="Whether custom base URL is supported"

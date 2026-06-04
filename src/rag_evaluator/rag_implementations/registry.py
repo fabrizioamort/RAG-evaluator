@@ -413,7 +413,14 @@ def validate_query_overrides(rag_type: str, overrides: Any) -> dict[str, Any]:
     """
     data = _as_override_dict(overrides)
     normalized: dict[str, Any] = {}
-    allowed_top_level = {"llm_model", "llm_provider", "llm_base_url", "top_k", "parameters"}
+    allowed_top_level = {
+        "llm_model",
+        "llm_provider",
+        "llm_base_url",
+        "llm_reasoning_effort",
+        "top_k",
+        "parameters",
+    }
 
     for key in data:
         if key in allowed_top_level:
@@ -439,6 +446,14 @@ def validate_query_overrides(rag_type: str, overrides: Any) -> dict[str, Any]:
         if not isinstance(llm_base_url, str) or not llm_base_url.strip():
             raise ValueError("Query override `llm_base_url` must be a non-empty string.")
         normalized["llm_base_url"] = llm_base_url.strip()
+
+    llm_reasoning_effort = data.get("llm_reasoning_effort")
+    if llm_reasoning_effort is not None:
+        if llm_reasoning_effort not in {"low", "medium", "high"}:
+            raise ValueError(
+                "Query override `llm_reasoning_effort` must be one of: low, medium, high."
+            )
+        normalized["llm_reasoning_effort"] = llm_reasoning_effort
 
     top_k = data.get("top_k")
     if top_k is not None:

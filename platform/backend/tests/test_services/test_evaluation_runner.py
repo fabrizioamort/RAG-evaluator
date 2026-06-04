@@ -1,6 +1,6 @@
 """Tests for EvaluationRunner service."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -275,7 +275,11 @@ async def test_evaluation_runner_ready_index_loads_without_prepare(
     await db_session.refresh(evaluation)
 
     mock_rag = MagicMock()
-    mock_effective = MagicMock(top_k=11, generation_model="gpt-query")
+    mock_effective = MagicMock(
+        top_k=11,
+        generation_model="gpt-query",
+        effective_config_snapshot={"llm_provider": "openai"},
+    )
     mock_adapter = MagicMock()
     mock_adapter.load_rag_for_index_query.return_value = (mock_rag, mock_effective)
     mock_adapter.prepare_documents = AsyncMock()
@@ -304,4 +308,4 @@ async def test_evaluation_runner_ready_index_loads_without_prepare(
     mock_adapter.load_rag_for_index_query.assert_called_once()
     mock_adapter.prepare_documents.assert_not_called()
     mock_adapter.query_with_trace.assert_awaited_once_with(mock_rag, "What is indexed?", 11)
-    mock_init_metrics.assert_called_once_with("gpt-judge")
+    mock_init_metrics.assert_called_once_with("gpt-judge", "openai", None, ANY)

@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.evaluation import Evaluation
+from app.models.evaluation_result import EvaluationResult
 from app.models.knowledge_base import KnowledgeBase
 from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.project import Project
@@ -193,7 +194,11 @@ class TestCreateEvaluation:
         payload = {
             "knowledge_base_index_id": str(sample_index.id),
             "test_set_id": str(sample_test_set.id),
-            "query_overrides": {"llm_model": "gpt-5-mini", "top_k": 8},
+            "query_overrides": {
+                "llm_model": "gpt-5-mini",
+                "llm_reasoning_effort": "high",
+                "top_k": 8,
+            },
             "eval_judge_model": "gpt-5.1",
         }
 
@@ -202,6 +207,7 @@ class TestCreateEvaluation:
         assert response.status_code == 201
         data = response.json()
         assert data["query_overrides"]["llm_model"] == "gpt-5-mini"
+        assert data["query_overrides"]["llm_reasoning_effort"] == "high"
         assert data["query_overrides"]["top_k"] == 8
         assert data["eval_judge_model"] == "gpt-5.1"
 
@@ -210,6 +216,8 @@ class TestCreateEvaluation:
         manifest = manifest_response.json()
         assert manifest["build_config_snapshot"]["llm_model"] == "gpt-4o-mini"
         assert manifest["effective_config_snapshot"]["llm_model"] == "gpt-5-mini"
+        assert manifest["effective_config_snapshot"]["llm_reasoning_effort"] == "high"
+        assert manifest["query_overrides"]["llm_reasoning_effort"] == "high"
         assert manifest["query_overrides"]["top_k"] == 8
         assert manifest["generation_model"] == "gpt-5-mini"
         assert manifest["eval_judge_model"] == "gpt-5.1"
@@ -305,6 +313,32 @@ class TestGetEvaluation:
         data = response.json()
         assert data["total"] == 1
         assert data["items"][0]["id"] == str(sample_evaluation.id)
+
+    @pytest.mark.asyncio
+    async def test_get_results_falls_back_to_ordered_test_cases(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        sample_evaluation: Evaluation,
+    ) -> None:
+        """Result details should include Q&A even when result test case FK is missing."""
+        result = EvaluationResult(
+            evaluation_id=sample_evaluation.id,
+            test_case_id=None,
+            generated_answer="2",
+            g_eval_score=1.0,
+        )
+        db_session.add(result)
+        await db_session.commit()
+
+        response = await client.get(f"/api/v1/evaluations/{sample_evaluation.id}/results")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["question"] == "What is 1+1?"
+        assert data["items"][0]["expected_answer"] == "2"
+        assert data["items"][0]["generated_answer"] == "2"
 
 
 class TestEvaluationControl:

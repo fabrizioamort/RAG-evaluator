@@ -5,7 +5,9 @@ from typing import Any
 
 import litellm
 from pydantic import BaseModel
+from rag_evaluator.common.llm_utils import is_reasoning_model
 
+from app.services.provider_resolver import normalize_model_for_provider
 from app.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -52,6 +54,28 @@ class LLMProviderService:
         litellm.failure_callback = []
         litellm.callbacks = []
 
+    def _completion_model_for_litellm(
+        self,
+        model: str,
+        provider: str | None,
+        base_url: str | None,
+    ) -> str:
+        """Build the LiteLLM model string for a completion request.
+
+        OpenRouter exposes an OpenAI-compatible endpoint. Routing it through
+        LiteLLM's generic OpenAI-compatible adapter avoids provider-specific
+        optional params that newer OpenAI clients reject.
+        """
+        provider_name = (provider or "").lower()
+        if provider_name == "openrouter" and base_url:
+            openrouter_model = normalize_model_for_provider(provider, model)
+            return f"openai/{openrouter_model}"
+
+        if provider and "/" not in model:
+            return f"{provider}/{model}"
+
+        return model
+
     async def completion(
         self,
         model: str,
@@ -81,23 +105,18 @@ class LLMProviderService:
             Standardized completion response
         """
         # Form the model string for litellm if needed
-        full_model = model
-        if provider and "/" not in model:
-            full_model = f"{provider}/{model}"
+        full_model = self._completion_model_for_litellm(model, provider, base_url)
 
         start_time = time.time()
 
         # Avoid temperature for reasoning models
-        model_name_lower = model.lower()
-        is_reasoning = any(
-            x in model_name_lower for x in ["o1-", "o3-", "/o1", "/o3", "gpt-5"]
-        ) or model_name_lower in ["o1", "o3", "gpt-5"]
+        is_reasoning = is_reasoning_model(model)
 
         actual_temp: float | None = temperature
         if is_reasoning:
             actual_temp = None
 
-        if reasoning_effort is not None:
+        if reasoning_effort is not None and is_reasoning:
             kwargs["reasoning_effort"] = reasoning_effort
 
         # Passing an explicit api_key uses litellm's well-tested credential path
@@ -109,7 +128,7 @@ class LLMProviderService:
             response = await litellm.acompletion(
                 model=full_model,
                 messages=messages,
-                api_base=base_url,
+                base_url=base_url,
                 temperature=actual_temp,
                 max_tokens=max_tokens,
                 **kwargs,
@@ -162,7 +181,7 @@ class LLMProviderService:
                     retry_response = await litellm.acompletion(
                         model=full_model,
                         messages=messages,
-                        api_base=base_url,
+                        base_url=base_url,
                         temperature=None,  # Explicitly remove temperature
                         max_tokens=max_tokens,
                         **kwargs,

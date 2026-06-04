@@ -121,6 +121,28 @@ class TestDiscoveryEndpoints:
         provider_names = [p["name"] for p in data]
         assert "openai" in provider_names
         assert "ollama" in provider_names
+        openai = next(p for p in data if p["name"] == "openai")
+        assert "gpt-5.5" in openai["models"]
+        assert "gpt-5.4-mini" in openai["models"]
+        assert "gpt-5.4-nano" in openai["models"]
+        assert openai["model_capabilities"]["gpt-5.5"]["supports_reasoning_effort"] is True
+
+        openrouter = next(p for p in data if p["name"] == "openrouter")
+        assert "openai/gpt-5.4-nano" in openrouter["models"]
+        assert "openrouter/openai/gpt-5.4-nano" not in openrouter["models"]
+        assert (
+            openrouter["model_capabilities"]["openai/gpt-5.4-nano"][
+                "supports_reasoning_effort"
+            ]
+            is True
+        )
+
+        deepseek = next(p for p in data if p["name"] == "deepseek")
+        assert "deepseek-v4-flash" in deepseek["models"]
+        assert (
+            deepseek["model_capabilities"]["deepseek-v4-flash"]["supports_reasoning_effort"]
+            is True
+        )
 
 
 class TestRAGConfigCRUD:
@@ -135,8 +157,9 @@ class TestRAGConfigCRUD:
             "name": "New Hybrid Config",
             "rag_type": "vector_hybrid",
             "parameters": {"collection_name": "hybrid_docs"},
-            "llm_provider": "anthropic",
-            "llm_model": "claude-3-haiku-20240307",
+            "llm_provider": "openai",
+            "llm_model": "gpt-5.5",
+            "llm_reasoning_effort": "medium",
         }
 
         response = await client.post(
@@ -148,7 +171,8 @@ class TestRAGConfigCRUD:
         assert data["name"] == "New Hybrid Config"
         assert data["rag_type"] == "vector_hybrid"
         assert data["project_id"] == str(sample_project.id)
-        assert data["llm_provider"] == "anthropic"
+        assert data["llm_provider"] == "openai"
+        assert data["llm_reasoning_effort"] == "medium"
 
     @pytest.mark.asyncio
     async def test_create_graph_rag_config_blank_params_use_env_fallback(
@@ -250,7 +274,8 @@ class TestRAGConfigCRUD:
         """Test updating a RAG config."""
         payload = {
             "name": "Updated Name",
-            "llm_model": "gpt-4o",
+            "llm_model": "gpt-5.4-mini",
+            "llm_reasoning_effort": "low",
         }
 
         response = await client.put(f"/api/v1/rag-configs/{sample_rag_config.id}", json=payload)
@@ -258,7 +283,8 @@ class TestRAGConfigCRUD:
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "Updated Name"
-        assert data["llm_model"] == "gpt-4o"
+        assert data["llm_model"] == "gpt-5.4-mini"
+        assert data["llm_reasoning_effort"] == "low"
         # Others should be unchanged
         assert data["rag_type"] == sample_rag_config.rag_type
 

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
+from rag_evaluator.common.llm_utils import is_reasoning_model
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievedContext,
@@ -32,7 +33,7 @@ from rag_evaluator.rag_implementations.rlm_rag.rlm_rag import rlm_config_from_ra
 
 from app.config import settings
 from app.models.rag_config import RAGConfig as RAGConfigModel
-from app.services.provider_resolver import resolve_provider_endpoint
+from app.services.provider_resolver import normalize_model_for_provider, resolve_provider_endpoint
 from app.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -115,6 +116,9 @@ class RAGAdapterService:
         """
         llm_endpoint = resolve_provider_endpoint(
             rag_config.llm_provider, rag_config.llm_base_url
+        )
+        rag_config.llm_model = normalize_model_for_provider(
+            rag_config.llm_provider, rag_config.llm_model
         )
         rag_config.llm_base_url = llm_endpoint.base_url
         rag_config.llm_api_key = llm_endpoint.api_key
@@ -430,6 +434,8 @@ class RAGAdapterService:
 
         if normalized_overrides.get("llm_model"):
             effective_snapshot["llm_model"] = normalized_overrides["llm_model"]
+            if not is_reasoning_model(normalized_overrides["llm_model"]):
+                effective_snapshot["llm_reasoning_effort"] = None
             if (
                 rag_type == "rlm_rag"
                 and "orchestrator_model" not in normalized_overrides.get("parameters", {})
@@ -441,6 +447,10 @@ class RAGAdapterService:
             effective_snapshot["llm_provider"] = normalized_overrides["llm_provider"]
         if normalized_overrides.get("llm_base_url") is not None:
             effective_snapshot["llm_base_url"] = normalized_overrides["llm_base_url"]
+        if normalized_overrides.get("llm_reasoning_effort") is not None:
+            effective_snapshot["llm_reasoning_effort"] = normalized_overrides[
+                "llm_reasoning_effort"
+            ]
 
         top_k = int(normalized_overrides.get("top_k", 5))
         generation_model = effective_snapshot.get("llm_model", "gpt-4o-mini")

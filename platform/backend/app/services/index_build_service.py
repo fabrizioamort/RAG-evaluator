@@ -200,6 +200,7 @@ class IndexBuildService:
             "llm_provider": rag_config.llm_provider,
             "llm_model": rag_config.llm_model,
             "llm_base_url": rag_config.llm_base_url,
+            "llm_reasoning_effort": rag_config.llm_reasoning_effort,
             "embedding_model": rag_config.embedding_model,
             "embedding_provider": rag_config.embedding_provider,
             "embedding_base_url": rag_config.embedding_base_url,

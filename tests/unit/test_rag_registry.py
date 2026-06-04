@@ -60,14 +60,21 @@ def test_validate_query_overrides_accepts_query_parameter():
         "rlm_rag",
         {
             "llm_model": "gpt-5-mini",
+            "llm_reasoning_effort": "high",
             "top_k": 8,
             "parameters": {"orchestrator_model": "gpt-5-mini", "max_repl_steps": 20},
         },
     )
 
     assert overrides["llm_model"] == "gpt-5-mini"
+    assert overrides["llm_reasoning_effort"] == "high"
     assert overrides["top_k"] == 8
     assert overrides["parameters"]["max_repl_steps"] == 20
+
+
+def test_validate_query_overrides_rejects_invalid_reasoning_effort():
+    with pytest.raises(ValueError, match="llm_reasoning_effort"):
+        validate_query_overrides("vector_semantic", {"llm_reasoning_effort": "max"})
 
 
 def test_validate_query_overrides_rejects_build_parameter():

@@ -47,7 +47,7 @@ async def _get_evaluation_or_404(db: DbSession, evaluation_id: UUID) -> Evaluati
         .options(
             # selectinload(Evaluation.rag_config), # Removed as relationship removed
             selectinload(Evaluation.index),  # Load index
-            selectinload(Evaluation.test_set),
+            selectinload(Evaluation.test_set).selectinload(TestSet.test_cases),
         )
     )
     result = await db.execute(query)
@@ -276,7 +276,7 @@ async def get_evaluation_results(
 ) -> EvaluationResultList:
     """Get paginated results for an evaluation."""
     # Verify evaluation exists
-    await _get_evaluation_or_404(db, evaluation_id)
+    evaluation = await _get_evaluation_or_404(db, evaluation_id)
 
     # Build query
     query = (
@@ -300,16 +300,26 @@ async def get_evaluation_results(
     result = await db.execute(query)
     results = result.scalars().all()
 
+    ordered_test_cases = []
+    if evaluation.test_set:
+        ordered_test_cases = sorted(evaluation.test_set.test_cases, key=lambda x: x.created_at)
+
     items = []
-    for r in results:
+    for index, r in enumerate(results):
+        test_case = r.test_case
+        if test_case is None:
+            test_case_index = pagination.offset + index
+            if test_case_index < len(ordered_test_cases):
+                test_case = ordered_test_cases[test_case_index]
+
         # Map to schema - EvaluationResultWithTestCase if test case is loaded
         items.append(
             EvaluationResultWithTestCase(
                 **r.__dict__,
-                question=r.test_case.question if r.test_case else None,
-                expected_answer=r.test_case.expected_answer if r.test_case else None,
-                difficulty=r.test_case.difficulty if r.test_case else None,
-                category=r.test_case.category if r.test_case else None,
+                question=test_case.question if test_case else None,
+                expected_answer=test_case.expected_answer if test_case else None,
+                difficulty=test_case.difficulty if test_case else None,
+                category=test_case.category if test_case else None,
             )
         )
 

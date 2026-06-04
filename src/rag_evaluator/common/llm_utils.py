@@ -20,7 +20,10 @@ def is_reasoning_model(model_name: str) -> bool:
     model_lower = model_name.lower()
 
     # OpenAI reasoning models
-    if any(x in model_lower for x in ["o1-", "o3-", "/o1", "/o3", "gpt-5"]) or model_lower in [
+    if any(
+        x in model_lower
+        for x in ["o1-", "o3-", "/o1", "/o3", "gpt-5", "deepseek-v4-flash"]
+    ) or model_lower in [
         "o1",
         "o3",
         "gpt-5",
@@ -39,7 +42,7 @@ def get_safe_llm_params(
     """Get parameters that are safe for the specified model.
 
     Handles removing temperature for reasoning models and forwards
-    reasoning_effort when set.
+    reasoning_effort only for recognized reasoning-capable models.
 
     Args:
         model_name: Name of the LLM model.
@@ -61,7 +64,7 @@ def get_safe_llm_params(
         elif "temperature" not in params:
             params["temperature"] = 0.0
 
-    if reasoning_effort is not None:
+    if reasoning_effort is not None and is_reasoning_model(model_name):
         params["reasoning_effort"] = reasoning_effort
 
     return params

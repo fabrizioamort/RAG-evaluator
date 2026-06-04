@@ -136,5 +136,104 @@ class TestLLMProviderService:
         assert response.content == "Ollama response"
         mock_acompletion.assert_called_once()
         args, kwargs = mock_acompletion.call_args
-        assert kwargs["api_base"] == "http://localhost:11434"
+        assert kwargs["base_url"] == "http://localhost:11434"
         assert kwargs["model"] == "ollama/llama3"
+
+    @pytest.mark.asyncio
+    @patch("litellm.acompletion")
+    async def test_completion_openrouter_uses_openai_compatible_route(
+        self, mock_acompletion: AsyncMock, llm_service: LLMProviderService
+    ) -> None:
+        """OpenRouter should use the generic OpenAI-compatible LiteLLM route."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "OpenRouter response"
+        mock_response.get.side_effect = {}.get
+
+        mock_acompletion.return_value = mock_response
+
+        response = await llm_service.completion(
+            model="openai/gpt-5-mini",
+            messages=[{"role": "user", "content": "Hi"}],
+            provider="openrouter",
+            base_url="https://openrouter.ai/api/v1",
+            api_key="test-key",
+        )
+
+        assert response.content == "OpenRouter response"
+        assert response.provider == "openrouter"
+        mock_acompletion.assert_called_once()
+        args, kwargs = mock_acompletion.call_args
+        assert kwargs["model"] == "openai/openai/gpt-5-mini"
+        assert kwargs["base_url"] == "https://openrouter.ai/api/v1"
+        assert kwargs["api_key"] == "test-key"
+
+    @pytest.mark.asyncio
+    @patch("litellm.acompletion")
+    async def test_completion_openrouter_strips_legacy_display_prefix(
+        self, mock_acompletion: AsyncMock, llm_service: LLMProviderService
+    ) -> None:
+        """Legacy openrouter/... model values should be normalized before routing."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "OpenRouter response"
+        mock_response.get.side_effect = {}.get
+
+        mock_acompletion.return_value = mock_response
+
+        await llm_service.completion(
+            model="openrouter/openai/gpt-5.4-nano",
+            messages=[{"role": "user", "content": "Hi"}],
+            provider="openrouter",
+            base_url="https://openrouter.ai/api/v1",
+            api_key="test-key",
+        )
+
+        _args, kwargs = mock_acompletion.call_args
+        assert kwargs["model"] == "openai/openai/gpt-5.4-nano"
+
+    @pytest.mark.asyncio
+    @patch("litellm.acompletion")
+    async def test_completion_forwards_reasoning_effort_for_reasoning_model(
+        self, mock_acompletion: AsyncMock, llm_service: LLMProviderService
+    ) -> None:
+        """Reasoning effort should be forwarded only for reasoning-capable models."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Reasoned response"
+        mock_response.get.side_effect = {}.get
+        mock_acompletion.return_value = mock_response
+
+        await llm_service.completion(
+            model="gpt-5.5",
+            messages=[{"role": "user", "content": "Hi"}],
+            provider="openai",
+            reasoning_effort="high",
+        )
+
+        _args, kwargs = mock_acompletion.call_args
+        assert kwargs["reasoning_effort"] == "high"
+        assert kwargs["temperature"] is None
+
+    @pytest.mark.asyncio
+    @patch("litellm.acompletion")
+    async def test_completion_omits_reasoning_effort_for_non_reasoning_model(
+        self, mock_acompletion: AsyncMock, llm_service: LLMProviderService
+    ) -> None:
+        """Reasoning effort should not be forwarded to standard models."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Standard response"
+        mock_response.get.side_effect = {}.get
+        mock_acompletion.return_value = mock_response
+
+        await llm_service.completion(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": "Hi"}],
+            provider="openai",
+            reasoning_effort="high",
+        )
+
+        _args, kwargs = mock_acompletion.call_args
+        assert "reasoning_effort" not in kwargs
+        assert kwargs["temperature"] == 0.0

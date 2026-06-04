@@ -139,6 +139,37 @@ def test_create_rag_from_config_rlm_builds_config_and_prepared_path(
     assert captured_kwargs["prepared_path"] == str(index_path / "rlm_rag")
 
 
+def test_create_rag_from_config_openrouter_strips_display_prefix(monkeypatch) -> None:
+    service = RAGAdapterService()
+    captured_kwargs: dict[str, object] = {}
+
+    class FakeSemanticRAG:
+        def __init__(self, **kwargs: object) -> None:
+            captured_kwargs.update(kwargs)
+
+    monkeypatch.setattr(service, "_get_rag_class", lambda _: FakeSemanticRAG)
+
+    model = SimpleNamespace(
+        id=uuid4(),
+        project_id=uuid4(),
+        name="OpenRouter Config",
+        rag_type="vector_semantic",
+        parameters={},
+        llm_provider="openrouter",
+        llm_model="openrouter/openai/gpt-5.4-nano",
+        llm_base_url=None,
+        embedding_model="text-embedding-3-small",
+        embedding_provider="openai",
+        embedding_base_url=None,
+    )
+
+    service.create_rag_from_config(model)
+
+    rag_config = captured_kwargs["config"]
+    assert rag_config.llm_model == "openai/gpt-5.4-nano"
+    assert rag_config.llm_base_url == "https://openrouter.ai/api/v1"
+
+
 def test_create_rag_for_index_rlm_uses_physical_id_storage(
     monkeypatch,
 ) -> None:
@@ -198,6 +229,7 @@ def test_build_effective_config_applies_query_overrides() -> None:
             "llm_provider": "openai",
             "llm_model": "gpt-main",
             "llm_base_url": None,
+            "llm_reasoning_effort": "medium",
             "embedding_model": "text-embedding-3-small",
         },
     )
@@ -205,15 +237,18 @@ def test_build_effective_config_applies_query_overrides() -> None:
     effective = service.build_effective_config(
         index,
         {
-            "llm_model": "gpt-override",
+            "llm_model": "gpt-5.5",
+            "llm_reasoning_effort": "high",
             "top_k": 9,
-            "parameters": {"orchestrator_model": "gpt-override", "max_repl_steps": 20},
+            "parameters": {"orchestrator_model": "gpt-5.5", "max_repl_steps": 20},
         },
     )
 
     assert effective.top_k == 9
-    assert effective.generation_model == "gpt-override"
-    assert effective.effective_config_snapshot["llm_model"] == "gpt-override"
+    assert effective.generation_model == "gpt-5.5"
+    assert effective.effective_config_snapshot["llm_model"] == "gpt-5.5"
+    assert effective.effective_config_snapshot["llm_reasoning_effort"] == "high"
+    assert effective.query_overrides["llm_reasoning_effort"] == "high"
     assert effective.effective_config_snapshot["parameters"]["worker_model"] == "gpt-worker"
     assert effective.effective_config_snapshot["parameters"]["max_repl_steps"] == 20
 
@@ -239,6 +274,30 @@ def test_build_effective_config_rejects_build_override() -> None:
 
     with pytest.raises(ValueError, match="Cannot override build-time parameter `chunk_size`"):
         service.build_effective_config(index, {"parameters": {"chunk_size": 500}})
+
+
+def test_build_effective_config_clears_reasoning_effort_for_non_reasoning_model() -> None:
+    service = RAGAdapterService()
+    index = SimpleNamespace(
+        id=uuid4(),
+        name="Index 1",
+        physical_id="idx_effective",
+        embedding_model="text-embedding-3-small",
+        config_snapshot={
+            "rag_type": "vector_semantic",
+            "parameters": {"chunk_size": 1000},
+            "llm_provider": "openai",
+            "llm_model": "gpt-5.5",
+            "llm_base_url": None,
+            "llm_reasoning_effort": "high",
+            "embedding_model": "text-embedding-3-small",
+        },
+    )
+
+    effective = service.build_effective_config(index, {"llm_model": "gpt-4o"})
+
+    assert effective.effective_config_snapshot["llm_model"] == "gpt-4o"
+    assert effective.effective_config_snapshot["llm_reasoning_effort"] is None
 
 
 def test_load_rag_for_index_query_calls_load_not_prepare(monkeypatch) -> None:

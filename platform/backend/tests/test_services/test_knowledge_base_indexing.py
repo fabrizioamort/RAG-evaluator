@@ -87,7 +87,8 @@ async def sample_rag_config(db_session: AsyncSession, sample_project: Project) -
         rag_type="vector_semantic",
         parameters={"collection_name": "test_collection"},
         llm_provider="openai",
-        llm_model="gpt-4o-mini",
+        llm_model="gpt-5.5",
+        llm_reasoning_effort="high",
     )
     db_session.add(config)
     await db_session.commit()
@@ -130,6 +131,8 @@ async def test_create_index_success(
     assert index.physical_id.startswith("idx_")
     assert index.storage_type == "chroma"  # vector_semantic -> chroma
     assert "rag_type" in index.config_snapshot
+    assert index.config_snapshot["llm_model"] == "gpt-5.5"
+    assert index.config_snapshot["llm_reasoning_effort"] == "high"
     assert index.config_snapshot["embedding_model"] == "text-embedding-3-small"
     assert "build_parameters" in index.config_snapshot
     assert "query_default_parameters" in index.config_snapshot

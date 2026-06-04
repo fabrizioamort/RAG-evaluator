@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FlaskConical,
@@ -13,13 +13,17 @@ import { api, PlaygroundQueryResponse } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { IndexSelector } from '@/components/playground/IndexSelector'
 import { ResultCard } from '@/components/playground/ResultCard'
+import { ModelSelector } from '@/components/llm/ModelSelector'
+import { supportsReasoningEffort } from '@/lib/llm-models'
 
 export function Playground() {
   const queryClient = useQueryClient()
   const [selectedIndexIds, setSelectedIndexIds] = useState<string[]>([])
   const [question, setQuestion] = useState('')
   const [topK, setTopK] = useState(5)
+  const [queryProvider, setQueryProvider] = useState('openai')
   const [queryModel, setQueryModel] = useState('')
+  const [queryReasoningEffort, setQueryReasoningEffort] = useState('')
   const [queryResults, setQueryResults] = useState<PlaygroundQueryResponse | null>(null)
   const [showHistory, setShowHistory] = useState(false)
 
@@ -32,6 +36,27 @@ export function Playground() {
     },
   })
 
+  const { data: providersData } = useQuery({
+    queryKey: ['llm-providers'],
+    queryFn: async () => {
+      const response = await api.ragConfigs.getLLMProviders()
+      return response.data
+    },
+  })
+
+  const providers = providersData || []
+  const queryModelSupportsReasoningEffort = supportsReasoningEffort(
+    providers,
+    queryProvider,
+    queryModel
+  )
+
+  useEffect(() => {
+    if (providers.length > 0 && !queryModelSupportsReasoningEffort) {
+      setQueryReasoningEffort('')
+    }
+  }, [providers.length, queryModelSupportsReasoningEffort])
+
   // Query mutation
   const queryMutation = useMutation({
     mutationFn: async () => {
@@ -41,6 +66,8 @@ export function Playground() {
         top_k: topK,
         query_overrides: {
           llm_model: queryModel || undefined,
+          llm_provider: queryModel ? queryProvider : undefined,
+          llm_reasoning_effort: queryModelSupportsReasoningEffort ? queryReasoningEffort || undefined : undefined,
           top_k: topK,
         },
       })
@@ -219,18 +246,39 @@ export function Playground() {
                   ))}
                 </select>
               </div>
-              <div className="flex items-center gap-2">
-                <label htmlFor="queryModel" className="text-sm font-medium">
-                  Model:
-                </label>
-                <input
-                  id="queryModel"
-                  value={queryModel}
-                  onChange={(e) => setQueryModel(e.target.value)}
-                  placeholder="Index default"
-                  className="w-44 rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
+              <div className="grid min-w-[360px] grid-cols-2 gap-2">
+                <ModelSelector
+                  providers={providers}
+                  provider={queryProvider}
+                  model={queryModel}
+                  onProviderChange={(nextProvider) => {
+                    setQueryProvider(nextProvider)
+                    setQueryReasoningEffort('')
+                  }}
+                  onModelChange={setQueryModel}
+                  providerLabel="Provider"
+                  modelLabel="Model"
+                  modelPlaceholder="Index default"
                 />
               </div>
+              {queryModelSupportsReasoningEffort && (
+                <div className="flex items-center gap-2">
+                  <label htmlFor="queryReasoningEffort" className="text-sm font-medium">
+                    Effort:
+                  </label>
+                  <select
+                    id="queryReasoningEffort"
+                    value={queryReasoningEffort}
+                    onChange={(e) => setQueryReasoningEffort(e.target.value)}
+                    className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
+                  >
+                    <option value="">Default</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              )}
               {selectedIndexes.length > 0 && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Layers className="h-4 w-4" />

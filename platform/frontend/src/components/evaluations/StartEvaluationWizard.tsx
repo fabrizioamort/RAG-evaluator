@@ -3,6 +3,8 @@ import { Play, Loader2, Database, FileText, ChevronRight, ChevronLeft, LucideIco
 import { api, KnowledgeBase, TestSet, KnowledgeBaseIndex, EvaluationCreate, RAGTypeInfo, RAGTypeParameter, LLMProviderInfo } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { DialogShell } from '@/components/ui/DialogShell'
+import { ModelSelector } from '@/components/llm/ModelSelector'
+import { defaultModelForProvider, supportsReasoningEffort } from '@/lib/llm-models'
 
 interface StartEvaluationWizardProps {
     projectId: string
@@ -62,6 +64,7 @@ export function StartEvaluationWizard({
     const [providers, setProviders] = useState<LLMProviderInfo[]>([])
     const [queryModel, setQueryModel] = useState('')
     const [queryProvider, setQueryProvider] = useState('')
+    const [queryReasoningEffort, setQueryReasoningEffort] = useState('')
     const [judgeModel, setJudgeModel] = useState('')
     const [judgeProvider, setJudgeProvider] = useState('')
     const [queryTopK, setQueryTopK] = useState(5)
@@ -103,6 +106,7 @@ export function StartEvaluationWizard({
             setIncludeReason(true)
             setQueryModel('')
             setQueryProvider('')
+            setQueryReasoningEffort('')
             setJudgeModel('')
             setJudgeProvider('')
             setQueryTopK(5)
@@ -135,6 +139,7 @@ export function StartEvaluationWizard({
     const indexSnapshot = (selectedIndexInfo?.config_snapshot ?? {}) as {
         rag_type?: string
         llm_model?: string
+        llm_reasoning_effort?: string | null
         parameters?: Record<string, unknown>
     }
     const selectedRagTypeInfo = ragTypes.find(t => t.name === indexSnapshot.rag_type)
@@ -153,6 +158,7 @@ export function StartEvaluationWizard({
         const snapshot = (selectedIndexInfo.config_snapshot ?? {}) as {
             llm_model?: string
             llm_provider?: string
+            llm_reasoning_effort?: string | null
             parameters?: Record<string, unknown>
         }
         const defaultModel = snapshot.llm_model || 'gpt-4o-mini'
@@ -166,11 +172,37 @@ export function StartEvaluationWizard({
 
         setQueryModel(defaultModel)
         setQueryProvider(defaultProvider)
+        setQueryReasoningEffort(snapshot.llm_reasoning_effort || '')
         setJudgeModel(defaultModel)
         setJudgeProvider(defaultProvider)
         setQueryTopK(5)
         setQueryParams(defaults)
     }, [selectedIndexInfo, queryParamDefs])
+
+    const queryModelSupportsReasoningEffort = supportsReasoningEffort(
+        providers,
+        queryProvider,
+        queryModel
+    )
+
+    useEffect(() => {
+        if (providers.length > 0 && !queryModelSupportsReasoningEffort) {
+            setQueryReasoningEffort('')
+        }
+    }, [providers.length, queryModelSupportsReasoningEffort])
+
+    const handleQueryProviderChange = (nextProvider: string) => {
+        setQueryProvider(nextProvider)
+        const nextModel = defaultModelForProvider(providers, nextProvider)
+        if (nextModel) setQueryModel(nextModel)
+        setQueryReasoningEffort('')
+    }
+
+    const handleJudgeProviderChange = (nextProvider: string) => {
+        setJudgeProvider(nextProvider)
+        const nextModel = defaultModelForProvider(providers, nextProvider)
+        if (nextModel) setJudgeModel(nextModel)
+    }
 
     const handleStart = async () => {
         setIsStarting(true)
@@ -184,6 +216,7 @@ export function StartEvaluationWizard({
                 query_overrides: {
                     llm_model: queryModel || undefined,
                     llm_provider: queryProvider || undefined,
+                    llm_reasoning_effort: queryModelSupportsReasoningEffort ? queryReasoningEffort || undefined : undefined,
                     top_k: queryTopK,
                     parameters: queryParams,
                 },
@@ -477,26 +510,16 @@ export function StartEvaluationWizard({
                                     </div>
 
                                     <div className="grid gap-4 sm:grid-cols-3">
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">Generation Provider</label>
-                                            <select
-                                                value={queryProvider}
-                                                onChange={(e) => setQueryProvider(e.target.value)}
-                                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                            >
-                                                {providers.map(p => (
-                                                    <option key={p.name} value={p.name}>{p.display_name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">RAG Model</label>
-                                            <input
-                                                value={queryModel}
-                                                onChange={(e) => setQueryModel(e.target.value)}
-                                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                            />
-                                        </div>
+                                        <ModelSelector
+                                            providers={providers}
+                                            provider={queryProvider}
+                                            model={queryModel}
+                                            onProviderChange={handleQueryProviderChange}
+                                            onModelChange={setQueryModel}
+                                            providerLabel="Generation Provider"
+                                            modelLabel="RAG Model"
+                                            modelPlaceholder="Enter a RAG model"
+                                        />
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-muted-foreground uppercase">Top K</label>
                                             <input
@@ -508,26 +531,32 @@ export function StartEvaluationWizard({
                                                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                             />
                                         </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">Judge Provider</label>
-                                            <select
-                                                value={judgeProvider}
-                                                onChange={(e) => setJudgeProvider(e.target.value)}
-                                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                            >
-                                                {providers.map(p => (
-                                                    <option key={p.name} value={p.name}>{p.display_name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1.5 sm:col-span-2">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">Judge Model</label>
-                                            <input
-                                                value={judgeModel}
-                                                onChange={(e) => setJudgeModel(e.target.value)}
-                                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                            />
-                                        </div>
+                                        {queryModelSupportsReasoningEffort && (
+                                            <div className="space-y-1.5 sm:col-span-3">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase">RAG Reasoning Effort</label>
+                                                <select
+                                                    value={queryReasoningEffort}
+                                                    onChange={(e) => setQueryReasoningEffort(e.target.value)}
+                                                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                >
+                                                    <option value="">Default (model decides)</option>
+                                                    <option value="low">Low - faster, less thorough</option>
+                                                    <option value="medium">Medium - balanced</option>
+                                                    <option value="high">High - slower, most thorough</option>
+                                                </select>
+                                            </div>
+                                        )}
+                                        <ModelSelector
+                                            providers={providers}
+                                            provider={judgeProvider}
+                                            model={judgeModel}
+                                            onProviderChange={handleJudgeProviderChange}
+                                            onModelChange={setJudgeModel}
+                                            providerLabel="Judge Provider"
+                                            modelLabel="Judge Model"
+                                            modelPlaceholder="Enter a judge model"
+                                            modelClassName="space-y-1.5 sm:col-span-2"
+                                        />
                                     </div>
                                     <p className="text-[11px] text-muted-foreground">
                                         Generation and judge can use different providers. For RLM, orchestrator/worker models appear below as query parameters.
@@ -670,6 +699,9 @@ export function StartEvaluationWizard({
                                                         <span className="truncate">RAG: <strong className="text-foreground">{queryModel}</strong></span>
                                                         <span>Top K: <strong className="text-foreground">{queryTopK}</strong></span>
                                                         <span className="truncate">Judge: <strong className="text-foreground">{judgeModel}</strong></span>
+                                                        {queryModelSupportsReasoningEffort && (
+                                                            <span className="truncate">RAG Effort: <strong className="text-foreground">{queryReasoningEffort || 'Default'}</strong></span>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div className="bg-card p-4 sm:col-span-3 border-t border-border">

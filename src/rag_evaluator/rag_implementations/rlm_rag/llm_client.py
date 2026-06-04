@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from openai import OpenAI
 
+from rag_evaluator.common.llm_utils import is_reasoning_model
+
 from .exceptions import CircuitOpenError
 
 if TYPE_CHECKING:
@@ -474,7 +476,11 @@ class LLMClient:
         }
         if temperature is not None:
             params["temperature"] = temperature
-        if model == self.config.orchestrator_model and self.config.orchestrator_reasoning_effort:
+        if (
+            model == self.config.orchestrator_model
+            and self.config.orchestrator_reasoning_effort
+            and is_reasoning_model(model)
+        ):
             params["reasoning_effort"] = self.config.orchestrator_reasoning_effort
         return self.client.chat.completions.create(**params)
 

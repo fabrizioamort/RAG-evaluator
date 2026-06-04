@@ -285,6 +285,7 @@ export interface LLMProviderInfo {
   name: string
   display_name: string
   models: string[]
+  model_capabilities: Record<string, { supports_reasoning_effort: boolean }>
   requires_api_key: boolean
   supports_base_url: boolean
   supports_embeddings: boolean
@@ -329,6 +330,7 @@ export interface QueryOverrides {
   llm_model?: string
   llm_provider?: string
   llm_base_url?: string
+  llm_reasoning_effort?: string
   top_k?: number
   parameters?: Record<string, unknown>
 }

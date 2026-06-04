@@ -12,6 +12,7 @@ def test_is_reasoning_model():
     assert is_reasoning_model("azure/o1-mini") is True
     assert is_reasoning_model("gpt-5-nano") is True
     assert is_reasoning_model("gpt-5.1") is True
+    assert is_reasoning_model("deepseek-v4-flash") is True
 
     assert is_reasoning_model("gpt-4o") is False
     assert is_reasoning_model("gpt-3.5-turbo") is False
@@ -38,6 +39,9 @@ def test_get_safe_llm_params_reasoning_model():
     assert "temperature" not in params
     assert params["top_p"] == 0.9
 
+    params = get_safe_llm_params("gpt-5.5", reasoning_effort="high")
+    assert params["reasoning_effort"] == "high"
+
 
 def test_get_safe_llm_params_standard_model():
     """Test parameter handling for standard models."""
@@ -54,3 +58,6 @@ def test_get_safe_llm_params_standard_model():
     params = get_safe_llm_params("gpt-4o", temperature=0.7, top_p=0.9)
     assert params["temperature"] == 0.7
     assert params["top_p"] == 0.9
+
+    params = get_safe_llm_params("gpt-4o", reasoning_effort="high")
+    assert "reasoning_effort" not in params

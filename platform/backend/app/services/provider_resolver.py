@@ -49,3 +49,10 @@ def resolve_provider_endpoint(
         api_key = settings.OPENAI_API_KEY
 
     return ProviderEndpoint(base_url=base_url_override or default_url, api_key=api_key)
+
+
+def normalize_model_for_provider(provider: str | None, model: str) -> str:
+    """Normalize stored UI model IDs to the model ID expected by the provider API."""
+    if (provider or "").lower() == "openrouter":
+        return model.removeprefix("openrouter/")
+    return model

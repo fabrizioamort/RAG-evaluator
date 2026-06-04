@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { X, Loader2, Save, Info } from 'lucide-react'
 import { api, RAGConfig, RAGConfigCreate } from '@/api/client'
+import { ModelSelector } from '@/components/llm/ModelSelector'
+import { defaultModelForProvider, supportsReasoningEffort } from '@/lib/llm-models'
 
 interface RAGConfigDialogProps {
     isOpen: boolean
@@ -40,6 +42,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
     const embeddingProviders = providers.filter(p => p.supports_embeddings)
     const selectedTypeInfo = types.find(t => t.name === ragType)
     const selectedProviderInfo = providers.find(p => p.name === provider)
+    const modelSupportsReasoningEffort = supportsReasoningEffort(providers, provider, model)
 
     useEffect(() => {
         if (config) {
@@ -72,6 +75,12 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
         }
     }, [provider, providersResponse, config, selectedProviderInfo])
 
+    useEffect(() => {
+        if (providers.length > 0 && !modelSupportsReasoningEffort) {
+            setReasoningEffort('')
+        }
+    }, [providers.length, modelSupportsReasoningEffort])
+
     // Initialize default parameters when ragType changes
     useEffect(() => {
         if (!config && selectedTypeInfo) {
@@ -96,7 +105,7 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                 rag_type: ragType,
                 llm_provider: provider,
                 llm_model: model,
-                llm_reasoning_effort: reasoningEffort || null,
+                llm_reasoning_effort: modelSupportsReasoningEffort ? reasoningEffort || null : null,
                 embedding_model: embeddingModel,
                 embedding_provider: embeddingProvider,
                 embedding_base_url: embeddingBaseUrl || null,
@@ -112,6 +121,13 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
 
     const handleParamChange = (name: string, value: unknown) => {
         setParameters(prev => ({ ...prev, [name]: value }))
+    }
+
+    const handleProviderChange = (nextProvider: string) => {
+        setProvider(nextProvider)
+        const nextModel = defaultModelForProvider(providers, nextProvider)
+        if (nextModel) setModel(nextModel)
+        setReasoningEffort('')
     }
 
     const editableParams = selectedTypeInfo?.parameters.filter(param => !param.platform_managed) || []
@@ -217,32 +233,20 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                             <div className="space-y-4 pt-4">
                                 <h3 className="text-sm font-bold uppercase tracking-wider text-primary border-b border-border pb-2">LLM Settings</h3>
 
-                                <div className="space-y-2">
-                                    <label className="text-sm font-semibold">Provider</label>
-                                    <select
-                                        value={provider}
-                                        onChange={(e) => setProvider(e.target.value)}
-                                        className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
-                                    >
-                                        {providers.map(p => (
-                                            <option key={p.name} value={p.name}>{p.display_name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <ModelSelector
+                                    providers={providers}
+                                    provider={provider}
+                                    model={model}
+                                    onProviderChange={handleProviderChange}
+                                    onModelChange={setModel}
+                                    providerLabel="Provider"
+                                    modelLabel="Model"
+                                    modelPlaceholder="Enter a model name"
+                                    providerClassName="space-y-2"
+                                    modelClassName="space-y-2"
+                                />
 
-                                <div className="space-y-2">
-                                    <label className="text-sm font-semibold">Model</label>
-                                    <select
-                                        value={model}
-                                        onChange={(e) => setModel(e.target.value)}
-                                        className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
-                                    >
-                                        {selectedProviderInfo?.models.map(m => (
-                                            <option key={m} value={m}>{m}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
+                                {modelSupportsReasoningEffort && (
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold">Reasoning Effort</label>
                                     <select
@@ -251,14 +255,15 @@ export function RAGConfigDialog({ isOpen, onClose, onSubmit, config }: RAGConfig
                                         className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
                                     >
                                         <option value="">Default (model decides)</option>
-                                        <option value="low">Low — faster, less thorough</option>
-                                        <option value="medium">Medium — balanced</option>
-                                        <option value="high">High — slower, most thorough</option>
+                                        <option value="low">Low - faster, less thorough</option>
+                                        <option value="medium">Medium - balanced</option>
+                                        <option value="high">High - slower, most thorough</option>
                                     </select>
                                     <p className="text-[11px] text-muted-foreground">
                                         Applies to OpenAI reasoning models (o1, o3, gpt-5) and OpenRouter/DeepSeek.
                                     </p>
                                 </div>
+                                )}
 
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold">Embedding Provider</label>

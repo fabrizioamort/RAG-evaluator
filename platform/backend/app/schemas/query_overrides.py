@@ -25,6 +25,11 @@ class QueryOverrides(BaseSchema):
         max_length=500,
         description="RAG generation base URL override",
     )
+    llm_reasoning_effort: str | None = Field(
+        default=None,
+        pattern="^(low|medium|high)$",
+        description="RAG generation reasoning effort override for supported models",
+    )
     top_k: int | None = Field(
         default=None,
         ge=1,

@@ -5,6 +5,7 @@ from typing import Any
 from rag_evaluator.rag_implementations.registry import RAG_TYPES, get_parameter_schema
 
 from app.schemas.rag_config import LLMProviderInfo, RAGTypeInfo, RAGTypeParameter
+from app.services.llm_model_catalog import get_model_capabilities, get_models
 
 
 class RAGRegistry:
@@ -56,7 +57,8 @@ class RAGRegistry:
             LLMProviderInfo(
                 name="openai",
                 display_name="OpenAI",
-                models=["gpt-5.1", "gpt-5-mini", "gpt-5-nano"],
+                models=get_models("openai"),
+                model_capabilities=get_model_capabilities("openai"),
                 requires_api_key=True,
                 supports_base_url=True,
                 supports_embeddings=True,
@@ -64,13 +66,17 @@ class RAGRegistry:
             LLMProviderInfo(
                 name="openrouter",
                 display_name="OpenRouter",
-                models=[
-                    "openrouter/anthropic/claude-sonnet-4",
-                    "openrouter/google/gemini-2.5-pro",
-                    "openrouter/openai/gpt-5-mini",
-                    "openrouter/meta-llama/llama-4-maverick",
-                    "openrouter/deepseek/deepseek-v4-flash",
-                ],
+                models=get_models("openrouter"),
+                model_capabilities=get_model_capabilities("openrouter"),
+                requires_api_key=True,
+                supports_base_url=False,
+                supports_embeddings=False,
+            ),
+            LLMProviderInfo(
+                name="deepseek",
+                display_name="DeepSeek",
+                models=get_models("deepseek"),
+                model_capabilities=get_model_capabilities("deepseek"),
                 requires_api_key=True,
                 supports_base_url=False,
                 supports_embeddings=False,
@@ -78,7 +84,8 @@ class RAGRegistry:
             LLMProviderInfo(
                 name="anthropic",
                 display_name="Anthropic",
-                models=["claude-3-5-sonnet-20240620", "claude-3-haiku-20240307"],
+                models=get_models("anthropic"),
+                model_capabilities=get_model_capabilities("anthropic"),
                 requires_api_key=True,
                 supports_base_url=False,
                 supports_embeddings=False,
@@ -86,7 +93,8 @@ class RAGRegistry:
             LLMProviderInfo(
                 name="ollama",
                 display_name="Ollama (Local)",
-                models=["llama3", "mistral", "phi3"],
+                models=get_models("ollama"),
+                model_capabilities=get_model_capabilities("ollama"),
                 requires_api_key=False,
                 supports_base_url=True,
                 supports_embeddings=True,
