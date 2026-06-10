@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from rag_evaluator.common.indexing import CheckpointStore
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     ProgressCallback,
@@ -188,6 +189,17 @@ class BaseRAG(ABC):
             documents_path: Path to the directory containing documents
         """
         pass
+
+    def prepare_documents_resumable(
+        self,
+        documents_path: str,
+        checkpoint_store: CheckpointStore,
+    ) -> None:
+        """Prepare documents using a durable checkpoint store.
+
+        Implementations that do not override this keep the previous behavior.
+        """
+        self.prepare_documents(documents_path)
 
     def retrieve(self, question: str, top_k: int = 5) -> RetrievedContext:
         """Retrieval only (no generation).

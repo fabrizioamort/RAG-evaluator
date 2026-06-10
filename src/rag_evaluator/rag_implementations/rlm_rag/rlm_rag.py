@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
+from rag_evaluator.common.indexing import CheckpointStore, discover_source_documents
 
 if TYPE_CHECKING:
     pass  # Future type-only imports
@@ -316,6 +317,36 @@ class RLMFilesystemRAG(BaseRAG):
             "mode": "simple_context" if self._use_simple_mode else "rlm_agent",
             **self._metrics,
         }
+
+    def prepare_documents_resumable(
+        self,
+        documents_path: str,
+        checkpoint_store: CheckpointStore,
+    ) -> None:
+        """Prepare documents with durable document-level checkpoints."""
+        sources = discover_source_documents(documents_path)
+        for source in sources:
+            checkpoint_store.ensure_document(source)
+            checkpoint_store.start_document(source.doc_key)
+
+        self.prepare_documents(documents_path, force=False)
+
+        output_dir = Path(self.prepared_path).resolve()
+        for source in sources:
+            doc_id = Path(source.source_path).stem
+            required = [
+                output_dir / "documents" / f"{doc_id}.md",
+                output_dir / "_summaries" / f"{doc_id}_summary.md",
+            ]
+            if all(path.exists() for path in required):
+                checkpoint_store.complete_document(source.doc_key, 1)
+            else:
+                checkpoint_store.fail_document(
+                    source.doc_key,
+                    f"Missing prepared RLM artifacts for {doc_id}",
+                )
+
+        checkpoint_store.update_progress(len(sources), len(sources), {"stage": "complete"})
 
     def load_index(self) -> None:
         """Load an existing prepared RLM filesystem without re-preparing it."""

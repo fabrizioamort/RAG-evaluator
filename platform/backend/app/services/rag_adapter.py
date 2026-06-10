@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
+from rag_evaluator.common.indexing import CheckpointStore
 from rag_evaluator.common.llm_utils import is_reasoning_model
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
@@ -499,6 +500,7 @@ class RAGAdapterService:
         rag: BaseRAG,
         documents_path: str,
         progress_callback: Any | None = None,
+        checkpoint_store: CheckpointStore | None = None,
     ) -> dict[str, Any]:
         """Prepare documents for a RAG instance.
 
@@ -506,6 +508,7 @@ class RAGAdapterService:
             rag: The RAG instance.
             documents_path: Path to the documents directory.
             progress_callback: Optional callback for progress updates.
+            checkpoint_store: Optional durable checkpoint store for resumable builds.
 
         Returns:
             Preparation metrics.
@@ -518,7 +521,15 @@ class RAGAdapterService:
             import asyncio
 
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, rag.prepare_documents, documents_path)
+            if checkpoint_store is not None:
+                await loop.run_in_executor(
+                    None,
+                    rag.prepare_documents_resumable,
+                    documents_path,
+                    checkpoint_store,
+                )
+            else:
+                await loop.run_in_executor(None, rag.prepare_documents, documents_path)
             # Get metrics returns a dict[str, Any]
             metrics: dict[str, Any] = rag.get_metrics()
             return metrics

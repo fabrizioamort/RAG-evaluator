@@ -2,9 +2,6 @@
 
 import uuid
 import warnings
-
-# Suppress pydantic serialization warnings from litellm internal response models
-warnings.filterwarnings("ignore", message="Pydantic serializer warnings", category=UserWarning)
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -34,6 +31,9 @@ from app.database import engine, init_db
 from app.schemas.errors import ErrorResponse
 from app.utils.exceptions import AppException
 from app.utils.logging_config import get_logger, request_id_var, setup_logging
+
+# Suppress pydantic serialization warnings from litellm internal response models
+warnings.filterwarnings("ignore", message="Pydantic serializer warnings", category=UserWarning)
 
 logger = get_logger(__name__)
 
@@ -66,6 +66,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     async with get_db_context() as db:
         await load_builtin_templates(db)
+        from app.services.index_build_service import IndexBuildService
+
+        interrupted = await IndexBuildService(db).reconcile_interrupted_builds()
+        if interrupted:
+            logger.warning("Marked interrupted index builds as failed", count=interrupted)
 
     yield
 

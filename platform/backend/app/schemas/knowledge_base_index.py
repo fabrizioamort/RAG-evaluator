@@ -34,6 +34,10 @@ class KnowledgeBaseIndexResponse(BaseModel):
     build_started_at: datetime | None
     build_completed_at: datetime | None
     build_duration_seconds: float | None
+    progress_current: int = 0
+    progress_total: int = 0
+    last_heartbeat_at: datetime | None = None
+    resume_metadata: dict[str, Any] | None = None
     error_message: str | None
     created_at: datetime
 

@@ -10,6 +10,7 @@ from neo4j_graphrag.llm.openai_llm import OpenAILLM
 from neo4j_graphrag.retrievers import VectorCypherRetriever
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
+from rag_evaluator.common.indexing import CheckpointStore
 from rag_evaluator.common.openai_client import (
     embedding_openai_kwargs,
     llm_openai_kwargs,
@@ -191,6 +192,41 @@ class Neo4jGraphRAG(BaseRAG):
 
         print(f"\nIndexing documents from: {documents_path}")
         stats = indexer.index_documents(documents_path)
+
+        print("\n=== Graph Indexing Complete ===")
+        print(f"Documents processed: {stats['documents_processed']}")
+        print(f"Total nodes: {stats['total_nodes']}")
+        print(f"Total relationships: {stats['total_relationships']}")
+        print(f"Node label distribution: {stats['node_labels']}")
+        print("================================\n")
+
+    def prepare_documents_resumable(
+        self,
+        documents_path: str,
+        checkpoint_store: CheckpointStore,
+    ) -> None:
+        """Prepare and index documents as a resumable Neo4j knowledge graph."""
+        llm_model = (
+            self.config.parameters.get("extraction_model")
+            or self.config.llm_model
+            or settings.openai_model
+        )
+        embedding_model = self.config.embedding_model or settings.embedding_model
+
+        indexer = GraphIndexer(
+            neo4j_uri=self.neo4j_uri,
+            neo4j_username=self.neo4j_username,
+            neo4j_password=self.neo4j_password,
+            llm_model=llm_model,
+            embedding_model=embedding_model,
+            vector_index_name=self.vector_index_name,
+            label_prefix=self.label_prefix,
+            llm_client_kwargs=llm_openai_kwargs(self.config),
+            embedding_client_kwargs=embedding_openai_kwargs(self.config),
+        )
+
+        print(f"\nIndexing documents from: {documents_path}")
+        stats = indexer.index_documents(documents_path, checkpoint_store=checkpoint_store)
 
         print("\n=== Graph Indexing Complete ===")
         print(f"Documents processed: {stats['documents_processed']}")

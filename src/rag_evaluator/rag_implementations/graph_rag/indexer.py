@@ -15,6 +15,7 @@ from neo4j_graphrag.indexes import create_vector_index
 from neo4j_graphrag.llm.openai_llm import OpenAILLM
 
 from rag_evaluator.common.document_loaders import create_loader
+from rag_evaluator.common.indexing import CheckpointStore, SourceDocument, discover_source_documents
 from rag_evaluator.rag_implementations.graph_rag.neo4j_connection import (
     create_verified_neo4j_driver,
 )
@@ -151,7 +152,12 @@ class GraphIndexer:
             print(f"Warning: Could not create vector index: {e}")
 
     async def _process_document_with_retry(
-        self, kg_builder: SimpleKGPipeline, text: str, max_retries: int = 3, delay: float = 2.0
+        self,
+        kg_builder: SimpleKGPipeline,
+        text: str,
+        document_metadata: dict[str, Any] | None = None,
+        max_retries: int = 3,
+        delay: float = 2.0,
     ) -> Any:
         """Process a single document text with retry logic for rate limits.
 
@@ -166,6 +172,14 @@ class GraphIndexer:
         """
         for attempt in range(max_retries + 1):
             try:
+                if document_metadata is not None:
+                    try:
+                        return await kg_builder.run_async(
+                            text=text,
+                            document_metadata=document_metadata,
+                        )
+                    except TypeError:
+                        return await kg_builder.run_async(text=text)
                 return await kg_builder.run_async(text=text)
             except Exception as e:
                 # Check for rate limit error messages in the exception string
@@ -181,7 +195,11 @@ class GraphIndexer:
                 # If not rate limit or max retries reached, raise
                 raise e
 
-    def index_documents(self, documents_path: str) -> dict[str, Any]:
+    def index_documents(
+        self,
+        documents_path: str,
+        checkpoint_store: CheckpointStore | None = None,
+    ) -> dict[str, Any]:
         """Index documents into Neo4j knowledge graph.
 
         Args:
@@ -190,32 +208,36 @@ class GraphIndexer:
         Returns:
             Dictionary with indexing statistics
         """
-        docs_path = Path(documents_path)
-
-        if not docs_path.exists():
-            raise ValueError(f"Documents path does not exist: {documents_path}")
-
-        # Validate extensions
-        valid_extensions = {".txt", ".pdf", ".docx"}
-        documents_to_process = []
+        sources = discover_source_documents(documents_path)
+        documents_to_process: list[tuple[SourceDocument, str]] = []
         doc_sources = []
 
-        # Load documents
-        for file_path in docs_path.rglob("*"):
-            if file_path.suffix.lower() in valid_extensions and file_path.is_file():
-                try:
-                    loader = create_loader(str(file_path))
-                    doc = loader.load(str(file_path))
-                    documents_to_process.append(doc.content)
-                    doc_sources.append(doc.source)
-                    print(f"Loaded: {file_path.name}")
-                except Exception as e:
-                    print(f"Warning: Failed to load {file_path.name}: {e}")
+        for source in sources:
+            checkpoint = checkpoint_store.ensure_document(source) if checkpoint_store else None
+            if (
+                checkpoint
+                and checkpoint.status == "completed"
+                and self._document_marker_exists(source.doc_key, source.checksum)
+            ):
+                doc_sources.append(source.source_path)
+                continue
 
-        if not documents_to_process:
+            if checkpoint and checkpoint.status in {"building", "failed"}:
+                self._delete_document_artifacts(source.doc_key)
+
+            try:
+                loader = create_loader(source.source_path)
+                doc = loader.load(source.source_path)
+                documents_to_process.append((source, doc.content))
+                doc_sources.append(doc.source)
+                print(f"Loaded: {Path(source.source_path).name}")
+            except Exception as e:
+                print(f"Warning: Failed to load {Path(source.source_path).name}: {e}")
+
+        if not documents_to_process and not doc_sources:
             raise ValueError(f"No documents found in {documents_path}")
 
-        print(f"\nLoaded {len(documents_to_process)} documents")
+        print(f"\nLoaded {len(doc_sources)} documents")
 
         # Initialize LLM and embedder
         llm_params: dict[str, Any] = {"response_format": {"type": "json_object"}}
@@ -250,14 +272,32 @@ class GraphIndexer:
             print("\nBuilding knowledge graph iteratively...")
             total = len(documents_to_process)
 
-            for i, text in enumerate(documents_to_process):
+            for i, (source, text) in enumerate(documents_to_process):
                 print(f"Processing document {i + 1}/{total} ({len(text)} chars)...")
                 try:
-                    await self._process_document_with_retry(kg_builder, text)
+                    if checkpoint_store:
+                        checkpoint_store.start_document(source.doc_key)
+                    metadata = {
+                        "index_id": self.label_prefix or self.vector_index_name,
+                        "doc_key": source.doc_key,
+                        "checksum": source.checksum,
+                        "source_path": source.source_path,
+                    }
+                    await self._process_document_with_retry(kg_builder, text, metadata)
+                    self._write_document_marker(source)
+                    if checkpoint_store:
+                        checkpoint_store.complete_document(source.doc_key, 1)
+                        checkpoint_store.update_progress(
+                            i + 1,
+                            total,
+                            {"document": source.relative_path},
+                        )
                     # Add small delay between successful calls to be polite to the API
                     await asyncio.sleep(1)
                 except Exception as e:
                     print(f"Error processing document {i + 1}: {e}")
+                    if checkpoint_store:
+                        checkpoint_store.fail_document(source.doc_key, str(e))
                     # Continue with next document instead of crashing entire pipeline
                     continue
 
@@ -272,7 +312,7 @@ class GraphIndexer:
             stats = self._get_graph_statistics()
 
             return {
-                "documents_processed": len(documents_to_process),
+                "documents_processed": len(doc_sources),
                 "sources": doc_sources,
                 **stats,
             }
@@ -334,6 +374,57 @@ class GraphIndexer:
                 "total_relationships": rel_count,
                 "node_labels": label_dist,
             }
+
+    def _label(self, label: str) -> str:
+        return f"`{label.replace('`', '')}`"
+
+    def _document_marker_exists(self, doc_key: str, checksum: str) -> bool:
+        with self.driver.session() as session:
+            result = session.run(
+                f"""
+                MATCH (d:{self._label(self.document_label)})
+                WHERE d.doc_key = $doc_key AND d.checksum = $checksum
+                RETURN count(d) AS count
+                """,
+                {"doc_key": doc_key, "checksum": checksum},
+            )
+            return bool(result.single()["count"])  # type: ignore[index]
+
+    def _write_document_marker(self, source: SourceDocument) -> None:
+        with self.driver.session() as session:
+            session.run(
+                f"""
+                MERGE (d:{self._label(self.document_label)} {{doc_key: $doc_key}})
+                SET d.checksum = $checksum,
+                    d.source_path = $source_path,
+                    d.index_id = $index_id,
+                    d.index_status = 'completed'
+                """,
+                {
+                    "doc_key": source.doc_key,
+                    "checksum": source.checksum,
+                    "source_path": source.source_path,
+                    "index_id": self.label_prefix or self.vector_index_name,
+                },
+            )
+
+    def _delete_document_artifacts(self, doc_key: str) -> None:
+        with self.driver.session() as session:
+            if self.label_prefix:
+                session.run(
+                    """
+                    MATCH (n)
+                    WHERE n.doc_key = $doc_key
+                    AND any(label IN labels(n) WHERE label STARTS WITH $label_prefix)
+                    DETACH DELETE n
+                    """,
+                    {"doc_key": doc_key, "label_prefix": self.label_prefix},
+                )
+            else:
+                session.run(
+                    "MATCH (n) WHERE n.doc_key = $doc_key DETACH DELETE n",
+                    {"doc_key": doc_key},
+                )
 
     def clear_graph(self) -> None:
         """Clear all nodes and relationships from the graph database."""

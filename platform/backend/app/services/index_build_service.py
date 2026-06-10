@@ -6,7 +6,7 @@ through execution and cleanup.
 
 import asyncio
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Coroutine
 from uuid import UUID, uuid4
@@ -16,14 +16,19 @@ from rag_evaluator.rag_implementations.graph_rag.neo4j_connection import (
     resolve_neo4j_connection_params,
 )
 from rag_evaluator.rag_implementations.registry import split_parameters
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models.knowledge_base import KnowledgeBase
 from app.models.knowledge_base_index import KnowledgeBaseIndex
+from app.models.knowledge_base_index_checkpoint import (
+    KnowledgeBaseIndexChunk,
+    KnowledgeBaseIndexDocument,
+)
 from app.models.rag_config import RAGConfig
+from app.services.index_checkpoint_store import DatabaseCheckpointStore
 from app.services.job_event_log import JobEventLog, get_job_event_log
 from app.services.rag_adapter import get_rag_adapter_service
 from app.utils.logging_config import get_logger
@@ -39,6 +44,8 @@ RAG_TYPE_TO_STORAGE: dict[str, str] = {
     "filesystem_rag": "filesystem",
     "rlm_rag": "filesystem",
 }
+
+STALE_BUILD_AFTER = timedelta(minutes=30)
 
 
 def generate_physical_id() -> str:
@@ -236,6 +243,14 @@ class IndexBuildService:
             logger.error("Index not found", index_id=str(index_id))
             return
 
+        if index.status == "building" and self._is_stale_build(index):
+            index.status = "failed"
+            index.error_message = (
+                "Index build was interrupted and can be resumed by retrying the build."
+            )
+            index.build_completed_at = datetime.now(timezone.utc)
+            await self.db.commit()
+
         if index.status not in ("pending", "failed"):
             logger.warning(
                 "Index not in buildable state",
@@ -247,6 +262,10 @@ class IndexBuildService:
         # Update status to building
         index.status = "building"
         index.build_started_at = datetime.now(timezone.utc)
+        index.build_completed_at = None
+        index.last_heartbeat_at = datetime.now(timezone.utc)
+        index.progress_current = 0
+        index.progress_total = max(index.progress_total, index.document_count)
         index.error_message = None  # Clear any previous error
         await self.db.commit()
 
@@ -293,11 +312,20 @@ class IndexBuildService:
             if not documents_path:
                 raise ValueError("Knowledge base has no storage path")
 
-            metrics = await self.rag_adapter.prepare_documents(rag, documents_path)
+            loop = asyncio.get_running_loop()
+            checkpoint_store = DatabaseCheckpointStore(self.db, index.id, loop)
+            metrics = await self.rag_adapter.prepare_documents(
+                rag,
+                documents_path,
+                checkpoint_store=checkpoint_store,
+            )
 
             # Update index with results
             index.status = "ready"
             index.chunk_count = metrics.get("chunk_count", metrics.get("total_chunks", 0))
+            index.progress_current = index.document_count
+            index.progress_total = index.document_count
+            index.last_heartbeat_at = datetime.now(timezone.utc)
             index.embedding_model = metrics.get(
                 "embedding_model", index.config_snapshot.get("embedding_model")
             )
@@ -333,6 +361,7 @@ class IndexBuildService:
             index.status = "failed"
             index.error_message = str(e)
             index.build_completed_at = datetime.now(timezone.utc)
+            index.last_heartbeat_at = datetime.now(timezone.utc)
             await self.db.commit()
 
             await self.event_log.log_event(
@@ -341,11 +370,12 @@ class IndexBuildService:
                 {"error": str(e)},
             )
 
-    async def retry_build(self, index_id: UUID) -> KnowledgeBaseIndex:
+    async def retry_build(self, index_id: UUID, force: bool = False) -> KnowledgeBaseIndex:
         """Retry a failed index build.
 
         Args:
             index_id: ID of the failed index.
+            force: If True, clear storage and checkpoints before retrying.
 
         Returns:
             The index with status reset to pending.
@@ -360,23 +390,63 @@ class IndexBuildService:
         if not index:
             raise ValueError(f"Index {index_id} not found")
 
-        if index.status != "failed":
-            raise ValueError(f"Can only retry failed indexes, current status: {index.status}")
+        if index.status == "building" and self._is_stale_build(index):
+            index.status = "failed"
+            index.error_message = (
+                "Index build was interrupted and can be resumed by retrying the build."
+            )
 
-        # Reset status
+        if index.status not in ("failed", "pending"):
+            raise ValueError(
+                f"Can only retry failed or pending indexes, current status: {index.status}"
+            )
+
+        if force:
+            await self._cleanup_storage(index)
+            await self._clear_checkpoints(index.id)
+
         index.status = "pending"
         index.error_message = None
         index.build_started_at = None
         index.build_completed_at = None
         index.build_duration_seconds = None
-        index.chunk_count = 0
+        index.progress_current = 0
+        index.progress_total = index.document_count
+        index.last_heartbeat_at = None
+        index.resume_metadata = {"force": force}
+        if force:
+            index.chunk_count = 0
 
         await self.db.commit()
         await self.db.refresh(index)
 
-        logger.info("Index reset for retry", index_id=str(index_id))
+        logger.info("Index reset for retry", index_id=str(index_id), force=force)
 
         return index
+
+    async def reconcile_interrupted_builds(
+        self,
+        stale_after: timedelta = STALE_BUILD_AFTER,
+    ) -> int:
+        """Mark stale building indexes as failed-but-recoverable."""
+        cutoff = datetime.now(timezone.utc) - stale_after
+        result = await self.db.execute(
+            select(KnowledgeBaseIndex).where(KnowledgeBaseIndex.status == "building")
+        )
+        interrupted = 0
+        for index in result.scalars().all():
+            heartbeat = index.last_heartbeat_at or index.build_started_at
+            if heartbeat is not None and heartbeat > cutoff:
+                continue
+            index.status = "failed"
+            index.error_message = (
+                "Index build was interrupted and can be resumed by retrying the build."
+            )
+            index.build_completed_at = datetime.now(timezone.utc)
+            interrupted += 1
+        if interrupted:
+            await self.db.commit()
+        return interrupted
 
     async def archive_index(self, index_id: UUID) -> KnowledgeBaseIndex:
         """Archive an index (soft delete that preserves evaluations).
@@ -518,6 +588,23 @@ class IndexBuildService:
                     logger.info("Deleted filesystem storage", path=str(storage_path))
                 except Exception as e:
                     logger.warning("Failed to delete filesystem storage", error=str(e))
+
+    async def _clear_checkpoints(self, index_id: UUID) -> None:
+        await self.db.execute(
+            delete(KnowledgeBaseIndexChunk).where(KnowledgeBaseIndexChunk.index_id == index_id)
+        )
+        await self.db.execute(
+            delete(KnowledgeBaseIndexDocument).where(
+                KnowledgeBaseIndexDocument.index_id == index_id
+            )
+        )
+        await self.db.commit()
+
+    def _is_stale_build(self, index: KnowledgeBaseIndex) -> bool:
+        heartbeat = index.last_heartbeat_at or index.build_started_at
+        if heartbeat is None:
+            return True
+        return heartbeat <= datetime.now(timezone.utc) - STALE_BUILD_AFTER
 
     async def get_index(self, index_id: UUID) -> KnowledgeBaseIndex | None:
         """Get an index by ID with relationships loaded.

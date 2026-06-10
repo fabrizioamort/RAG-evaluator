@@ -7,6 +7,7 @@ of the prepared filesystem structure.
 from __future__ import annotations
 
 import json
+import os
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,14 @@ from rag_evaluator.rag_implementations.filesystem_rag.preparation.analyzer impor
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.document_processor import (
     ProcessedDocument,
 )
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write text via temp file and atomic replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(f"{path.suffix}.tmp")
+    temp_path.write_text(content, encoding="utf-8")
+    os.replace(temp_path, path)
 
 
 @dataclass
@@ -531,7 +540,7 @@ def write_document_files(
 
         # Write markdown content
         doc_path = docs_dir / f"{doc.id}.md"
-        doc_path.write_text(doc.markdown_content, encoding="utf-8")
+        _atomic_write_text(doc_path, doc.markdown_content)
 
         # Write metadata JSON
         metadata = {
@@ -554,12 +563,12 @@ def write_document_files(
             "analysis_method": analysis.analysis_method,
         }
         meta_path = docs_dir / f"{doc.id}.meta.json"
-        meta_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        _atomic_write_text(meta_path, json.dumps(metadata, indent=2))
 
         # Write summary
         summary_content = _generate_summary_file_content(doc, analysis)
         summary_path = summaries_dir / f"{doc.id}_summary.md"
-        summary_path.write_text(summary_content, encoding="utf-8")
+        _atomic_write_text(summary_path, summary_content)
 
         print(f"  Written: {doc.id}.md, {doc.id}.meta.json, {doc.id}_summary.md")
 

@@ -1,13 +1,19 @@
 """Tests for knowledge base indexing via IndexBuildService."""
 
+from datetime import datetime, timedelta, timezone
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document
 from app.models.knowledge_base import KnowledgeBase
+from app.models.knowledge_base_index_checkpoint import (
+    KnowledgeBaseIndexChunk,
+    KnowledgeBaseIndexDocument,
+)
 from app.models.knowledge_base_version import KnowledgeBaseVersion
 from app.models.project import Project
 from app.models.rag_config import RAGConfig
@@ -282,3 +288,147 @@ async def test_delete_index(
     # Verify deletion
     result = await service.get_index(index_id)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_retry_build_preserves_checkpoints(
+    sample_kb: KnowledgeBase,
+    sample_document: Document,
+    sample_rag_config: RAGConfig,
+    db_session: AsyncSession,
+    mock_event_log: JobEventLog,
+) -> None:
+    """Normal retry should resume without clearing durable progress."""
+    service = IndexBuildService(db_session, mock_event_log)
+    index = await service.create_index(
+        kb_id=sample_kb.id,
+        rag_config_id=sample_rag_config.id,
+    )
+    index.status = "failed"
+    index.chunk_count = 3
+
+    doc_checkpoint = KnowledgeBaseIndexDocument(
+        index_id=index.id,
+        doc_key="doc_1",
+        source_path="./storage/documents/test_doc.txt",
+        checksum="abc123def456",
+        status="completed",
+        chunk_count=1,
+        completed_chunks=1,
+    )
+    db_session.add(doc_checkpoint)
+    await db_session.flush()
+    db_session.add(
+        KnowledgeBaseIndexChunk(
+            index_id=index.id,
+            document_id=doc_checkpoint.id,
+            doc_key="doc_1",
+            chunk_hash="chunkhash",
+            storage_id="chunk_1",
+            chunk_index=0,
+            status="completed",
+        )
+    )
+    await db_session.commit()
+
+    retried = await service.retry_build(index.id)
+
+    assert retried.status == "pending"
+    assert retried.chunk_count == 3
+    docs = (
+        await db_session.execute(
+            select(KnowledgeBaseIndexDocument).where(
+                KnowledgeBaseIndexDocument.index_id == index.id
+            )
+        )
+    ).scalars().all()
+    chunks = (
+        await db_session.execute(
+            select(KnowledgeBaseIndexChunk).where(KnowledgeBaseIndexChunk.index_id == index.id)
+        )
+    ).scalars().all()
+    assert len(docs) == 1
+    assert len(chunks) == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_build_force_clears_storage_and_checkpoints(
+    sample_kb: KnowledgeBase,
+    sample_document: Document,
+    sample_rag_config: RAGConfig,
+    db_session: AsyncSession,
+    mock_event_log: JobEventLog,
+) -> None:
+    """Forced retry performs the old clean rebuild behavior."""
+    service = IndexBuildService(db_session, mock_event_log)
+    index = await service.create_index(
+        kb_id=sample_kb.id,
+        rag_config_id=sample_rag_config.id,
+    )
+    index.status = "failed"
+    index.chunk_count = 3
+
+    doc_checkpoint = KnowledgeBaseIndexDocument(
+        index_id=index.id,
+        doc_key="doc_1",
+        source_path="./storage/documents/test_doc.txt",
+        checksum="abc123def456",
+        status="completed",
+    )
+    db_session.add(doc_checkpoint)
+    await db_session.flush()
+    db_session.add(
+        KnowledgeBaseIndexChunk(
+            index_id=index.id,
+            document_id=doc_checkpoint.id,
+            doc_key="doc_1",
+            chunk_hash="chunkhash",
+            storage_id="chunk_1",
+            chunk_index=0,
+            status="completed",
+        )
+    )
+    await db_session.commit()
+
+    with patch.object(service, "_cleanup_storage", new=AsyncMock()) as cleanup:
+        retried = await service.retry_build(index.id, force=True)
+
+    cleanup.assert_awaited_once()
+    assert retried.status == "pending"
+    assert retried.chunk_count == 0
+    doc_count = await db_session.scalar(
+        select(KnowledgeBaseIndexDocument).where(
+            KnowledgeBaseIndexDocument.index_id == index.id
+        )
+    )
+    chunk_count = await db_session.scalar(
+        select(KnowledgeBaseIndexChunk).where(KnowledgeBaseIndexChunk.index_id == index.id)
+    )
+    assert doc_count is None
+    assert chunk_count is None
+
+
+@pytest.mark.asyncio
+async def test_reconcile_interrupted_builds_marks_stale_build_failed(
+    sample_kb: KnowledgeBase,
+    sample_document: Document,
+    sample_rag_config: RAGConfig,
+    db_session: AsyncSession,
+    mock_event_log: JobEventLog,
+) -> None:
+    """Startup reconciliation should make stale building indexes retryable."""
+    service = IndexBuildService(db_session, mock_event_log)
+    index = await service.create_index(
+        kb_id=sample_kb.id,
+        rag_config_id=sample_rag_config.id,
+    )
+    index.status = "building"
+    index.last_heartbeat_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    await db_session.commit()
+
+    count = await service.reconcile_interrupted_builds(stale_after=timedelta(minutes=30))
+    await db_session.refresh(index)
+
+    assert count == 1
+    assert index.status == "failed"
+    assert "interrupted" in (index.error_message or "")

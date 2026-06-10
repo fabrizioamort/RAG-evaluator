@@ -56,6 +56,10 @@ def _index_to_response(index: KnowledgeBaseIndex) -> KnowledgeBaseIndexResponse:
         build_started_at=index.build_started_at,
         build_completed_at=index.build_completed_at,
         build_duration_seconds=index.build_duration_seconds,
+        progress_current=index.progress_current,
+        progress_total=index.progress_total,
+        last_heartbeat_at=index.last_heartbeat_at,
+        resume_metadata=index.resume_metadata,
         error_message=index.error_message,
         created_at=index.created_at,
         knowledge_base_name=index.knowledge_base.name if index.knowledge_base else None,
@@ -268,8 +272,15 @@ async def retry_index_build(
     if not index:
         raise NotFoundError(detail="Index not found")
 
-    if index.status not in ["failed", "pending"]:
+    if index.status not in ["failed", "pending", "building"]:
         raise BadRequestError(detail=f"Cannot retry index in '{index.status}' status")
+
+    force = request.force if request else False
+    service = IndexBuildService(db, get_job_event_log())
+    try:
+        await service.retry_build(index.id, force=force)
+    except ValueError as e:
+        raise BadRequestError(detail=str(e))
 
     from app.database import get_db_context
 

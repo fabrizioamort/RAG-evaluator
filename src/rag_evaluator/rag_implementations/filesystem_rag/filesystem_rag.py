@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
+from rag_evaluator.common.indexing import CheckpointStore, discover_source_documents
 from rag_evaluator.common.openai_client import llm_client
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
@@ -132,6 +133,37 @@ class FilesystemRAG(BaseRAG):
         self._initialize_agent()
 
         print("Preparation complete. Agent initialized.")
+
+    def prepare_documents_resumable(
+        self,
+        documents_path: str,
+        checkpoint_store: CheckpointStore,
+    ) -> None:
+        """Prepare documents with durable document-level checkpoints."""
+        sources = discover_source_documents(documents_path)
+        for source in sources:
+            checkpoint_store.ensure_document(source)
+            checkpoint_store.start_document(source.doc_key)
+
+        self.prepare_documents(documents_path)
+
+        prepared_root = Path(self.prepared_path)
+        for idx, source in enumerate(sources, start=1):
+            doc_id = f"doc_{idx:03d}"
+            required = [
+                prepared_root / "documents" / f"{doc_id}.md",
+                prepared_root / "documents" / f"{doc_id}.meta.json",
+                prepared_root / "_summaries" / f"{doc_id}_summary.md",
+            ]
+            if all(path.exists() for path in required):
+                checkpoint_store.complete_document(source.doc_key, 1)
+            else:
+                checkpoint_store.fail_document(
+                    source.doc_key,
+                    f"Missing prepared artifacts for {doc_id}",
+                )
+
+        checkpoint_store.update_progress(len(sources), len(sources), {"stage": "complete"})
 
     def _initialize_agent(self) -> None:
         """Initialize the agent with the prepared filesystem."""

@@ -11,6 +11,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
 from rag_evaluator.common.document_loaders import create_loader
+from rag_evaluator.common.indexing import (
+    CheckpointStore,
+    SourceDocument,
+    discover_source_documents,
+    stable_hash,
+    storage_id,
+)
 from rag_evaluator.common.openai_client import embedding_client, llm_client
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
@@ -108,86 +115,159 @@ class ChromaSemanticRAG(BaseRAG):
         Args:
             documents_path: Path to the directory containing documents
         """
-        docs_path = Path(documents_path)
+        self._prepare_documents(documents_path, checkpoint_store=None)
 
-        if not docs_path.exists():
-            raise ValueError(f"Documents path does not exist: {documents_path}")
+    def prepare_documents_resumable(
+        self,
+        documents_path: str,
+        checkpoint_store: CheckpointStore,
+    ) -> None:
+        """Prepare and index documents in ChromaDB with durable checkpoints."""
+        self._prepare_documents(documents_path, checkpoint_store=checkpoint_store)
 
-        # Validate extensions
-        valid_extensions = {".txt", ".pdf", ".docx"}
+    def _load_document(self, source: SourceDocument) -> LangChainDocument | None:
+        try:
+            loader = create_loader(source.source_path)
+            doc = loader.load(source.source_path)
+            return LangChainDocument(
+                page_content=doc.content,
+                metadata={
+                    "source": doc.source,
+                    "doc_key": source.doc_key,
+                    "checksum": source.checksum,
+                    **doc.metadata,
+                },
+            )
+        except Exception as e:
+            print(f"Warning: Failed to load {Path(source.source_path).name}: {e}")
+            return None
 
-        langchain_documents = []
+    def _collection_existing_ids(self, ids: list[str]) -> set[str]:
+        if not ids:
+            return set()
+        try:
+            result = self.collection.get(ids=ids, include=[])
+            found = result.get("ids", []) if isinstance(result, dict) else []
+            return {str(item) for item in found}
+        except Exception:
+            return set()
 
-        # Walk through directory
-        for file_path in docs_path.rglob("*"):
-            if file_path.suffix.lower() in valid_extensions and file_path.is_file():
-                try:
-                    loader = create_loader(str(file_path))
-                    doc = loader.load(str(file_path))
+    def _prepare_documents(
+        self,
+        documents_path: str,
+        checkpoint_store: CheckpointStore | None,
+    ) -> None:
+        sources = discover_source_documents(documents_path)
+        document_chunks: list[tuple[SourceDocument, list[LangChainDocument]]] = []
 
-                    # Convert to LangChain document
-                    lc_doc = LangChainDocument(
-                        page_content=doc.content, metadata={"source": doc.source, **doc.metadata}
+        for source in sources:
+            checkpoint = checkpoint_store.ensure_document(source) if checkpoint_store else None
+            if checkpoint and checkpoint.status == "completed":
+                completed = checkpoint_store.completed_chunks(source.doc_key)
+                existing = self._collection_existing_ids(list(completed))
+                if len(existing) == len(completed) and checkpoint.chunk_count:
+                    document_chunks.append((source, []))
+                    continue
+
+            document = self._load_document(source)
+            if document is None:
+                continue
+            chunks = self.text_splitter.split_documents([document])
+            document_chunks.append((source, chunks))
+            print(f"Loaded: {Path(source.source_path).name}")
+
+        total_chunks = sum(len(chunks) for _, chunks in document_chunks)
+        if total_chunks == 0:
+            completed_total = sum(
+                checkpoint_store.ensure_document(source).chunk_count
+                for source, chunks in document_chunks
+                if checkpoint_store and not chunks
+            )
+            if completed_total == 0:
+                raise ValueError(f"No documents found in {documents_path}")
+            self._total_chunks = completed_total
+            return
+
+        print(f"Loaded {len(sources)} documents, split into {total_chunks} chunks")
+
+        processed = 0
+        global_chunk_index = 0
+        for source, chunks in document_chunks:
+            if checkpoint_store and not chunks:
+                processed += checkpoint_store.ensure_document(source).chunk_count
+                continue
+
+            if checkpoint_store:
+                checkpoint_store.start_document(source.doc_key)
+                completed_chunks = checkpoint_store.completed_chunks(source.doc_key)
+                existing_ids = self._collection_existing_ids(list(completed_chunks))
+                for missing_id in set(completed_chunks) - existing_ids:
+                    checkpoint_store.mark_chunk_pending(
+                        missing_id,
+                        "Completed checkpoint was missing from Chroma storage",
                     )
-                    langchain_documents.append(lc_doc)
-                    print(f"Loaded: {file_path.name}")
+            else:
+                completed_chunks = {}
+                existing_ids = set()
 
-                except Exception as e:
-                    print(f"Warning: Failed to load {file_path.name}: {e}")
+            try:
+                for local_index, chunk in enumerate(chunks):
+                    chunk_hash = stable_hash(source.checksum, str(local_index), chunk.page_content)
+                    chunk_id = storage_id("chroma", self.collection_name, source.doc_key, chunk_hash)
+                    global_chunk_index += 1
 
-        if not langchain_documents:
-            raise ValueError(f"No documents found in {documents_path}")
+                    if checkpoint_store:
+                        checkpoint_store.ensure_chunk(
+                            source.doc_key,
+                            chunk_hash,
+                            chunk_id,
+                            local_index,
+                        )
+                        if chunk_id in completed_chunks and chunk_id in existing_ids:
+                            processed += 1
+                            continue
+                        checkpoint_store.start_chunk(chunk_id)
 
-        documents = langchain_documents
+                    metadata = {
+                        "source": chunk.metadata.get("source", "unknown"),
+                        "doc_key": source.doc_key,
+                        "checksum": source.checksum,
+                        "chunk_index": global_chunk_index - 1,
+                        "local_chunk_index": local_index,
+                    }
 
-        if not documents:
-            raise ValueError(f"No documents found in {documents_path}")
+                    before_tokens = self._token_usage.embedding_tokens
+                    embedding = self._get_embedding(chunk.page_content)
+                    token_delta = self._token_usage.embedding_tokens - before_tokens
 
-        # Split documents into chunks
-        chunks = self.text_splitter.split_documents(documents)
+                    self.collection.upsert(
+                        ids=[chunk_id],
+                        documents=[chunk.page_content],
+                        metadatas=[metadata],  # type: ignore[arg-type]
+                        embeddings=[embedding],  # type: ignore[arg-type]
+                    )
 
-        print(f"Loaded {len(documents)} documents, split into {len(chunks)} chunks")
+                    if checkpoint_store:
+                        checkpoint_store.complete_chunk(chunk_id, token_delta)
 
-        # Prepare data for ChromaDB
-        chunk_ids: list[str] = []
-        chunk_texts: list[str] = []
-        chunk_metadatas: list[dict[str, Any]] = []
-        chunk_embeddings: list[list[float]] = []
+                    processed += 1
+                    self._report_progress(processed, total_chunks)
+                    if checkpoint_store:
+                        checkpoint_store.update_progress(
+                            processed,
+                            total_chunks,
+                            {"document": source.relative_path},
+                        )
 
-        total_chunks = len(chunks)
+                if checkpoint_store:
+                    checkpoint_store.complete_document(source.doc_key, len(chunks))
+            except Exception as e:
+                if checkpoint_store:
+                    checkpoint_store.fail_document(source.doc_key, str(e))
+                raise
 
-        # Process chunks in batches for efficiency
-        for i, chunk in enumerate(chunks):
-            chunk_id = f"chunk_{i}"
-            chunk_ids.append(chunk_id)
-            chunk_texts.append(chunk.page_content)
-
-            # Store metadata
-            metadata = {
-                "source": chunk.metadata.get("source", "unknown"),
-                "chunk_index": i,
-            }
-            chunk_metadatas.append(metadata)
-
-            # Get embedding
-            embedding = self._get_embedding(chunk.page_content)
-            chunk_embeddings.append(embedding)
-
-            # Progress indicator
-            if (i + 1) % 10 == 0:
-                print(f"Processed {i + 1}/{len(chunks)} chunks")
-                self._report_progress(i + 1, total_chunks)
-
-        # Add to ChromaDB collection
-        self.collection.add(
-            ids=chunk_ids,
-            documents=chunk_texts,
-            metadatas=chunk_metadatas,  # type: ignore[arg-type]
-            embeddings=chunk_embeddings,  # type: ignore[arg-type]
-        )
-
-        self._total_chunks = len(chunks)
-        print(f"Successfully indexed {len(chunks)} chunks in ChromaDB")
+        self._total_chunks = total_chunks
+        print(f"Successfully indexed {total_chunks} chunks in ChromaDB")
 
     def _retrieve_only(self, question: str, top_k: int = 5) -> dict[str, Any]:
         """Perform retrieval without generation.

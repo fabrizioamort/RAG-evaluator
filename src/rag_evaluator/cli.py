@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from rag_evaluator.common.base_rag import BaseRAG
+from rag_evaluator.common.indexing import JsonCheckpointStore
 from rag_evaluator.config import settings
 from rag_evaluator.evaluation.evaluator import RAGEvaluator
 from rag_evaluator.evaluation.report_generator import ReportGenerator
@@ -92,7 +93,13 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 
         # Prepare documents
         print(f"\nPreparing documents with {rag_impl.name}...")
-        rag_impl.prepare_documents(str(input_dir))
+        checkpoint_path = (
+            Path(rag_impl.config.storage_path)
+            / "checkpoints"
+            / f"{args.rag_type}_prepare_checkpoint.json"
+        )
+        checkpoint_store = JsonCheckpointStore(checkpoint_path)
+        rag_impl.prepare_documents_resumable(str(input_dir), checkpoint_store)
 
         print("Documents prepared successfully!")
         return 0

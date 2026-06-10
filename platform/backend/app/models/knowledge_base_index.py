@@ -13,6 +13,10 @@ from app.models.base import BaseModelNoUpdate, JSONType
 if TYPE_CHECKING:
     from app.models.evaluation import Evaluation
     from app.models.knowledge_base import KnowledgeBase
+    from app.models.knowledge_base_index_checkpoint import (
+        KnowledgeBaseIndexChunk,
+        KnowledgeBaseIndexDocument,
+    )
     from app.models.knowledge_base_version import KnowledgeBaseVersion
     from app.models.rag_config import RAGConfig
 
@@ -71,6 +75,12 @@ class KnowledgeBaseIndex(BaseModelNoUpdate):
         DateTime(timezone=True), nullable=True
     )
     build_duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    progress_current: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    progress_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    resume_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
 
     # Error handling
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -82,3 +92,13 @@ class KnowledgeBaseIndex(BaseModelNoUpdate):
     kb_version: Mapped["KnowledgeBaseVersion | None"] = relationship("KnowledgeBaseVersion")
     rag_config: Mapped["RAGConfig"] = relationship("RAGConfig", back_populates="indexes")
     evaluations: Mapped[list["Evaluation"]] = relationship("Evaluation", back_populates="index")
+    checkpoint_documents: Mapped[list["KnowledgeBaseIndexDocument"]] = relationship(
+        "KnowledgeBaseIndexDocument",
+        back_populates="index",
+        cascade="all, delete-orphan",
+    )
+    checkpoint_chunks: Mapped[list["KnowledgeBaseIndexChunk"]] = relationship(
+        "KnowledgeBaseIndexChunk",
+        back_populates="index",
+        cascade="all, delete-orphan",
+    )

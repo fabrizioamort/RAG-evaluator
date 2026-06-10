@@ -23,6 +23,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write text via temp file and atomic replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(f"{path.suffix}.tmp")
+    temp_path.write_text(content, encoding="utf-8")
+    os.replace(temp_path, path)
+
+
 # ============================================================================
 # Manifest Manager
 # ============================================================================
@@ -76,10 +84,7 @@ class ManifestManager:
         if self._manifest:
             path = self.prepared_path / self.MANIFEST_FILE
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(
-                json.dumps(asdict(self._manifest), indent=2),
-                encoding="utf-8"
-            )
+            _atomic_write_text(path, json.dumps(asdict(self._manifest), indent=2))
 
     def is_valid(self, source_dir: Path, config: RLMConfig | None = None) -> bool:
         """Check if current preparation is still valid.
@@ -282,12 +287,12 @@ class DocumentProcessor:
 
             # Save processed document
             doc_output = output_dir / "documents" / f"{doc_id}.md"
-            doc_output.write_text(content, encoding="utf-8")
+            _atomic_write_text(doc_output, content)
 
             # Generate summary
             summary = self._generate_summary(content, doc_id)
             summary_output = output_dir / "_summaries" / f"{doc_id}_summary.md"
-            summary_output.write_text(summary, encoding="utf-8")
+            _atomic_write_text(summary_output, summary)
 
             # Extract sections
             sections = self._extract_sections(content)
@@ -317,17 +322,17 @@ class DocumentProcessor:
             metrics["total_words"] += len(content.split())
 
         # Write indexes
-        (output_dir / "_meta" / "catalog.json").write_text(
+        _atomic_write_text(
+            output_dir / "_meta" / "catalog.json",
             json.dumps(catalog, indent=2, ensure_ascii=False),
-            encoding="utf-8"
         )
-        (output_dir / "_meta" / "section_index.json").write_text(
+        _atomic_write_text(
+            output_dir / "_meta" / "section_index.json",
             json.dumps(section_index, indent=2, ensure_ascii=False),
-            encoding="utf-8"
         )
-        (output_dir / "_index" / "topics" / "_topic_map.json").write_text(
+        _atomic_write_text(
+            output_dir / "_index" / "topics" / "_topic_map.json",
             json.dumps(topic_map, indent=2, ensure_ascii=False),
-            encoding="utf-8"
         )
 
         # Record token usage

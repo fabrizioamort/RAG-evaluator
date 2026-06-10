@@ -139,12 +139,8 @@ class PreparationPipeline:
         print(f"{'=' * 60}\n")
 
         try:
-            # Step 0: Clear output directory if it exists
-            if self.output_path.exists():
-                print(f"  Clearing existing output directory: {self.output_path}")
-                import shutil
-
-                shutil.rmtree(self.output_path)
+            # Step 0: Ensure output directory exists. Forced rebuilds are
+            # handled by callers that own the storage path.
             self.output_path.mkdir(parents=True, exist_ok=True)
 
             # Step 1: Load documents

@@ -3,15 +3,21 @@
 import time
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from fastembed import SparseTextEmbedding
 from langchain_core.documents import Document as LangChainDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient, models
-from qdrant_client.http.exceptions import UnexpectedResponse
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
 from rag_evaluator.common.document_loaders import create_loader
+from rag_evaluator.common.indexing import (
+    CheckpointStore,
+    SourceDocument,
+    discover_source_documents,
+    stable_hash,
+)
 from rag_evaluator.common.openai_client import embedding_client, llm_client
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
@@ -162,14 +168,22 @@ class HybridSearchRAG(BaseRAG):
             values=sparse_emb.values.tolist(),
         )
 
+    def _point_id(self, doc_key: str, chunk_hash: str) -> str:
+        """Return a deterministic UUID string accepted by Qdrant."""
+        return str(UUID(hex=stable_hash(self.collection_name, doc_key, chunk_hash, length=32)))
+
     def _process_batch(
-        self, batch_chunks: list[LangChainDocument], start_index: int
+        self,
+        batch_chunks: list[LangChainDocument],
+        point_ids: list[str],
+        chunk_indices: list[int],
     ) -> list[models.PointStruct]:
         """Process a batch of chunks: generate embeddings and create points.
 
         Args:
             batch_chunks: List of document chunks
-            start_index: Starting ID for points
+            point_ids: Deterministic point IDs for each chunk
+            chunk_indices: Stable chunk indices for metadata
 
         Returns:
             List of Qdrant points
@@ -193,8 +207,8 @@ class HybridSearchRAG(BaseRAG):
 
         points = []
         for i, (text, dense, sparse) in enumerate(zip(texts, dense_embeddings, sparse_embeddings)):
-            idx = start_index + i
             chunk = batch_chunks[i]
+            chunk_index = chunk_indices[i]
 
             sparse_vec = models.SparseVector(
                 indices=sparse.indices.tolist(),
@@ -202,7 +216,7 @@ class HybridSearchRAG(BaseRAG):
             )
 
             point = models.PointStruct(
-                id=idx,
+                id=point_ids[i],
                 vector={
                     "dense": dense,
                     "sparse": sparse_vec,
@@ -210,7 +224,9 @@ class HybridSearchRAG(BaseRAG):
                 payload={
                     "text": text,
                     "source": chunk.metadata.get("source", "unknown"),
-                    "chunk_index": idx,
+                    "doc_key": chunk.metadata.get("doc_key"),
+                    "checksum": chunk.metadata.get("checksum"),
+                    "chunk_index": chunk_index,
                 },
             )
             points.append(point)
@@ -223,82 +239,199 @@ class HybridSearchRAG(BaseRAG):
         Args:
             documents_path: Path to the directory containing documents
         """
-        docs_path = Path(documents_path)
+        self._prepare_documents(documents_path, checkpoint_store=None)
 
-        if not docs_path.exists():
-            raise ValueError(f"Documents path does not exist: {documents_path}")
+    def prepare_documents_resumable(
+        self,
+        documents_path: str,
+        checkpoint_store: CheckpointStore,
+    ) -> None:
+        """Prepare and index documents with durable checkpoints."""
+        self._prepare_documents(documents_path, checkpoint_store=checkpoint_store)
 
-        # Validate extensions
-        valid_extensions = {".txt", ".pdf", ".docx"}
-
-        langchain_documents = []
-
-        # Walk through directory and load documents
-        for file_path in docs_path.rglob("*"):
-            if file_path.suffix.lower() in valid_extensions and file_path.is_file():
-                try:
-                    loader = create_loader(str(file_path))
-                    doc = loader.load(str(file_path))
-
-                    # Convert to LangChain document
-                    lc_doc = LangChainDocument(
-                        page_content=doc.content,
-                        metadata={"source": doc.source, **doc.metadata},
-                    )
-                    langchain_documents.append(lc_doc)
-                    print(f"Loaded: {file_path.name}")
-
-                except Exception as e:
-                    print(f"Warning: Failed to load {file_path.name}: {e}")
-
-        if not langchain_documents:
-            raise ValueError(f"No documents found in {documents_path}")
-
-        # Split documents into chunks
-        chunks = self.text_splitter.split_documents(langchain_documents)
-
-        print(f"Loaded {len(langchain_documents)} documents, split into {len(chunks)} chunks")
-
-        # Delete existing points to avoid duplicates
+    def _load_document(self, source: SourceDocument) -> LangChainDocument | None:
         try:
-            self.client.delete(
-                collection_name=self.collection_name,
-                points_selector=models.FilterSelector(
-                    filter=models.Filter(must=[]),
-                ),
+            loader = create_loader(source.source_path)
+            doc = loader.load(source.source_path)
+            return LangChainDocument(
+                page_content=doc.content,
+                metadata={
+                    "source": doc.source,
+                    "doc_key": source.doc_key,
+                    "checksum": source.checksum,
+                    **doc.metadata,
+                },
             )
-        except UnexpectedResponse:
-            # Collection might be empty, which is fine
-            pass
+        except Exception as e:
+            print(f"Warning: Failed to load {Path(source.source_path).name}: {e}")
+            return None
 
-        # Process in batches
+    def _existing_point_ids(self, ids: list[str]) -> set[str]:
+        if not ids:
+            return set()
+        try:
+            records = self.client.retrieve(
+                collection_name=self.collection_name,
+                ids=ids,
+                with_payload=False,
+                with_vectors=False,
+            )
+            return {str(record.id) for record in records}
+        except Exception:
+            return set()
+
+    def _prepare_documents(
+        self,
+        documents_path: str,
+        checkpoint_store: CheckpointStore | None,
+    ) -> None:
+        sources = discover_source_documents(documents_path)
+        document_chunks: list[tuple[SourceDocument, list[LangChainDocument]]] = []
+
+        for source in sources:
+            checkpoint = checkpoint_store.ensure_document(source) if checkpoint_store else None
+            if checkpoint and checkpoint.status == "completed":
+                completed = checkpoint_store.completed_chunks(source.doc_key)
+                existing = self._existing_point_ids(list(completed))
+                if len(existing) == len(completed) and checkpoint.chunk_count:
+                    document_chunks.append((source, []))
+                    continue
+
+            document = self._load_document(source)
+            if document is None:
+                continue
+            chunks = self.text_splitter.split_documents([document])
+            document_chunks.append((source, chunks))
+            print(f"Loaded: {Path(source.source_path).name}")
+
+        total_chunks = sum(len(chunks) for _, chunks in document_chunks)
+        if total_chunks == 0:
+            completed_total = sum(
+                checkpoint_store.ensure_document(source).chunk_count
+                for source, chunks in document_chunks
+                if checkpoint_store and not chunks
+            )
+            if completed_total == 0:
+                raise ValueError(f"No documents found in {documents_path}")
+            self._total_chunks = completed_total
+            return
+
+        print(f"Loaded {len(sources)} documents, split into {total_chunks} chunks")
+
         batch_size = settings.hybrid_indexing_batch_size
-        total_chunks = len(chunks)
+        processed = 0
+        global_chunk_index = 0
 
-        for i in range(0, total_chunks, batch_size):
-            batch = chunks[i : i + batch_size]
+        for source, chunks in document_chunks:
+            if checkpoint_store and not chunks:
+                processed += checkpoint_store.ensure_document(source).chunk_count
+                continue
+
+            if checkpoint_store:
+                checkpoint_store.start_document(source.doc_key)
+                completed_chunks = checkpoint_store.completed_chunks(source.doc_key)
+                existing_ids = self._existing_point_ids(list(completed_chunks))
+                for missing_id in set(completed_chunks) - existing_ids:
+                    checkpoint_store.mark_chunk_pending(
+                        missing_id,
+                        "Completed checkpoint was missing from Qdrant storage",
+                    )
+            else:
+                completed_chunks = {}
+                existing_ids = set()
+
+            pending_batch: list[LangChainDocument] = []
+            pending_ids: list[str] = []
+            pending_indices: list[int] = []
 
             try:
-                # Process batch (generate embeddings)
-                points = self._process_batch(batch, start_index=i)
+                for local_index, chunk in enumerate(chunks):
+                    chunk_hash = stable_hash(source.checksum, str(local_index), chunk.page_content)
+                    point_id = self._point_id(source.doc_key, chunk_hash)
+                    global_chunk_index += 1
 
-                # Upload batch to Qdrant
-                self.client.upsert(
-                    collection_name=self.collection_name,
-                    points=points,
-                )
+                    if checkpoint_store:
+                        checkpoint_store.ensure_chunk(
+                            source.doc_key,
+                            chunk_hash,
+                            point_id,
+                            local_index,
+                        )
+                        if point_id in completed_chunks and point_id in existing_ids:
+                            processed += 1
+                            continue
+                        checkpoint_store.start_chunk(point_id)
 
-                print(
-                    f"Processed and uploaded chunks {i + 1}-{min(i + batch_size, total_chunks)}/{total_chunks}"
-                )
-                self._report_progress(min(i + batch_size, total_chunks), total_chunks)
+                    pending_batch.append(chunk)
+                    pending_ids.append(point_id)
+                    pending_indices.append(global_chunk_index - 1)
 
+                    if len(pending_batch) >= batch_size:
+                        processed += self._flush_batch(
+                            pending_batch,
+                            pending_ids,
+                            pending_indices,
+                            checkpoint_store,
+                            processed,
+                            total_chunks,
+                            source.relative_path,
+                        )
+                        pending_batch = []
+                        pending_ids = []
+                        pending_indices = []
+
+                if pending_batch:
+                    processed += self._flush_batch(
+                        pending_batch,
+                        pending_ids,
+                        pending_indices,
+                        checkpoint_store,
+                        processed,
+                        total_chunks,
+                        source.relative_path,
+                    )
+
+                if checkpoint_store:
+                    checkpoint_store.complete_document(source.doc_key, len(chunks))
             except Exception as e:
-                print(f"Error processing batch starting at index {i}: {e}")
+                if checkpoint_store:
+                    checkpoint_store.fail_document(source.doc_key, str(e))
                 raise
 
         self._total_chunks = total_chunks
         print(f"Successfully indexed {total_chunks} chunks in Qdrant (hybrid mode)")
+
+    def _flush_batch(
+        self,
+        batch: list[LangChainDocument],
+        point_ids: list[str],
+        chunk_indices: list[int],
+        checkpoint_store: CheckpointStore | None,
+        processed_before: int,
+        total_chunks: int,
+        relative_path: str,
+    ) -> int:
+        before_tokens = self._token_usage.embedding_tokens
+        points = self._process_batch(batch, point_ids, chunk_indices)
+        token_delta = self._token_usage.embedding_tokens - before_tokens
+
+        self.client.upsert(collection_name=self.collection_name, points=points)
+
+        per_point_tokens = token_delta // len(point_ids) if point_ids else 0
+        for point_id in point_ids:
+            if checkpoint_store:
+                checkpoint_store.complete_chunk(point_id, per_point_tokens)
+
+        processed = processed_before + len(point_ids)
+        print(f"Processed and uploaded {processed}/{total_chunks} chunks")
+        self._report_progress(processed, total_chunks)
+        if checkpoint_store:
+            checkpoint_store.update_progress(
+                processed,
+                total_chunks,
+                {"document": relative_path},
+            )
+        return len(point_ids)
 
     def retrieve(self, question: str, top_k: int = 5) -> RetrievedContext:
         """Retrieve context using hybrid search (dense + sparse with RRF fusion).

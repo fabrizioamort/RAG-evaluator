@@ -30,6 +30,8 @@ from app.models import (  # noqa: F401
     EvaluationResult,
     KnowledgeBase,
     KnowledgeBaseIndex,
+    KnowledgeBaseIndexChunk,
+    KnowledgeBaseIndexDocument,
     KnowledgeBaseVersion,
     Project,
     RAGConfig,
