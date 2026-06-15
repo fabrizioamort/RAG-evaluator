@@ -37,6 +37,7 @@ def load_latest_results(reports_dir: Path, exclude_types: list[str]) -> dict[str
         "graph_rag": "neo4j_graph_rag",
         "filesystem_rag": "filesystem_rag",
         "rlm_rag": "rlm_filesystem_rag",
+        "google_vertex_search": "google_vertex_ai_search",
     }
 
     loaded_results = {}
@@ -292,6 +293,9 @@ Examples:
   # Prepare documents for RLM-RAG
   rag-eval prepare --rag-type rlm_rag --input-dir data/raw
 
+  # Index into a new Google Vertex AI Search data store (requires GCS staging bucket)
+  rag-eval prepare --rag-type google_vertex_search --input-dir data/raw
+
   # Evaluate ChromaDB RAG
   rag-eval evaluate --rag-type vector_semantic
 
@@ -309,6 +313,9 @@ Examples:
 
   # Evaluate RLM-RAG
   rag-eval evaluate --rag-type rlm_rag
+
+  # Evaluate Google Vertex AI Search (new or existing data store via .env / config)
+  rag-eval evaluate --rag-type google_vertex_search
 
   # Evaluate all RAG types
   rag-eval evaluate --rag-type all

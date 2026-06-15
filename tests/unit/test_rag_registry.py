@@ -17,6 +17,7 @@ def test_all_types_present():
         "graph_rag",
         "filesystem_rag",
         "rlm_rag",
+        "google_vertex_search",
     }
 
 

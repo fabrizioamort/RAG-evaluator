@@ -16,6 +16,7 @@ _RAG_CLASS_PATHS: dict[str, str] = {
     "graph_rag": "rag_evaluator.rag_implementations.graph_rag.neo4j_rag.Neo4jGraphRAG",
     "filesystem_rag": "rag_evaluator.rag_implementations.filesystem_rag.filesystem_rag.FilesystemRAG",
     "rlm_rag": "rag_evaluator.rag_implementations.rlm_rag.rlm_rag.RLMFilesystemRAG",
+    "google_vertex_search": "rag_evaluator.rag_implementations.google_vertex_search.google_vertex_rag.GoogleVertexSearchRAG",
 }
 
 # Human-readable metadata for each type
@@ -39,6 +40,10 @@ RAG_TYPES: dict[str, dict[str, str]] = {
     "rlm_rag": {
         "name": "RLM-RAG",
         "description": "Recursive language-model RAG that explores a prepared filesystem with Python tools",
+    },
+    "google_vertex_search": {
+        "name": "Google Vertex AI Search",
+        "description": "Managed Google Vertex AI Search data store (Discovery Engine) with automatic parsing, chunking, and embedding",
     },
 }
 
@@ -313,6 +318,60 @@ RAG_TYPE_PARAMETERS: dict[str, dict[str, Any]] = {
                 "phase": "build",
                 "description": "Prepared RLM filesystem path",
                 "platform_managed": True,
+            },
+        },
+    },
+    "google_vertex_search": {
+        "properties": {
+            "data_store_id": {
+                "type": "string",
+                "phase": "build",
+                "description": "Vertex AI Search data store ID. Leave blank to auto-generate "
+                "an isolated data store for this index, or set it (with "
+                "reuse_existing_data_store) to evaluate an existing data store as-is.",
+            },
+            "reuse_existing_data_store": {
+                "type": "boolean",
+                "phase": "build",
+                "default": False,
+                "description": "Skip creation/import; evaluate an existing data store only",
+            },
+            "location": {
+                "type": "string",
+                "phase": "build",
+                "default": "global",
+                "enum": ["global", "us", "eu"],
+                "description": "Vertex AI Search region",
+            },
+            "staging_bucket": {
+                "type": "string",
+                "phase": "build",
+                "description": "GCS bucket used to stage documents for import",
+                "platform_managed": True,
+            },
+            "num_previous_chunks": {
+                "type": "integer",
+                "phase": "query",
+                "default": 2,
+                "minimum": 0,
+                "maximum": 3,
+                "description": "Number of preceding chunks to include around each hit",
+            },
+            "num_next_chunks": {
+                "type": "integer",
+                "phase": "query",
+                "default": 2,
+                "minimum": 0,
+                "maximum": 3,
+                "description": "Number of following chunks to include around each hit",
+            },
+            "generation_mode": {
+                "type": "string",
+                "phase": "query",
+                "default": "framework",
+                "enum": ["framework", "google_grounded"],
+                "description": "Use the framework LLM (default) or Vertex AI Search's "
+                "grounded Answer API for generation",
             },
         },
     },

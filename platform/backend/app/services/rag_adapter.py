@@ -230,6 +230,10 @@ class RAGAdapterService:
                 else str(Path(settings.STORAGE_PATH) / "indexes" / f"{config_model.id}" / "rlm_rag")
             )
 
+        elif config_model.rag_type == "google_vertex_search":
+            kwargs["data_store_id"] = parameters.get("data_store_id") or f"kb_{config_model.project_id}"
+            kwargs["staging_bucket"] = parameters.get("staging_bucket")
+
         # Create and return the RAG instance
         logger.info(
             "Creating RAG instance",
@@ -377,6 +381,11 @@ class RAGAdapterService:
         elif rag_type == "rlm_rag":
             kwargs["rlm_config"] = rlm_config_from_rag_config(rag_config)
             kwargs["prepared_path"] = str(storage_path / "rlm_rag")
+
+        elif rag_type == "google_vertex_search":
+            params = config_snapshot.get("parameters", {})
+            kwargs["data_store_id"] = params.get("data_store_id") or index.physical_id
+            kwargs["staging_bucket"] = params.get("staging_bucket")
 
         logger.info(
             "Creating RAG instance for index",

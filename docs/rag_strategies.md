@@ -1,6 +1,6 @@
 # RAG Strategies
 
-RAG Evaluator includes five built-in retrieval strategies. They all implement the
+RAG Evaluator includes six built-in retrieval strategies. They all implement the
 same `BaseRAG` interface, so they can be evaluated with the same test sets and metrics.
 
 Use this guide to choose an implementation and understand the trade-offs before you run
@@ -15,6 +15,7 @@ an evaluation.
 | `graph_rag` | Neo4j | Vector entry points plus graph traversal | Useful for relationships and multi-hop reasoning | LLM graph extraction can be slower and more expensive |
 | `filesystem_rag` | Local prepared files | ReAct-style agent with file tools | Good for large corpora and research-style queries | Agent behavior is slower and less deterministic than vector search |
 | `rlm_rag` | Local prepared files | Recursive language-model agent with Python tools | Strong for large corpora that need programmatic exploration | Executes generated Python; choose security mode carefully |
+| `google_vertex_search` | Google Vertex AI Search (Discovery Engine) | Managed search with automatic parsing, chunking, and embedding | Offloads indexing and retrieval infrastructure to a managed Google service | Requires a GCP project, GCS staging bucket, and the `google-vertex` extra |
 
 ## Shared Platform Behavior
 
@@ -249,6 +250,52 @@ RLM-RAG build-time parameters are the preparation controls: `chunk_size`,
 `small_corpus_threshold`. If you override `llm_model` and do not explicitly set
 `orchestrator_model`, the platform uses the overridden generation model as the effective
 orchestrator model.
+
+## Google Vertex AI Search
+
+Type key: `google_vertex_search`
+
+This strategy delegates indexing, chunking, embedding, and retrieval to a managed
+Google Vertex AI Search data store (Discovery Engine). Documents are staged to a GCS
+bucket and imported into the data store, which handles parsing, layout-aware chunking,
+and ranking automatically.
+
+Best for:
+
+- Teams that want to offload indexing infrastructure to a managed service.
+- Evaluating Google's managed retrieval quality against self-hosted strategies.
+- Reusing an existing Vertex AI Search data store for evaluation only.
+
+Requires the optional `google-vertex` extra:
+
+```powershell
+uv sync --extra google-vertex
+```
+
+Platform parameters:
+
+| Parameter | Default | Notes |
+| --- | --- | --- |
+| `data_store_id` | empty | Leave blank to auto-generate an isolated data store for this index, or set it (with `reuse_existing_data_store`) to evaluate an existing data store as-is. |
+| `reuse_existing_data_store` | `false` | When true, preparation validates the existing data store instead of creating or importing into one. |
+| `location` | `global` | Vertex AI Search region: `global`, `us`, or `eu`. |
+| `staging_bucket` | empty | Leave blank in the platform to use managed/configured GCS staging. |
+| `num_previous_chunks` | `2` | Adjacent chunks returned before each matched chunk (0-3). |
+| `num_next_chunks` | `2` | Adjacent chunks returned after each matched chunk (0-3). |
+| `generation_mode` | `framework` | `framework` uses the standard LLM pipeline; `google_grounded` uses Vertex AI Search's grounded answer generation. |
+
+`data_store_id`, `reuse_existing_data_store`, `location`, and `staging_bucket` are
+build-time settings. `num_previous_chunks`, `num_next_chunks`, and `generation_mode`
+are query-time settings that can be changed for a run against a ready index.
+
+CLI environment:
+
+- `GOOGLE_VERTEX_PROJECT_ID`
+- `GOOGLE_VERTEX_LOCATION`
+- `GOOGLE_VERTEX_SA_KEY_PATH` (optional; falls back to Application Default Credentials)
+- `GOOGLE_VERTEX_DATA_STORE_ID`
+- `GOOGLE_VERTEX_STAGING_BUCKET`
+- `GOOGLE_VERTEX_GENERATION_MODE`
 
 ## Choosing A Strategy
 

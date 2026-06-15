@@ -1,4 +1,4 @@
-import { Settings2, Plus, Edit2, Trash2, Cpu, Database, Network, FolderTree } from 'lucide-react'
+import { Settings2, Plus, Edit2, Trash2, Cpu, Database, Network, FolderTree, Cloud } from 'lucide-react'
 import { RAGConfig } from '@/api/client'
 
 interface RAGConfigListProps {
@@ -36,6 +36,7 @@ export function RAGConfigList({ configs, onCreateClick, onEdit, onDelete }: RAGC
             case 'hybrid': return <Network className="h-4 w-4" />
             case 'graph': return <Network className="h-4 w-4" />
             case 'filesystem': return <FolderTree className="h-4 w-4" />
+            case 'google_vertex_search': return <Cloud className="h-4 w-4" />
             default: return <Settings2 className="h-4 w-4" />
         }
     }

@@ -29,6 +29,7 @@ engine.
 | `graph_rag` | Graph-enhanced retrieval | Neo4j | Relationship and multi-hop questions |
 | `filesystem_rag` | Agentic filesystem navigation | Local prepared files | Large document sets and research-style queries |
 | `rlm_rag` | Recursive language-model RAG | Local prepared files + Python tools | Large corpora that benefit from programmatic exploration |
+| `google_vertex_search` | Managed search with automatic chunking/embedding | Google Vertex AI Search (Discovery Engine) | Offloading indexing/retrieval infrastructure to a managed Google service |
 
 ## Quick Start
 

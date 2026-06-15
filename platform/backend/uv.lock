@@ -4084,6 +4084,9 @@ requires-dist = [
     { name = "chromadb", specifier = ">=0.4.22" },
     { name = "deepeval", specifier = ">=0.21.0" },
     { name = "fastembed", specifier = ">=0.2.0" },
+    { name = "google-auth", marker = "extra == 'google-vertex'", specifier = ">=2.30" },
+    { name = "google-cloud-discoveryengine", marker = "extra == 'google-vertex'", specifier = ">=0.13" },
+    { name = "google-cloud-storage", marker = "extra == 'google-vertex'", specifier = ">=2.16" },
     { name = "ipdb", marker = "extra == 'dev'", specifier = ">=0.13.13" },
     { name = "ipython", marker = "extra == 'dev'", specifier = ">=8.20.0" },
     { name = "langchain", specifier = ">=0.1.0" },
@@ -4110,7 +4113,7 @@ requires-dist = [
     { name = "streamlit", specifier = ">=1.31.0" },
     { name = "unstructured", specifier = ">=0.12.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["google-vertex", "dev"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "scipy-stubs", specifier = ">=1.17.0.0" }]

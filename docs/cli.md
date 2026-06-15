@@ -60,7 +60,7 @@ Options:
 
 | Option | Description | Default |
 | --- | --- | --- |
-| `--rag-type` | One of `vector_semantic`, `vector_hybrid`, `graph_rag`, `filesystem_rag`, `rlm_rag` | `vector_semantic` |
+| `--rag-type` | One of `vector_semantic`, `vector_hybrid`, `graph_rag`, `filesystem_rag`, `rlm_rag`, `google_vertex_search` | `vector_semantic` |
 | `--input-dir` | Directory containing source documents | `data/raw` |
 
 Supported source formats are handled by the shared document loaders and include PDF,
@@ -109,6 +109,7 @@ The production web platform lives under `platform/` and is started separately. S
 | `graph_rag` | Neo4j | Start with `docker-compose up -d neo4j`. Graph construction uses LLM calls during preparation. |
 | `filesystem_rag` | None beyond LLM access | Builds a prepared filesystem and uses an agentic navigation loop. |
 | `rlm_rag` | None beyond LLM access | Builds a prepared filesystem and lets a recursive language-model agent explore it with Python tools. |
+| `google_vertex_search` | Google Cloud project + GCS staging bucket | Requires the `google-vertex` extra. Indexes documents into a managed Vertex AI Search data store (Discovery Engine) via GCS staging; can also reuse an existing data store for evaluation only. |
 
 ## Environment Variables
 
@@ -125,6 +126,10 @@ Common settings:
 | `CHROMA_PERSIST_DIRECTORY` | Local ChromaDB path. |
 | `QDRANT_URL` | Qdrant endpoint for hybrid search. |
 | `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` | Neo4j connection details for Graph RAG. |
+| `GOOGLE_VERTEX_PROJECT_ID`, `GOOGLE_VERTEX_LOCATION` | GCP project and region (`global`, `us`, or `eu`) for Vertex AI Search. |
+| `GOOGLE_VERTEX_SA_KEY_PATH` | Optional service-account key path; falls back to Application Default Credentials. |
+| `GOOGLE_VERTEX_DATA_STORE_ID`, `GOOGLE_VERTEX_STAGING_BUCKET` | Vertex AI Search data store ID and GCS staging bucket for document import. |
+| `GOOGLE_VERTEX_GENERATION_MODE` | `framework` (default LLM pipeline) or `google_grounded` (Vertex grounded generation). |
 | `DEEPEVAL_ASYNC_MODE` | Set to `False` for conservative sequential judging. |
 
 See [Configuration](guides/configuration.md) for the full list.
