@@ -1,6 +1,6 @@
 """Neo4j connection helpers for Graph RAG."""
 
-from neo4j import GraphDatabase
+from neo4j import Driver, GraphDatabase
 
 
 class Neo4jConnectionError(RuntimeError):
@@ -21,8 +21,17 @@ def resolve_neo4j_connection_params(
     default_password: str,
 ) -> tuple[str, str, str]:
     """Resolve Neo4j connection params with blank-aware fallback semantics."""
-    resolved_uri = default_uri if _is_blank(uri) else uri.strip()
-    resolved_username = default_username if _is_blank(username) else username.strip()
+    if _is_blank(uri):
+        resolved_uri = default_uri
+    else:
+        assert uri is not None
+        resolved_uri = uri.strip()
+
+    if _is_blank(username):
+        resolved_username = default_username
+    else:
+        assert username is not None
+        resolved_username = username.strip()
 
     if _is_blank(password):
         resolved_password = default_password
@@ -67,7 +76,7 @@ def test_neo4j_connection(uri: str, username: str, password: str) -> None:
         driver.close()
 
 
-def create_verified_neo4j_driver(uri: str, username: str, password: str):
+def create_verified_neo4j_driver(uri: str, username: str, password: str) -> Driver:
     """Create a Neo4j driver and verify connectivity before returning it."""
     driver = GraphDatabase.driver(uri, auth=(username, password))
     try:
@@ -82,4 +91,3 @@ def create_verified_neo4j_driver(uri: str, username: str, password: str):
             format_neo4j_connection_error(exc, uri=uri, username=username)
         ) from exc
     return driver
-

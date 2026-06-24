@@ -43,6 +43,7 @@ RAG_TYPE_TO_STORAGE: dict[str, str] = {
     "graph_rag": "neo4j",
     "filesystem_rag": "filesystem",
     "rlm_rag": "filesystem",
+    "google_vertex_search": "google_vertex",
 }
 
 STALE_BUILD_AFTER = timedelta(minutes=30)
@@ -588,6 +589,37 @@ class IndexBuildService:
                     logger.info("Deleted filesystem storage", path=str(storage_path))
                 except Exception as e:
                     logger.warning("Failed to delete filesystem storage", error=str(e))
+
+        elif index.storage_type == "google_vertex":
+            # Delete the Vertex AI Search data store, unless it was an existing
+            # data store reused for evaluation only.
+            params = index.config_snapshot.get("parameters", {})
+            if not params.get("reuse_existing_data_store", False):
+                try:
+                    from rag_evaluator.config import settings as rag_settings
+                    from rag_evaluator.rag_implementations.google_vertex_search.client import (
+                        data_store_path,
+                        get_data_store_service_client,
+                    )
+
+                    data_store_id = params.get("data_store_id") or index.physical_id
+                    location = params.get("location", rag_settings.google_vertex_location)
+                    client = get_data_store_service_client(
+                        location, rag_settings.google_vertex_sa_key_path
+                    )
+                    operation = client.delete_data_store(
+                        name=data_store_path(
+                            rag_settings.google_vertex_project_id, location, data_store_id
+                        )
+                    )
+                    operation.result()
+                    logger.info("Deleted Vertex AI Search data store", data_store_id=data_store_id)
+                except ImportError:
+                    logger.warning(
+                        "google-cloud-discoveryengine not installed, cannot cleanup data store"
+                    )
+                except Exception as e:
+                    logger.warning("Failed to delete Vertex AI Search data store", error=str(e))
 
     async def _clear_checkpoints(self, index_id: UUID) -> None:
         await self.db.execute(

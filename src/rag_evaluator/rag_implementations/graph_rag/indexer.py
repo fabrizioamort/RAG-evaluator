@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from neo4j_graphrag.embeddings.openai import OpenAIEmbeddings
 from neo4j_graphrag.experimental.components.types import (
@@ -245,13 +245,16 @@ class GraphIndexer:
         if "nano" not in self.llm_model.lower() and "o1" not in self.llm_model.lower():
             llm_params["temperature"] = 0
 
-        llm = OpenAILLM(
+        llm = cast(Any, OpenAILLM)(
             model_name=self.llm_model,
             model_params=llm_params,
             **self.llm_client_kwargs,
         )
 
-        embedder = OpenAIEmbeddings(model=self.embedding_model, **self.embedding_client_kwargs)
+        embedder = cast(Any, OpenAIEmbeddings)(
+            model=self.embedding_model,
+            **self.embedding_client_kwargs,
+        )
 
         schema = self._build_schema()
         lexical_graph_config = self._build_lexical_graph_config()

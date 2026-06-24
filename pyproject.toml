@@ -54,6 +54,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+google-vertex = [
+    "google-cloud-discoveryengine>=0.13",
+    "google-cloud-storage>=2.16",
+    "google-auth>=2.30",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
@@ -97,6 +102,14 @@ namespace_packages = true
 [[tool.mypy.overrides]]
 module = ["plotly.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["google.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["rag_evaluator.rag_implementations.rlm_rag.*"]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

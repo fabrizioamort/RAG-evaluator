@@ -1,7 +1,7 @@
 """Neo4j-based Graph RAG implementation using neo4j-graphrag package."""
 
 import time
-from typing import Any
+from typing import Any, cast
 
 from neo4j import GraphDatabase
 from neo4j_graphrag.embeddings.openai import OpenAIEmbeddings
@@ -99,7 +99,7 @@ class Neo4jGraphRAG(BaseRAG):
         embed_kwargs = embedding_openai_kwargs(self.config)
 
         # Initialize embedder and LLM
-        self.embedder = OpenAIEmbeddings(model=embedding_model, **embed_kwargs)
+        self.embedder = cast(Any, OpenAIEmbeddings)(model=embedding_model, **embed_kwargs)
 
         # LLM configuration for answer generation
         llm_params: dict[str, Any] = {}
@@ -107,7 +107,7 @@ class Neo4jGraphRAG(BaseRAG):
         if "nano" not in llm_model.lower():
             llm_params["temperature"] = 0.2
 
-        self.llm = OpenAILLM(
+        self.llm = cast(Any, OpenAILLM)(
             model_name=llm_model,
             model_params=llm_params,
             **llm_kwargs,

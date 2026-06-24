@@ -62,6 +62,27 @@ class Settings(BaseSettings):
     neo4j_username: str = Field(default="neo4j", description="Neo4j username")
     neo4j_password: str = Field(default="", description="Neo4j password")
 
+    # Google Vertex AI Search (Discovery Engine) Configuration
+    google_vertex_project_id: str = Field(default="", description="GCP project ID")
+    google_vertex_location: str = Field(
+        default="global", description="Vertex AI Search region (global, us, or eu)"
+    )
+    google_vertex_sa_key_path: str | None = Field(
+        default=None,
+        description="Path to a service-account JSON key; falls back to Application "
+        "Default Credentials (ADC) when unset",
+    )
+    google_vertex_data_store_id: str = Field(
+        default="", description="Vertex AI Search data store ID (set to reuse an existing store)"
+    )
+    google_vertex_staging_bucket: str = Field(
+        default="", description="GCS bucket used to stage documents for import"
+    )
+    google_vertex_generation_mode: str = Field(
+        default="framework",
+        description="Generation mode: 'framework' (default LLM pipeline) or 'google_grounded'",
+    )
+
     # Evaluation Configuration
     eval_test_set_path: str = Field(
         default="data/test_set.json", description="Path to evaluation test set"

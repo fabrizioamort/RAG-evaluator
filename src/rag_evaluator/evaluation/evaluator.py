@@ -53,37 +53,47 @@ def _ensure_deepeval_loaded() -> None:
         return
 
     from deepeval import evaluate as deepeval_evaluate
-    from deepeval.evaluate import AsyncConfig as deepeval_async_config
+    from deepeval.evaluate import AsyncConfig as DeepEvalAsyncConfig
     from deepeval.metrics import (
-        AnswerRelevancyMetric as deepeval_answer_relevancy_metric,
-        ContextualPrecisionMetric as deepeval_contextual_precision_metric,
-        ContextualRecallMetric as deepeval_contextual_recall_metric,
-        FaithfulnessMetric as deepeval_faithfulness_metric,
-        GEval as deepeval_g_eval,
+        AnswerRelevancyMetric as DeepEvalAnswerRelevancyMetric,
+    )
+    from deepeval.metrics import (
+        ContextualPrecisionMetric as DeepEvalContextualPrecisionMetric,
+    )
+    from deepeval.metrics import (
+        ContextualRecallMetric as DeepEvalContextualRecallMetric,
+    )
+    from deepeval.metrics import (
+        FaithfulnessMetric as DeepEvalFaithfulnessMetric,
+    )
+    from deepeval.metrics import (
+        GEval as DeepEvalGEval,
     )
     from deepeval.test_case import (
-        LLMTestCase as deepeval_test_case,
-        LLMTestCaseParams as deepeval_test_case_params,
+        LLMTestCase as DeepEvalLLMTestCase,
+    )
+    from deepeval.test_case import (
+        LLMTestCaseParams as DeepEvalLLMTestCaseParams,
     )
 
     if evaluate is None:
         evaluate = deepeval_evaluate
     if AsyncConfig is None:
-        AsyncConfig = deepeval_async_config
+        AsyncConfig = DeepEvalAsyncConfig
     if AnswerRelevancyMetric is None:
-        AnswerRelevancyMetric = deepeval_answer_relevancy_metric
+        AnswerRelevancyMetric = DeepEvalAnswerRelevancyMetric
     if ContextualPrecisionMetric is None:
-        ContextualPrecisionMetric = deepeval_contextual_precision_metric
+        ContextualPrecisionMetric = DeepEvalContextualPrecisionMetric
     if ContextualRecallMetric is None:
-        ContextualRecallMetric = deepeval_contextual_recall_metric
+        ContextualRecallMetric = DeepEvalContextualRecallMetric
     if FaithfulnessMetric is None:
-        FaithfulnessMetric = deepeval_faithfulness_metric
+        FaithfulnessMetric = DeepEvalFaithfulnessMetric
     if GEval is None:
-        GEval = deepeval_g_eval
+        GEval = DeepEvalGEval
     if LLMTestCase is None:
-        LLMTestCase = deepeval_test_case
+        LLMTestCase = DeepEvalLLMTestCase
     if LLMTestCaseParams is None:
-        LLMTestCaseParams = deepeval_test_case_params
+        LLMTestCaseParams = DeepEvalLLMTestCaseParams
 
 
 class RAGEvaluator:

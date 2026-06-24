@@ -8,7 +8,7 @@ import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 VALID_DOCUMENT_EXTENSIONS = {".txt", ".pdf", ".docx"}
 
@@ -173,7 +173,7 @@ class JsonCheckpointStore:
         data.setdefault("documents", {})
         data.setdefault("chunks", {})
         data.setdefault("progress", {})
-        return data
+        return cast(dict[str, Any], data)
 
     def _save_locked(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -214,7 +214,10 @@ class JsonCheckpointStore:
                 }
                 docs[document.doc_key] = existing
                 self._save_locked()
-            return CheckpointDocument(**{k: existing[k] for k in CheckpointDocument.__dataclass_fields__})
+            document_data: dict[str, Any] = {
+                k: existing[k] for k in CheckpointDocument.__dataclass_fields__
+            }
+            return CheckpointDocument(**document_data)
 
     def start_document(self, doc_key: str) -> None:
         with self._lock:

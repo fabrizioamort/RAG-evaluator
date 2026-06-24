@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 from collections.abc import Mapping
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 from rag_evaluator.common.base_rag import BaseRAG
 
@@ -16,6 +16,7 @@ _RAG_CLASS_PATHS: dict[str, str] = {
     "graph_rag": "rag_evaluator.rag_implementations.graph_rag.neo4j_rag.Neo4jGraphRAG",
     "filesystem_rag": "rag_evaluator.rag_implementations.filesystem_rag.filesystem_rag.FilesystemRAG",
     "rlm_rag": "rag_evaluator.rag_implementations.rlm_rag.rlm_rag.RLMFilesystemRAG",
+    "google_vertex_search": "rag_evaluator.rag_implementations.google_vertex_search.google_vertex_rag.GoogleVertexSearchRAG",
 }
 
 # Human-readable metadata for each type
@@ -39,6 +40,10 @@ RAG_TYPES: dict[str, dict[str, str]] = {
     "rlm_rag": {
         "name": "RLM-RAG",
         "description": "Recursive language-model RAG that explores a prepared filesystem with Python tools",
+    },
+    "google_vertex_search": {
+        "name": "Google Vertex AI Search",
+        "description": "Managed Google Vertex AI Search data store (Discovery Engine) with automatic parsing, chunking, and embedding",
     },
 }
 
@@ -316,6 +321,60 @@ RAG_TYPE_PARAMETERS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "google_vertex_search": {
+        "properties": {
+            "data_store_id": {
+                "type": "string",
+                "phase": "build",
+                "description": "Vertex AI Search data store ID. Leave blank to auto-generate "
+                "an isolated data store for this index, or set it (with "
+                "reuse_existing_data_store) to evaluate an existing data store as-is.",
+            },
+            "reuse_existing_data_store": {
+                "type": "boolean",
+                "phase": "build",
+                "default": False,
+                "description": "Skip creation/import; evaluate an existing data store only",
+            },
+            "location": {
+                "type": "string",
+                "phase": "build",
+                "default": "global",
+                "enum": ["global", "us", "eu"],
+                "description": "Vertex AI Search region",
+            },
+            "staging_bucket": {
+                "type": "string",
+                "phase": "build",
+                "description": "GCS bucket used to stage documents for import",
+                "platform_managed": True,
+            },
+            "num_previous_chunks": {
+                "type": "integer",
+                "phase": "query",
+                "default": 2,
+                "minimum": 0,
+                "maximum": 3,
+                "description": "Number of preceding chunks to include around each hit",
+            },
+            "num_next_chunks": {
+                "type": "integer",
+                "phase": "query",
+                "default": 2,
+                "minimum": 0,
+                "maximum": 3,
+                "description": "Number of following chunks to include around each hit",
+            },
+            "generation_mode": {
+                "type": "string",
+                "phase": "query",
+                "default": "framework",
+                "enum": ["framework", "google_grounded"],
+                "description": "Use the framework LLM (default) or Vertex AI Search's "
+                "grounded Answer API for generation",
+            },
+        },
+    },
 }
 
 
@@ -323,11 +382,11 @@ def get_parameter_schema(rag_type: str) -> dict[str, Any]:
     """Return the parameter schema for a RAG type."""
     if rag_type not in RAG_TYPE_PARAMETERS:
         raise ValueError(f"Unknown RAG type: {rag_type}")
-    return deepcopy(RAG_TYPE_PARAMETERS[rag_type])
+    return cast(dict[str, Any], deepcopy(RAG_TYPE_PARAMETERS[rag_type]))
 
 
 def _properties(rag_type: str) -> dict[str, dict[str, Any]]:
-    return get_parameter_schema(rag_type).get("properties", {})
+    return cast(dict[str, dict[str, Any]], get_parameter_schema(rag_type).get("properties", {}))
 
 
 def build_param_names(rag_type: str) -> set[str]:
@@ -367,7 +426,7 @@ def _as_override_dict(overrides: Any) -> dict[str, Any]:
     if overrides is None:
         return {}
     if hasattr(overrides, "model_dump"):
-        return overrides.model_dump(exclude_none=True)
+        return cast(dict[str, Any], overrides.model_dump(exclude_none=True))
     if isinstance(overrides, Mapping):
         return dict(overrides)
     raise ValueError("query_overrides must be an object")
@@ -493,4 +552,7 @@ def get_rag_class(rag_type: str) -> type[BaseRAG]:
         raise ValueError(f"Unknown RAG type: {rag_type}. Supported: {list(_RAG_CLASS_PATHS)}")
     module_path, class_name = _RAG_CLASS_PATHS[rag_type].rsplit(".", 1)
     module = importlib.import_module(module_path)
-    return getattr(module, class_name)  # type: ignore[return-value]
+    rag_class = getattr(module, class_name)
+    if not isinstance(rag_class, type) or not issubclass(rag_class, BaseRAG):
+        raise TypeError(f"Registered RAG class is invalid: {_RAG_CLASS_PATHS[rag_type]}")
+    return cast(type[BaseRAG], rag_class)

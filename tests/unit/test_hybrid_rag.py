@@ -42,9 +42,18 @@ def mock_qdrant() -> MagicMock:
 
 @pytest.fixture
 def mock_openai() -> MagicMock:
-    """Mock OpenAI client."""
-    with patch("rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag.OpenAI") as mock:
-        yield mock
+    """Mock OpenAI-compatible clients."""
+    with (
+        patch("rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag.llm_client") as mock_llm,
+        patch(
+            "rag_evaluator.rag_implementations.vector_hybrid.hybrid_rag.embedding_client"
+        ) as mock_embedding,
+    ):
+        mock_llm_client = MagicMock()
+        mock_embedding_client = MagicMock()
+        mock_llm.return_value = mock_llm_client
+        mock_embedding.return_value = mock_embedding_client
+        yield mock_llm_client
 
 
 @pytest.fixture
@@ -148,7 +157,7 @@ def test_query_structure(
     # Mock OpenAI embedding
     mock_embedding_response = MagicMock()
     mock_embedding_response.data = [MagicMock(embedding=[0.1] * 1536)]
-    rag.openai_client.embeddings.create.return_value = mock_embedding_response
+    rag.embedding_client.embeddings.create.return_value = mock_embedding_response
 
     # Mock OpenAI chat completion
     mock_chat_response = MagicMock()
@@ -224,12 +233,12 @@ def test_dense_embedding_generation(
     # Mock OpenAI embedding response
     mock_embedding_response = MagicMock()
     mock_embedding_response.data = [MagicMock(embedding=[0.1] * 1536)]
-    rag.openai_client.embeddings.create.return_value = mock_embedding_response
+    rag.embedding_client.embeddings.create.return_value = mock_embedding_response
 
     dense_vec = rag._get_dense_embedding("test text")
 
     # Verify OpenAI was called
-    rag.openai_client.embeddings.create.assert_called_once()
+    rag.embedding_client.embeddings.create.assert_called_once()
 
     # Verify the dense vector length
     assert len(dense_vec) == 1536

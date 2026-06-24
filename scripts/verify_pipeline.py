@@ -161,7 +161,7 @@ def preflight_check(rag_type: str) -> None:
 
     elif rag_type == "vector_hybrid":
         print("  Qdrant requires Docker.")
-        print(f"  Start it with: docker-compose up -d qdrant")
+        print("  Start it with: docker-compose up -d qdrant")
         confirm("  Is Qdrant running?")
         print(f"  Checking connection to {QDRANT_URL}...")
         if not check_qdrant_reachable():
@@ -172,7 +172,7 @@ def preflight_check(rag_type: str) -> None:
 
     elif rag_type == "graph_rag":
         print("  Neo4j requires Docker.")
-        print(f"  Start it with: docker-compose up -d neo4j")
+        print("  Start it with: docker-compose up -d neo4j")
         confirm("  Is Neo4j running?")
         print(f"  Checking connection to {NEO4J_URI}...")
         if not check_neo4j_reachable():
