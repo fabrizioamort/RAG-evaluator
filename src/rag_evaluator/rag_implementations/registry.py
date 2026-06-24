@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 from collections.abc import Mapping
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 from rag_evaluator.common.base_rag import BaseRAG
 
@@ -382,11 +382,11 @@ def get_parameter_schema(rag_type: str) -> dict[str, Any]:
     """Return the parameter schema for a RAG type."""
     if rag_type not in RAG_TYPE_PARAMETERS:
         raise ValueError(f"Unknown RAG type: {rag_type}")
-    return deepcopy(RAG_TYPE_PARAMETERS[rag_type])
+    return cast(dict[str, Any], deepcopy(RAG_TYPE_PARAMETERS[rag_type]))
 
 
 def _properties(rag_type: str) -> dict[str, dict[str, Any]]:
-    return get_parameter_schema(rag_type).get("properties", {})
+    return cast(dict[str, dict[str, Any]], get_parameter_schema(rag_type).get("properties", {}))
 
 
 def build_param_names(rag_type: str) -> set[str]:
@@ -426,7 +426,7 @@ def _as_override_dict(overrides: Any) -> dict[str, Any]:
     if overrides is None:
         return {}
     if hasattr(overrides, "model_dump"):
-        return overrides.model_dump(exclude_none=True)
+        return cast(dict[str, Any], overrides.model_dump(exclude_none=True))
     if isinstance(overrides, Mapping):
         return dict(overrides)
     raise ValueError("query_overrides must be an object")
@@ -552,4 +552,7 @@ def get_rag_class(rag_type: str) -> type[BaseRAG]:
         raise ValueError(f"Unknown RAG type: {rag_type}. Supported: {list(_RAG_CLASS_PATHS)}")
     module_path, class_name = _RAG_CLASS_PATHS[rag_type].rsplit(".", 1)
     module = importlib.import_module(module_path)
-    return getattr(module, class_name)  # type: ignore[return-value]
+    rag_class = getattr(module, class_name)
+    if not isinstance(rag_class, type) or not issubclass(rag_class, BaseRAG):
+        raise TypeError(f"Registered RAG class is invalid: {_RAG_CLASS_PATHS[rag_type]}")
+    return cast(type[BaseRAG], rag_class)

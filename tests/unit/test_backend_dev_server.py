@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import unittest
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import SimpleNamespace
-import unittest
 from unittest.mock import Mock, patch
 
 

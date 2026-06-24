@@ -8,10 +8,10 @@ value instead for backend processes.
 
 from __future__ import annotations
 
-from collections import namedtuple
 import os
 import platform
 import sys
+from collections import namedtuple
 
 
 def _windows_machine() -> str:

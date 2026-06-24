@@ -251,13 +251,13 @@ def print_stats(corpus: list[dict], queries: list[dict], selected: list[dict]) -
     eval_cost = gen_cost * 4  # LLM-as-judge uses ~4x tokens
     total_cost = embed_cost + gen_cost + eval_cost
 
-    print(f"\n  Estimated costs (per RAG system):")
+    print("\n  Estimated costs (per RAG system):")
     print(f"    Embedding (text-embedding-3-small): ${embed_cost:.4f}")
     print(f"    Generation (gpt-4o-mini):           ${gen_cost:.4f}")
     print(f"    Evaluation (LLM-as-judge):          ${eval_cost:.4f}")
     print(f"    Total per RAG system:               ${total_cost:.4f}")
     print(f"    Total for 4 RAG systems:            ${total_cost * 4:.4f}")
-    print(f"    (embeddings are one-time, not per-system)")
+    print("    (embeddings are one-time, not per-system)")
 
 
 def main() -> int:
@@ -314,8 +314,8 @@ Examples:
     print("=" * 60)
     print("MultiHop-RAG Dataset Loader for RAG Evaluator")
     print("=" * 60)
-    print(f"Source: https://huggingface.co/datasets/yixuantt/MultiHopRAG")
-    print(f"License: ODC-BY 1.0")
+    print("Source: https://huggingface.co/datasets/yixuantt/MultiHopRAG")
+    print("License: ODC-BY 1.0")
     print()
 
     # --- Download ---
@@ -398,12 +398,12 @@ Examples:
     print(f"Test set:  {test_set_path} ({len(test_cases)} questions)")
     print()
     print("Next steps:")
-    print(f"  1. Index the documents:")
+    print("  1. Index the documents:")
     print(f"     uv run rag-eval prepare --rag-type vector_semantic --input-dir {output_dir}")
     print(f"     uv run rag-eval prepare --rag-type vector_hybrid --input-dir {output_dir}")
     print(f"     uv run rag-eval prepare --rag-type graph_rag --input-dir {output_dir}")
     print(f"     uv run rag-eval prepare --rag-type filesystem_rag --input-dir {output_dir}")
-    print(f"  2. Run evaluation:")
+    print("  2. Run evaluation:")
     print(f"     uv run rag-eval evaluate --rag-type vector_semantic --test-set {test_set_path}")
     print(f"     uv run rag-eval evaluate --rag-type graph_rag --test-set {test_set_path}")
 

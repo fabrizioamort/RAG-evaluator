@@ -3,8 +3,9 @@ import glob
 import json
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from rag_evaluator.common.base_rag import BaseRAG
 from rag_evaluator.common.indexing import JsonCheckpointStore
@@ -16,7 +17,8 @@ from rag_evaluator.rag_implementations.registry import RAG_TYPES, get_rag_class
 
 def get_rag_implementation(rag_type: str) -> BaseRAG:
     """Get RAG implementation instance by type."""
-    return get_rag_class(rag_type)()
+    rag_factory = cast(Callable[[], BaseRAG], get_rag_class(rag_type))
+    return rag_factory()
 
 
 def load_latest_results(reports_dir: Path, exclude_types: list[str]) -> dict[str, Any]:

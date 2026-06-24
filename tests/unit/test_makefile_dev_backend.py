@@ -1,5 +1,5 @@
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 
 def _target_recipe(makefile_text: str, target: str) -> list[str]:

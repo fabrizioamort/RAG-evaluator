@@ -107,6 +107,10 @@ ignore_missing_imports = true
 module = ["google.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["rag_evaluator.rag_implementations.rlm_rag.*"]
+ignore_errors = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

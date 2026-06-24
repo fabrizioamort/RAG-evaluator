@@ -3,8 +3,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import Float, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy import Float, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModelNoUpdate, JSONType

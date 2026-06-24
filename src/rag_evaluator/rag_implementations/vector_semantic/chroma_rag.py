@@ -163,6 +163,7 @@ class ChromaSemanticRAG(BaseRAG):
         for source in sources:
             checkpoint = checkpoint_store.ensure_document(source) if checkpoint_store else None
             if checkpoint and checkpoint.status == "completed":
+                assert checkpoint_store is not None
                 completed = checkpoint_store.completed_chunks(source.doc_key)
                 existing = self._collection_existing_ids(list(completed))
                 if len(existing) == len(completed) and checkpoint.chunk_count:
