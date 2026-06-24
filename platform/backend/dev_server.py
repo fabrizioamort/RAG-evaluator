@@ -73,11 +73,7 @@ def posix_listening_pids(port: int) -> list[int]:
         raise RuntimeError("Neither `ss` nor `lsof` is available to inspect listening ports.")
 
     return sorted(
-        {
-            int(line.strip())
-            for line in lsof_result.stdout.splitlines()
-            if line.strip().isdigit()
-        }
+        {int(line.strip()) for line in lsof_result.stdout.splitlines() if line.strip().isdigit()}
     )
 
 
@@ -213,6 +209,23 @@ def launch_uvicorn() -> subprocess.Popen[bytes]:
     return subprocess.Popen(command, **kwargs)
 
 
+def run_migrations() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    if result.stdout:
+        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+    if result.stderr:
+        print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
+
+    if result.returncode != 0:
+        raise RuntimeError("Database migrations failed. See Alembic output above.")
+
+
 def stop_uvicorn(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
@@ -249,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         ensure_port_is_available(PORT)
+        run_migrations()
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
