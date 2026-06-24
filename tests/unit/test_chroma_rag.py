@@ -34,9 +34,18 @@ def mock_chromadb() -> MagicMock:
 
 @pytest.fixture
 def mock_openai() -> MagicMock:
-    """Mock OpenAI client."""
-    with patch("rag_evaluator.rag_implementations.vector_semantic.chroma_rag.OpenAI") as mock:
-        yield mock
+    """Mock OpenAI-compatible clients."""
+    with (
+        patch("rag_evaluator.rag_implementations.vector_semantic.chroma_rag.llm_client") as mock_llm,
+        patch(
+            "rag_evaluator.rag_implementations.vector_semantic.chroma_rag.embedding_client"
+        ) as mock_embedding,
+    ):
+        mock_llm_client = MagicMock()
+        mock_embedding_client = MagicMock()
+        mock_llm.return_value = mock_llm_client
+        mock_embedding.return_value = mock_embedding_client
+        yield mock_llm_client
 
 
 def test_chroma_rag_initialization(
@@ -88,7 +97,7 @@ def test_query_structure(
     # Mock OpenAI embedding
     mock_embedding_response = MagicMock()
     mock_embedding_response.data = [MagicMock(embedding=[0.1] * 1536)]
-    rag.openai_client.embeddings.create.return_value = mock_embedding_response
+    rag.embedding_client.embeddings.create.return_value = mock_embedding_response
 
     # Mock OpenAI chat completion
     mock_chat_response = MagicMock()

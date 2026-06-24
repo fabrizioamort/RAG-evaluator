@@ -235,7 +235,13 @@ class TestIndexBuilder(unittest.TestCase):
 
     @patch("pathlib.Path.mkdir")
     @patch("pathlib.Path.write_text")
-    def test_write_document_files(self, mock_write_text: MagicMock, mock_mkdir: MagicMock) -> None:
+    @patch("rag_evaluator.rag_implementations.filesystem_rag.preparation.index_builder.os.replace")
+    def test_write_document_files(
+        self,
+        mock_replace: MagicMock,
+        mock_write_text: MagicMock,
+        mock_mkdir: MagicMock,
+    ) -> None:
         """Test writing of document, metadata, and summary files."""
         output_path = Path("/mock/output")
 
@@ -245,3 +251,4 @@ class TestIndexBuilder(unittest.TestCase):
         # Should write 3 files per doc: .md, .meta.json, _summary.md
         # 2 docs * 3 = 6 calls
         self.assertEqual(mock_write_text.call_count, 6)
+        self.assertEqual(mock_replace.call_count, 6)
