@@ -9,7 +9,7 @@ bucket so they can be referenced by ``gcs_source`` in ``import_documents``.
 from __future__ import annotations
 
 try:
-    from google.cloud import storage
+    import google.cloud.storage as storage
 
     GOOGLE_STORAGE_AVAILABLE = True
 except ImportError:  # pragma: no cover - exercised when optional extra is missing
