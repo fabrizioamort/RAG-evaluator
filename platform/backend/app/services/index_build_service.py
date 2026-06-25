@@ -285,6 +285,10 @@ class IndexBuildService:
             # Create RAG instance configured for this index
             rag = self.rag_adapter.create_rag_for_index_build(index)
 
+            # Capture the running loop so worker-thread callbacks can schedule
+            # coroutines back onto it (the build runs in a thread pool executor).
+            loop = asyncio.get_running_loop()
+
             # Define internal progress callback that broadcasts to SSE
             async def internal_progress(current: int, total: int, doc_name: str = "") -> None:
                 await self.event_log.log_event(
@@ -295,14 +299,11 @@ class IndexBuildService:
                 if progress_callback:
                     await progress_callback(current, total, doc_name)
 
-            # Create sync wrapper for the RAG's progress callback
+            # Sync wrapper called from the worker thread: schedule onto the main loop.
             def sync_progress_wrapper(current: int, total: int, doc_name: str = "") -> None:
-                try:
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(internal_progress(current, total, doc_name))
-                except RuntimeError:
-                    # No running event loop - skip progress reporting
-                    pass
+                asyncio.run_coroutine_threadsafe(
+                    internal_progress(current, total, doc_name), loop
+                )
 
             # Set progress callback on RAG if supported
             if hasattr(rag, "set_progress_callback"):
@@ -313,7 +314,6 @@ class IndexBuildService:
             if not documents_path:
                 raise ValueError("Knowledge base has no storage path")
 
-            loop = asyncio.get_running_loop()
             checkpoint_store = DatabaseCheckpointStore(self.db, index.id, loop)
             metrics = await self.rag_adapter.prepare_documents(
                 rag,
