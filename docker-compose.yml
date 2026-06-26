@@ -25,8 +25,14 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     mem_limit: 2g
+    # RocksDB opens many files per segment; the default nofile limit (1024)
+    # is exhausted during hybrid (dense + sparse) bulk indexing.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
