@@ -65,6 +65,12 @@ services:
       - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    # RocksDB opens many files per segment; raise the nofile limit so hybrid
+    # (dense + sparse) bulk indexing does not fail with "too many open files".
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     profiles:
       - hybrid
     restart: unless-stopped
