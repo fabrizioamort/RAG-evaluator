@@ -16,6 +16,7 @@ import { api, EvaluationResult } from '../../api/client'
 import { cn } from '@/lib/utils'
 import { MetricExplainability } from './MetricExplainability'
 import { RetrievalTraceViewer } from './RetrievalTraceViewer'
+import { LegalRagBenchSummary, LegalRagResultMetrics, type LegalRagBenchSummaryData } from './LegalRagBenchMetrics'
 import { ManifestViewer } from './ManifestViewer'
 import { BaselineComparison } from './BaselineComparison'
 import { DifficultyChart } from './DifficultyChart'
@@ -29,6 +30,14 @@ const formatScore = (val: number | string | null | undefined, decimals: number =
     if (val === null || val === undefined) return 'N/A';
     const num = typeof val === 'number' ? val : parseFloat(val);
     return isNaN(num) ? 'N/A' : num.toFixed(decimals);
+};
+
+const getSummaryScore = (
+    summary: object | null | undefined,
+    key: string,
+) => {
+    const value = summary ? (summary as Record<string, unknown>)[key] : undefined;
+    return typeof value === 'number' || typeof value === 'string' ? value : undefined;
 };
 
 type MetricDefinition = {
@@ -217,6 +226,11 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                     {/* Metrics Summary Cards */}
                     {evaluation?.data.summary_metrics && (
                         <div className="space-y-6">
+                            {evaluation.data.summary_metrics.legal_rag_bench && (
+                                <LegalRagBenchSummary
+                                    data={evaluation.data.summary_metrics.legal_rag_bench as LegalRagBenchSummaryData}
+                                />
+                            )}
                             {baseline?.data && (
                                 <BaselineComparison
                                     current={evaluation.data}
@@ -234,7 +248,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                                     <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Primary Metric</p>
                                                     <p className="text-lg sm:text-xl font-bold uppercase tracking-wider">{correctnessMetric.label}</p>
                                                     <p className={cn("text-2xl sm:text-3xl font-black mt-1", correctnessMetric.color)}>
-                                                        {formatScore(evaluation.data.summary_metrics?.[correctnessMetric.avgKey as keyof typeof evaluation.data.summary_metrics])}
+                                                        {formatScore(getSummaryScore(evaluation.data.summary_metrics, correctnessMetric.avgKey))}
                                                     </p>
                                                 </div>
                                             )}
@@ -246,7 +260,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                                             <div key={m.label} className={cn("rounded-xl border p-4", m.bg, m.border)}>
                                                                 <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
                                                                 <p className={cn("text-xl sm:text-2xl font-black mt-1", m.color)}>
-                                                                    {formatScore(evaluation.data.summary_metrics?.[m.avgKey as keyof typeof evaluation.data.summary_metrics])}
+                                                                    {formatScore(getSummaryScore(evaluation.data.summary_metrics, m.avgKey))}
                                                                 </p>
                                                             </div>
                                                         ))}
@@ -267,7 +281,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                                             <div key={m.label} className={cn("rounded-xl border p-4", m.bg, m.border)}>
                                                                 <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m.label}</p>
                                                                 <p className={cn("text-xl sm:text-2xl font-black mt-1", m.color)}>
-                                                                    {formatScore(evaluation.data.summary_metrics?.[m.avgKey as keyof typeof evaluation.data.summary_metrics])}
+                                                                    {formatScore(getSummaryScore(evaluation.data.summary_metrics, m.avgKey))}
                                                                 </p>
                                                             </div>
                                                         ))}
@@ -401,6 +415,9 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
 
                                         {activeDetailTab === 'overview' ? (
                                             <div className="grid md:grid-cols-2 gap-6">
+                                                <div className="md:col-span-2">
+                                                    <LegalRagResultMetrics evaluationId={evaluationId} resultId={result.id} />
+                                                </div>
                                                 {/* Left Column: Q&A */}
                                                 <div className="space-y-4">
                                                     <div>

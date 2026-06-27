@@ -23,6 +23,10 @@ class TestCaseBase(BaseSchema):
         description="Question difficulty",
     )
     category: str | None = Field(default=None, max_length=100, description="Category")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional test-case metadata used by benchmark imports and custom workflows",
+    )
     question_type: str = Field(
         default="factual",
         pattern="^(factual|reasoning|comparison|multi_hop)$",

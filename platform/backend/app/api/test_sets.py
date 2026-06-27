@@ -65,6 +65,7 @@ def _test_case_to_response(test_case: TestCase) -> TestCaseResponse:
         else [],
         difficulty=test_case.difficulty,
         category=test_case.category,
+        metadata=test_case.metadata_,
         question_type=test_case.question_type,
         is_generated=test_case.is_generated,
         is_reviewed=test_case.is_reviewed,
@@ -274,6 +275,7 @@ async def add_test_case(
         ground_truth_context=test_case_data.ground_truth_context,
         difficulty=test_case_data.difficulty,
         category=test_case_data.category,
+        metadata_=test_case_data.metadata,
         question_type=test_case_data.question_type,
         is_generated=False,
         is_reviewed=True,
@@ -312,6 +314,7 @@ async def bulk_add_test_cases(
             ground_truth_context=tc_data.ground_truth_context,
             difficulty=tc_data.difficulty,
             category=tc_data.category,
+            metadata_=tc_data.metadata,
             question_type=tc_data.question_type,
             is_generated=False,
             is_reviewed=True,
@@ -358,7 +361,10 @@ async def update_test_case(
     # Update only provided fields
     update_data = test_case_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(test_case, field, value)
+        if field == "metadata":
+            test_case.metadata_ = value
+        else:
+            setattr(test_case, field, value)
 
     await db.commit()
     await db.refresh(test_case)
@@ -490,6 +496,7 @@ async def import_test_set(
             ground_truth_context=tc_data.ground_truth_context,
             difficulty=tc_data.difficulty,
             category=tc_data.category,
+            metadata_=tc_data.metadata,
             question_type=tc_data.question_type,
             is_generated=False,
             is_reviewed=True,
@@ -524,6 +531,7 @@ async def export_test_set(
                 "ground_truth_context": tc.ground_truth_context,
                 "difficulty": tc.difficulty,
                 "category": tc.category,
+                "metadata": tc.metadata_,
                 "question_type": tc.question_type,
                 "is_generated": tc.is_generated,
                 "is_reviewed": tc.is_reviewed,

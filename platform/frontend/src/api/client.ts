@@ -151,6 +151,7 @@ export interface TestCase {
   ground_truth_context: string[]
   difficulty: 'easy' | 'medium' | 'hard'
   category: string | null
+  metadata: Record<string, unknown>
   question_type: 'factual' | 'reasoning' | 'comparison' | 'multi_hop'
   is_generated: boolean
   is_reviewed: boolean
@@ -182,6 +183,7 @@ export interface TestCaseCreate {
   ground_truth_context?: string[]
   difficulty?: 'easy' | 'medium' | 'hard'
   category?: string
+  metadata?: Record<string, unknown>
   question_type?: 'factual' | 'reasoning' | 'comparison' | 'multi_hop'
 }
 
@@ -298,6 +300,7 @@ export interface SummaryMetrics {
   recall_avg?: number
   g_eval_avg?: number
   overall_avg?: number
+  legal_rag_bench?: Record<string, unknown>
 }
 
 export interface Evaluation {
@@ -725,12 +728,24 @@ export const api = {
     update: (id: string, data: KnowledgeBaseUpdate) =>
       apiClient.put<KnowledgeBase>(`/knowledge-bases/${id}`, data),
     delete: (id: string) => apiClient.delete(`/knowledge-bases/${id}`),
-    uploadDocuments: (id: string, files: File[]) => {
-      const formData = new FormData()
-      files.forEach((file) => formData.append('files', file))
-      return apiClient.post<DocumentUploadResponse>(`/knowledge-bases/${id}/documents`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+    // Upload in batches: the server (Starlette) rejects multipart requests with
+    // more than 1000 file parts, so large folder uploads must be chunked.
+    uploadDocuments: async (id: string, files: File[]) => {
+      const BATCH_SIZE = 500
+      const result: DocumentUploadResponse = { uploaded: [], failed: [], total_size_bytes: 0 }
+      for (let i = 0; i < files.length; i += BATCH_SIZE) {
+        const formData = new FormData()
+        files.slice(i, i + BATCH_SIZE).forEach((file) => formData.append('files', file))
+        const res = await apiClient.post<DocumentUploadResponse>(
+          `/knowledge-bases/${id}/documents`,
+          formData,
+          { headers: { 'Content-Type': 'multipart/form-data' } }
+        )
+        result.uploaded.push(...res.data.uploaded)
+        result.failed.push(...res.data.failed)
+        result.total_size_bytes += res.data.total_size_bytes
+      }
+      return { data: result }
     },
     deleteDocument: (kbId: string, docId: string) =>
       apiClient.delete(`/knowledge-bases/${kbId}/documents/${docId}`),
@@ -816,6 +831,8 @@ export const api = {
     retry: (id: string) => apiClient.post<Evaluation>(`/evaluations/${id}/retry`),
     getTrace: (evaluationId: string, resultId: string) =>
       apiClient.get<RetrievalTrace>(`/evaluations/${evaluationId}/trace/${resultId}`),
+    getRawMetrics: (evaluationId: string, resultId: string) =>
+      apiClient.get<Record<string, unknown>>(`/evaluations/${evaluationId}/raw-metrics/${resultId}`),
     getManifest: (evaluationId: string) =>
       apiClient.get<RunManifest>(`/evaluations/${evaluationId}/manifest`),
     getStreamUrl: (id: string) => `${API_BASE_URL}/api/v1/evaluations/${id}/stream`,
@@ -836,6 +853,11 @@ export const api = {
     delete: (id: string) => apiClient.delete(`/comparisons/${id}`),
     listForEvaluation: (evaluationId: string, params?: { limit?: number; offset?: number }) =>
       apiClient.get<PaginatedList<ComparisonResponse>>(`/evaluations/${evaluationId}/comparisons`, { params }),
+    exportUrl: (id: string, format: 'markdown' | 'csv' | 'jsonl', table?: 'headline' | 'taxonomy') => {
+      const params = new URLSearchParams({ format })
+      if (table) params.set('table', table)
+      return `${API_BASE_URL}/api/v1/comparisons/${id}/export?${params.toString()}`
+    },
   },
   playground: {
     getIndexes: (params?: { project_id?: string; kb_id?: string }) =>

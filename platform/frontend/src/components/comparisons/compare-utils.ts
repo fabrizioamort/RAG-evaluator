@@ -1,4 +1,5 @@
-import { AggregateMetrics, EvaluationComparisonResult } from '@/api/client'
+import { AggregateMetrics, EvaluationComparisonResult, SummaryMetrics } from '@/api/client'
+import type { LegalRagBenchSummaryData } from '../evaluations/LegalRagBenchMetrics'
 
 /** A single evaluation normalized into a comparable shape (baseline + compared share this). */
 export interface ComparisonMember {
@@ -10,6 +11,13 @@ export interface ComparisonMember {
     cost?: Record<string, number | string | null | undefined> | null
     performance?: Record<string, number | null | undefined> | null
     passRate?: number | null
+    legalRagBench?: LegalRagBenchSummaryData | null
+}
+
+/** Pull the Legal RAG Bench summary out of an evaluation's summary metrics, if present. */
+function legalRagBenchOf(summary?: SummaryMetrics | null): LegalRagBenchSummaryData | null {
+    const data = summary?.legal_rag_bench
+    return data && typeof data === 'object' ? (data as LegalRagBenchSummaryData) : null
 }
 
 /** Build the ordered member list from a comparison's aggregate metrics. */
@@ -24,6 +32,7 @@ export function buildMembers(agg: AggregateMetrics | null | undefined): Comparis
         cost: agg.baseline_cost as ComparisonMember['cost'],
         performance: agg.baseline_performance as ComparisonMember['performance'],
         passRate: agg.baseline_pass_rate,
+        legalRagBench: legalRagBenchOf(agg.baseline_summary),
     }
     const compared = (agg.comparison_results ?? []).map((r: EvaluationComparisonResult) => ({
         id: r.evaluation_id,
@@ -34,6 +43,7 @@ export function buildMembers(agg: AggregateMetrics | null | undefined): Comparis
         cost: r.cost_metrics as ComparisonMember['cost'],
         performance: r.performance_metrics as ComparisonMember['performance'],
         passRate: r.pass_rate,
+        legalRagBench: legalRagBenchOf(r.summary_metrics),
     }))
     return [baseline, ...compared]
 }

@@ -65,12 +65,15 @@ def passage_filename(index: int, passage_id: object) -> str:
     return f"passage_{index:04d}__{safe_filename_part(passage_id)}.txt"
 
 
-def passage_to_text(passage: dict[str, Any]) -> str:
+def passage_to_text(passage: dict[str, Any], content_mode: str) -> str:
     """Convert a Legal RAG Bench passage row into a plain text document."""
     passage_id = str(passage.get("id", "")).strip()
     title = str(passage.get("title", "")).strip()
     text = str(passage.get("text", "")).strip()
     footnotes = str(passage.get("footnotes", "")).strip()
+
+    if content_mode == "clean":
+        return text.rstrip() + "\n"
 
     parts = [
         f"Passage ID: {passage_id}",
@@ -114,6 +117,12 @@ def build_test_case(
         "category": "legal_qa",
         "relevant_passage_id": relevant_passage_id,
         "source_qa_id": qa.get("id"),
+        "metadata": {
+            "benchmark": "legal_rag_bench",
+            "dataset": "legal-rag-bench",
+            "relevant_passage_id": relevant_passage_id,
+            "source_qa_id": qa.get("id"),
+        },
     }
 
 
@@ -123,6 +132,7 @@ def write_version(
     passages: Sequence[dict[str, Any]],
     qa_rows: Sequence[dict[str, Any]],
     passage_by_id: dict[str, dict[str, Any]],
+    content_mode: str,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     """Write one converted dataset version and return its metadata."""
@@ -145,7 +155,10 @@ def write_version(
             filename = passage_filename(index, passage_id)
             relative_path = str(Path("raw") / filename)
             passage_files[passage_id] = relative_path
-            (raw_dir / filename).write_text(passage_to_text(passage), encoding="utf-8")
+            (raw_dir / filename).write_text(
+                passage_to_text(passage, content_mode),
+                encoding="utf-8",
+            )
 
         document_sources = [passage_files[pid] for pid in passage_files]
         test_set = {
@@ -156,6 +169,7 @@ def write_version(
                 "passage_count": len(passages),
                 "question_count": len(test_cases),
                 "document_sources": document_sources,
+                "content_mode": content_mode,
             },
             "test_cases": test_cases,
         }
@@ -282,6 +296,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Validate inputs and print what would be written without creating files",
     )
+    parser.add_argument(
+        "--content-mode",
+        choices=("clean", "annotated"),
+        default="clean",
+        help=(
+            "Passage text format: clean indexes only the source text, annotated "
+            "adds passage id/title headers for demos (default: clean)"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -317,6 +340,7 @@ def main() -> int:
                     subset_passages,
                     subset_qa,
                     passage_by_id,
+                    content_mode=args.content_mode,
                     dry_run=args.dry_run,
                 )
             )
@@ -329,6 +353,7 @@ def main() -> int:
                     corpus,
                     qa_rows,
                     passage_by_id,
+                    content_mode=args.content_mode,
                     dry_run=args.dry_run,
                 )
             )

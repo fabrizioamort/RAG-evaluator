@@ -374,6 +374,43 @@ async def get_evaluation_result_trace(
 
 
 @router.get(
+    "/evaluations/{evaluation_id}/raw-metrics/{result_id}",
+    response_model=dict,
+    summary="Get raw metrics for a result",
+)
+async def get_evaluation_result_raw_metrics(
+    db: DbSession,
+    evaluation_id: UUID,
+    result_id: UUID,
+) -> dict:
+    query = select(EvaluationResult).where(
+        EvaluationResult.id == result_id,
+        EvaluationResult.evaluation_id == evaluation_id,
+    )
+    result = await db.execute(query)
+    eval_result = result.scalar_one_or_none()
+    if not eval_result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Evaluation result {result_id} not found",
+        )
+    if not eval_result.raw_metrics_artifact_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No raw metrics artifact associated with result {result_id}",
+        )
+
+    store = get_artifact_store()
+    raw_metrics = await store.retrieve_json_by_id(db, eval_result.raw_metrics_artifact_id)
+    if raw_metrics is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Raw metrics artifact content not found on disk",
+        )
+    return raw_metrics
+
+
+@router.get(
     "/evaluations/{evaluation_id}/manifest",
     response_model=RunManifestResponse,
     summary="Get run manifest for an evaluation",

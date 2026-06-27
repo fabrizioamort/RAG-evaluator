@@ -39,6 +39,9 @@ class TestCase(BaseModelNoUpdate):
     )
     difficulty: Mapped[str] = mapped_column(String(20), default="medium", nullable=False)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONType, default=dict, nullable=False
+    )
     question_type: Mapped[str] = mapped_column(String(50), default="factual", nullable=False)
     is_generated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_reviewed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

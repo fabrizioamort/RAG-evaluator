@@ -29,6 +29,15 @@ from app.models.test_set import TestSet
 from app.services.artifact_store import ArtifactStore, get_artifact_store
 from app.services.job_checkpoint_service import get_checkpoint_service
 from app.services.job_event_log import get_job_event_log
+from app.services.legal_rag_bench_judge import LegalRAGBenchJudge
+from app.services.legal_rag_bench_metrics import (
+    compute_legal_rag_retrieval_metrics,
+    derive_taxonomy,
+    extract_relevant_passage_id,
+    is_legal_rag_judge_enabled,
+    is_legal_rag_metric_enabled,
+    summarize_legal_rag_metrics,
+)
 from app.services.llm_provider import LLMProviderService
 from app.services.provider_resolver import resolve_provider_endpoint
 from app.services.rag_adapter import get_rag_adapter_service
@@ -143,6 +152,7 @@ class EvaluationRunner:
         self.event_log = get_job_event_log()
         self.rag_adapter = get_rag_adapter_service()
         self.artifact_store = get_artifact_store()
+        self.legal_rag_judge = LegalRAGBenchJudge()
         self.db_lock = asyncio.Lock()
 
         # Will be loaded during run()
@@ -314,7 +324,7 @@ class EvaluationRunner:
                 gen_provider = self.evaluation.rag_config.llm_provider
                 gen_base_url = self.evaluation.rag_config.llm_base_url
 
-            # 3. Initialize metrics (judge bucket: own provider/model).
+            # 3. Resolve judge bucket (own provider/model).
             # Resolve explicit credentials so litellm uses its well-tested
             # credential path (env-based pickup hits a broken OpenRouter path).
             # The judge follows the generation endpoint when it shares its provider.
@@ -322,9 +332,6 @@ class EvaluationRunner:
             judge_provider = self.evaluation.eval_judge_provider or gen_provider
             base_override = gen_base_url if judge_provider == gen_provider else None
             endpoint = resolve_provider_endpoint(judge_provider, base_override)
-            metrics = self._initialize_metrics(
-                judge_model, judge_provider, endpoint.base_url, endpoint.api_key
-            )
 
             # 4. Process test cases
             start_index = job.progress_current
@@ -347,7 +354,18 @@ class EvaluationRunner:
                             or self.evaluation_id in self._paused_evaluations
                         ):
                             return
-                        await self._process_test_case(idx, tc, rag, metrics, total, top_k, llm_model)
+                        await self._process_test_case(
+                            idx,
+                            tc,
+                            rag,
+                            total,
+                            top_k,
+                            llm_model,
+                            judge_model,
+                            judge_provider,
+                            endpoint.base_url,
+                            endpoint.api_key,
+                        )
 
                 tasks = [
                     sem_process(start_index + i, tc) for i, tc in enumerate(remaining_test_cases)
@@ -387,7 +405,16 @@ class EvaluationRunner:
                         return
 
                     await self._process_test_case(
-                        i, self.test_cases[i], rag, metrics, total, top_k, llm_model
+                        i,
+                        self.test_cases[i],
+                        rag,
+                        total,
+                        top_k,
+                        llm_model,
+                        judge_model,
+                        judge_provider,
+                        endpoint.base_url,
+                        endpoint.api_key,
                     )
 
             # 5. Calculate final summary and complete
@@ -448,10 +475,13 @@ class EvaluationRunner:
         i: int,
         test_case: TestCase,
         rag: Any,
-        metrics: List[Any],
         total: int,
         top_k: int,
         generation_model: str,
+        judge_model: str,
+        judge_provider: str | None,
+        judge_base_url: str | None,
+        judge_api_key: str | None,
     ) -> None:
         """Process a single test case."""
         start_time = time.time()
@@ -467,6 +497,45 @@ class EvaluationRunner:
                 else []
             )
             retrieved_context = response.get("context", [])
+            metric_config = self.evaluation.metric_config if self.evaluation else None
+            legal_rag_result: dict[str, Any] | None = None
+            if is_legal_rag_metric_enabled(metric_config):
+                rag_type = "unknown"
+                if self.evaluation and self.evaluation.index:
+                    rag_type = self.evaluation.index.config_snapshot.get("rag_type", "unknown")
+                elif self.evaluation and self.evaluation.rag_config:
+                    rag_type = self.evaluation.rag_config.rag_type
+
+                legal_retrieval = compute_legal_rag_retrieval_metrics(
+                    rag_type=rag_type,
+                    top_k=top_k,
+                    relevant_passage_id=extract_relevant_passage_id(
+                        getattr(test_case, "metadata_", None),
+                        ground_truth_context=ground_truth_context,
+                    ),
+                    response=response,
+                )
+                legal_judge = None
+                if is_legal_rag_judge_enabled(metric_config):
+                    legal_judge = await self.legal_rag_judge.judge(
+                        question=test_case.question,
+                        reference_answer=test_case.expected_answer,
+                        generated_answer=response["answer"],
+                        retrieved_context=[str(item) for item in retrieved_context],
+                        model=judge_model,
+                        provider=judge_provider,
+                        base_url=judge_base_url,
+                        api_key=judge_api_key,
+                    )
+
+                legal_rag_result = {
+                    "retrieval": legal_retrieval,
+                    "judge": legal_judge,
+                    "taxonomy": derive_taxonomy(
+                        retrieval_metrics=legal_retrieval,
+                        judge_result=legal_judge,
+                    ),
+                }
 
             llm_test_case = LLMTestCase(
                 input=test_case.question,
@@ -476,26 +545,31 @@ class EvaluationRunner:
                 retrieval_context=retrieved_context,
             )
 
-            # Score metrics
+            # Score metrics. DeepEval metric objects are mutable: a_measure()
+            # writes score/reason onto the object. Create a fresh set per test
+            # case so async evaluation cannot mix scores or reasons across
+            # concurrent cases.
+            metrics = self._initialize_metrics(
+                judge_model, judge_provider, judge_base_url, judge_api_key
+            )
             scores: Dict[str, Any] = {}
+            metric_results: list[dict[str, Any]] = []
             for metric in metrics:
                 await metric.a_measure(llm_test_case)
                 class_name = metric.__class__.__name__
-                if class_name == "FaithfulnessMetric":
-                    name = "faithfulness"
-                elif class_name == "AnswerRelevancyMetric":
-                    name = "relevancy"
-                elif class_name == "ContextualPrecisionMetric":
-                    name = "precision"
-                elif class_name == "ContextualRecallMetric":
-                    name = "recall"
-                elif class_name == "GEval":
-                    name = "g_eval"
-                else:
-                    name = class_name.lower().replace("metric", "")
+                name = self._metric_result_field_name(class_name)
+                score = getattr(metric, "score", None)
+                reason = getattr(metric, "reason", None)
 
-                scores[f"{name}_score"] = metric.score
-                scores[f"{name}_reason"] = getattr(metric, "reason", None)
+                scores[f"{name}_score"] = score
+                scores[f"{name}_reason"] = reason
+                metric_results.append(
+                    {
+                        "name": class_name,
+                        "score": score,
+                        "reason": reason,
+                    }
+                )
 
             # Token usage if available
             prompt_tokens = response.get("metadata", {}).get("token_usage", {}).get("prompt_tokens")
@@ -519,35 +593,30 @@ class EvaluationRunner:
             else:
                 cost_usd = Decimal(str(response.get("metadata", {}).get("cost", 0.0)))
 
-            # Store artifacts
-            retrieval_trace = response.get("retrieval_trace")
-            retrieval_trace_artifact = await self.artifact_store.store_json(
-                self.db, retrieval_trace, ArtifactStore.KIND_RETRIEVAL_TRACE
-            )
+            raw_metrics = {"metric_results": metric_results}
+            if legal_rag_result:
+                raw_metrics["legal_rag_bench"] = legal_rag_result
 
-            retrieved_context_data = response.get("context", [])
-            retrieved_context_artifact = await self.artifact_store.store_json(
-                self.db, retrieved_context_data, ArtifactStore.KIND_RETRIEVED_CONTEXT
-            )
-
-            raw_metrics = {
-                "metric_results": [
-                    {
-                        "name": metric.__class__.__name__,
-                        "score": metric.score,
-                        "reason": getattr(metric, "reason", None),
-                    }
-                    for metric in metrics
-                ]
-            }
-            raw_metrics_artifact = await self.artifact_store.store_json(
-                self.db, raw_metrics, ArtifactStore.KIND_RAW_METRICS
-            )
-
-            # CRITICAL: We need a new session or a lock if we want to commit in parallel
-            # Since EvaluationRunner has self.db (AsyncSession), and sessions are not thread-safe/task-safe for concurrent commits
-            # We use a lock for DB operations.
+            # Concurrent test-case tasks share self.db, so every statement that
+            # touches it (artifact flushes, the result commit, progress reads
+            # and writes) must run under the lock. Otherwise SQLite raises
+            # "cannot commit transaction - SQL statements in progress" when one
+            # task commits while another has a flush/select in flight.
             async with self.db_lock:
+                retrieval_trace = response.get("retrieval_trace")
+                retrieval_trace_artifact = await self.artifact_store.store_json(
+                    self.db, retrieval_trace, ArtifactStore.KIND_RETRIEVAL_TRACE
+                )
+
+                retrieved_context_data = response.get("context", [])
+                retrieved_context_artifact = await self.artifact_store.store_json(
+                    self.db, retrieved_context_data, ArtifactStore.KIND_RETRIEVED_CONTEXT
+                )
+
+                raw_metrics_artifact = await self.artifact_store.store_json(
+                    self.db, raw_metrics, ArtifactStore.KIND_RAW_METRICS
+                )
+
                 result_model = EvaluationResult(
                     evaluation_id=self.evaluation_id,
                     test_case_id=test_case.id,
@@ -564,9 +633,16 @@ class EvaluationRunner:
                 self.db.add(result_model)
                 await self.db.commit()
 
-            # Update progress
-            current_completed = await self._get_completed_count()
-            await self.checkpoint_service.update_progress(self.evaluation_id, current_completed)
+                # Update progress (same shared session, so keep it inside the lock)
+                current_completed = await self._get_completed_count()
+                await self.checkpoint_service.update_progress(
+                    self.evaluation_id, current_completed
+                )
+
+                if current_completed % 5 == 0:
+                    await self.checkpoint_service.save_checkpoint(
+                        self.evaluation_id, current_completed, {"last_index": current_completed}
+                    )
 
             # Log progress event
             await self.event_log.log_event(
@@ -589,12 +665,6 @@ class EvaluationRunner:
                 },
             )
 
-            # Save checkpoint every 5 items
-            if current_completed % 5 == 0:
-                await self.checkpoint_service.save_checkpoint(
-                    self.evaluation_id, current_completed, {"last_index": i + 1}
-                )
-
         except Exception as e:
             logger.error(
                 "Error processing test case",
@@ -608,6 +678,20 @@ class EvaluationRunner:
                 {"error_message": f"Test case {i} failed: {str(e)}", "test_case_index": i},
             )
 
+    @staticmethod
+    def _metric_result_field_name(class_name: str) -> str:
+        if class_name == "FaithfulnessMetric":
+            return "faithfulness"
+        if class_name == "AnswerRelevancyMetric":
+            return "relevancy"
+        if class_name == "ContextualPrecisionMetric":
+            return "precision"
+        if class_name == "ContextualRecallMetric":
+            return "recall"
+        if class_name == "GEval":
+            return "g_eval"
+        return class_name.lower().replace("metric", "")
+
     async def _get_completed_count(self) -> int:
         """Get the number of completed results for this evaluation."""
         from sqlalchemy import func
@@ -620,6 +704,23 @@ class EvaluationRunner:
             )
         )
         return result.scalar_one()
+
+    async def _collect_legal_rag_summary(self) -> dict[str, Any] | None:
+        result = await self.db.execute(
+            select(EvaluationResult.raw_metrics_artifact_id).where(
+                EvaluationResult.evaluation_id == self.evaluation_id,
+                EvaluationResult.raw_metrics_artifact_id.is_not(None),
+            )
+        )
+        artifact_ids = [row[0] for row in result.all() if row[0]]
+        legal_results: list[dict[str, Any]] = []
+        for artifact_id in artifact_ids:
+            raw_metrics = await self.artifact_store.retrieve_json_by_id(self.db, artifact_id)
+            if isinstance(raw_metrics, dict) and isinstance(
+                raw_metrics.get("legal_rag_bench"), dict
+            ):
+                legal_results.append(raw_metrics["legal_rag_bench"])
+        return summarize_legal_rag_metrics(legal_results)
 
     async def _finalize_evaluation(self) -> None:
         """Calculate aggregate metrics and mark evaluation as complete."""
@@ -715,6 +816,10 @@ class EvaluationRunner:
             "max_latency_seconds": float(stats.max_latency or 0),
             "p95_latency_seconds": 0.0,  # Placeholder for now
         }
+
+        legal_rag_summary = await self._collect_legal_rag_summary()
+        if legal_rag_summary:
+            summary_metrics["legal_rag_bench"] = legal_rag_summary
 
         await self.checkpoint_service.complete_job(
             self.evaluation_id,

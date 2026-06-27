@@ -108,6 +108,16 @@ RAG_TYPE_PARAMETERS: dict[str, dict[str, Any]] = {
                 "minimum": 0,
                 "description": "Overlap between chunks",
             },
+            "embedding_dimension": {
+                "type": "integer",
+                "phase": "build",
+                "default": 1536,
+                "minimum": 1,
+                "description": (
+                    "Dense embedding vector dimension; use 3072 for "
+                    "text-embedding-3-large"
+                ),
+            },
             "collection_name": {
                 "type": "string",
                 "phase": "build",

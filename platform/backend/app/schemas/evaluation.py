@@ -96,6 +96,10 @@ class SummaryMetrics(BaseSchema):
     recall_avg: float | None = Field(default=None, description="Average recall")
     g_eval_avg: float | None = Field(default=None, description="Average G-Eval")
     overall_avg: float | None = Field(default=None, description="Overall average")
+    legal_rag_bench: dict[str, Any] | None = Field(
+        default=None,
+        description="Legal RAG Bench retrieval/judge/taxonomy summary",
+    )
 
 
 class CostMetrics(BaseSchema):

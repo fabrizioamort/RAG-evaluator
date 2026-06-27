@@ -9,6 +9,9 @@ type ImportedCase = {
     ground_truth_context?: unknown
     difficulty?: unknown
     category?: unknown
+    metadata?: unknown
+    relevant_passage_id?: unknown
+    source_qa_id?: unknown
     question_type?: unknown
 }
 
@@ -49,6 +52,20 @@ interface ImportTestSetDialogProps {
 
 function asString(value: unknown): string {
     return typeof value === 'string' ? value.trim() : ''
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return {}
+    }
+    return { ...(value as Record<string, unknown>) }
+}
+
+function asMetadataString(value: unknown): string {
+    if (typeof value === 'string' || typeof value === 'number') {
+        return String(value).trim()
+    }
+    return ''
 }
 
 function normalizeDifficulty(value: unknown): PlatformDifficulty {
@@ -99,12 +116,23 @@ function toImportPayload(data: ImportedTestSet): ImportTestSetPayload {
             throw new Error(`Test case ${index + 1} is missing question or expected_answer.`)
         }
 
+        const metadata = asRecord(testCase.metadata)
+        const relevantPassageId = asMetadataString(testCase.relevant_passage_id)
+        const sourceQaId = asMetadataString(testCase.source_qa_id)
+        if (relevantPassageId) {
+            metadata.relevant_passage_id = relevantPassageId
+        }
+        if (sourceQaId) {
+            metadata.source_qa_id = sourceQaId
+        }
+
         return {
             question,
             expected_answer: expectedAnswer,
             ground_truth_context: normalizeContext(testCase.ground_truth_context),
             difficulty: normalizeDifficulty(testCase.difficulty),
             category: asString(testCase.category) || undefined,
+            metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
             question_type: normalizeQuestionType(testCase.question_type),
         }
     })

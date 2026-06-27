@@ -386,7 +386,7 @@ class Neo4jGraphRAG(BaseRAG):
         # Build context for LLM
         context_text = "\n\n".join([f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)])
 
-        prompt = f"""Answer the following question based only on the provided context which includes graph-derived entity relationships. If the answer cannot be found in the context, say "I cannot answer this question based on the provided context."
+        prompt = f"""Answer the question using only the provided context, which includes graph-derived entity relationships. The context may state general rules or principles; apply them to the specific situation described in the question. For yes/no questions, give the direct conclusion first, then the supporting rule from the context. Only if the context contains no rule or information relevant to the question, reply exactly: "I cannot answer this question based on the provided context."
 
 Context:
 {context_text}

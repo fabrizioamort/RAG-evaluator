@@ -1,17 +1,22 @@
 """Tests for EvaluationRunner service."""
 
+import asyncio
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.evaluation import Evaluation
+from app.models.evaluation_result import EvaluationResult
 from app.models.knowledge_base import KnowledgeBase
 from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.project import Project
 from app.models.rag_config import RAGConfig
 from app.models.test_case import TestCase
 from app.models.test_set import TestSet
+from app.services.artifact_store import get_artifact_store
 from app.services.evaluation_runner import EvaluationRunner
 
 
@@ -149,6 +154,109 @@ async def test_evaluation_runner_success(db_session: AsyncSession, setup_data: E
         assert results[0].retrieved_context_artifact_id is not None
         assert results[0].retrieval_trace_artifact_id is not None
         assert results[0].raw_metrics_artifact_id is not None
+
+
+@pytest.mark.asyncio
+async def test_async_runner_uses_isolated_metric_instances(
+    db_session: AsyncSession, setup_data: Evaluation, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Concurrent test cases must not share mutable DeepEval metric instances."""
+    evaluation = setup_data
+    evaluation.metric_config = {"metrics": ["faithfulness"], "include_reason": True}
+
+    first_case = (
+        await db_session.execute(select(TestCase).where(TestCase.test_set_id == evaluation.test_set_id))
+    ).scalar_one()
+    first_case.question = "Q1"
+    first_case.expected_answer = "A1"
+
+    second_case = TestCase(
+        test_set_id=evaluation.test_set_id,
+        question="Q2",
+        expected_answer="A2",
+        ground_truth_context=["C2"],
+    )
+    db_session.add(second_case)
+    await db_session.commit()
+
+    class FaithfulnessMetric:
+        score: float | None = None
+        reason: str | None = None
+
+        async def a_measure(self, llm_test_case: object) -> None:
+            question = getattr(llm_test_case, "input")
+            self.score = 0.91 if question == "Q1" else 0.82
+            self.reason = f"reason:{question}"
+            await asyncio.sleep(0.05 if question == "Q1" else 0.01)
+
+    async def query_with_trace(_rag: object, question: str, _top_k: int) -> dict[str, object]:
+        return {
+            "answer": f"answer:{question}",
+            "context": [f"context:{question}"],
+            "metadata": {
+                "token_usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                "cost": 0.0,
+            },
+            "retrieval_trace": {"strategy": "vector", "steps": []},
+        }
+
+    mock_adapter = MagicMock()
+    mock_adapter.get_or_create_rag.return_value = MagicMock()
+    mock_adapter.query_with_trace = AsyncMock(side_effect=query_with_trace)
+    mock_event_log = MagicMock()
+    mock_event_log.log_event = AsyncMock()
+
+    import app.services.evaluation_runner as runner_module
+
+    monkeypatch.setattr(runner_module.settings, "DEEPEVAL_ASYNC_MODE", True)
+    monkeypatch.setattr(runner_module.settings, "DEEPEVAL_MAX_CONCURRENCY", 2)
+
+    with (
+        patch("app.services.evaluation_runner.get_rag_adapter_service", return_value=mock_adapter),
+        patch("app.services.evaluation_runner.get_job_event_log", return_value=mock_event_log),
+        patch(
+            "app.services.evaluation_runner.EvaluationRunner._initialize_metrics",
+            side_effect=lambda *_args: [FaithfulnessMetric()],
+        ) as mock_init_metrics,
+    ):
+        runner = EvaluationRunner(db_session, evaluation.id)
+        await runner.run()
+
+    assert mock_init_metrics.call_count == 2
+
+    results = (
+        (
+            await db_session.execute(
+                select(EvaluationResult)
+                .where(EvaluationResult.evaluation_id == evaluation.id)
+                .options(selectinload(EvaluationResult.test_case))
+                .join(TestCase)
+                .order_by(TestCase.question)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(results) == 2
+
+    artifact_store = get_artifact_store()
+    for result in results:
+        question = result.test_case.question
+        expected_reason = f"reason:{question}"
+        assert result.faithfulness_reason == expected_reason
+        assert result.faithfulness_score == (0.91 if question == "Q1" else 0.82)
+
+        assert result.raw_metrics_artifact_id is not None
+        raw_metrics = await artifact_store.retrieve_json_by_id(
+            db_session, result.raw_metrics_artifact_id
+        )
+        assert raw_metrics["metric_results"] == [
+            {
+                "name": "FaithfulnessMetric",
+                "score": result.faithfulness_score,
+                "reason": expected_reason,
+            }
+        ]
 
 
 @pytest.mark.asyncio

@@ -26,6 +26,15 @@ const AVAILABLE_METRICS = [
     { id: 'g_eval', name: 'G-Eval (Correctness)', description: 'LLM-based evaluation of factual correctness vs expected answer.' },
 ]
 
+// Legal RAG Bench benchmark metrics. Opt-in (not selected by default): the
+// binary judge issues LLM calls and requires test cases with a gold
+// relevant_passage_id. Ids match the backend constants in
+// legal_rag_bench_metrics.py.
+const LEGAL_RAG_METRICS = [
+    { id: 'legal_rag_retrieval', name: 'Legal RAG Bench: Retrieval', description: 'hit@5 for vector systems / gold_accessed for filesystem, against the benchmark gold passage id.' },
+    { id: 'legal_rag_binary_judge', name: 'Legal RAG Bench: Binary Judge', description: 'Binary correctness + groundedness judge plus taxonomy. Uses the Judge model. Adds LLM calls.' },
+]
+
 function timeAgo(dateString: string) {
     const date = new Date(dateString)
     const now = new Date()
@@ -232,6 +241,44 @@ export function StartEvaluationWizard({
         } finally {
             setIsStarting(false)
         }
+    }
+
+    const renderMetricOption = (metric: { id: string; name: string; description: string }) => {
+        const isSelected = selectedMetrics.includes(metric.id)
+        return (
+            <button
+                key={metric.id}
+                onClick={() => {
+                    if (isSelected) {
+                        setSelectedMetrics(selectedMetrics.filter(id => id !== metric.id))
+                    } else {
+                        setSelectedMetrics([...selectedMetrics, metric.id])
+                    }
+                }}
+                className={cn(
+                    "flex items-start gap-4 rounded-xl border p-4 text-left transition-all",
+                    isSelected
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border hover:border-primary/50 hover:bg-accent"
+                )}
+            >
+                <div className={cn(
+                    "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
+                    isSelected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30"
+                )}>
+                    {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                </div>
+                <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                        <p className="font-bold">{metric.name}</p>
+                        {metric.id === 'g_eval' && (
+                            <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">New</span>
+                        )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{metric.description}</p>
+                </div>
+            </button>
+        )
     }
 
     if (!isOpen) return null
@@ -594,43 +641,15 @@ export function StartEvaluationWizard({
                                     </div>
 
                                     <div className="grid gap-3">
-                                        {AVAILABLE_METRICS.map(metric => {
-                                            const isSelected = selectedMetrics.includes(metric.id);
-                                            return (
-                                                <button
-                                                    key={metric.id}
-                                                    onClick={() => {
-                                                        if (isSelected) {
-                                                            setSelectedMetrics(selectedMetrics.filter(id => id !== metric.id));
-                                                        } else {
-                                                            setSelectedMetrics([...selectedMetrics, metric.id]);
-                                                        }
-                                                    }}
-                                                    className={cn(
-                                                        "flex items-start gap-4 rounded-xl border p-4 text-left transition-all",
-                                                        isSelected
-                                                            ? "border-primary bg-primary/5 ring-1 ring-primary"
-                                                            : "border-border hover:border-primary/50 hover:bg-accent"
-                                                    )}
-                                                >
-                                                    <div className={cn(
-                                                        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
-                                                        isSelected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30"
-                                                    )}>
-                                                        {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="font-bold">{metric.name}</p>
-                                                            {metric.id === 'g_eval' && (
-                                                                <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">New</span>
-                                                            )}
-                                                        </div>
-                                                        <p className="text-xs text-muted-foreground mt-0.5">{metric.description}</p>
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
+                                        {AVAILABLE_METRICS.map(renderMetricOption)}
+                                    </div>
+
+                                    <div>
+                                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Legal RAG Bench</p>
+                                        <p className="text-xs text-muted-foreground mb-3">Benchmark metrics. Requires a test set with a gold relevant_passage_id.</p>
+                                        <div className="grid gap-3">
+                                            {LEGAL_RAG_METRICS.map(renderMetricOption)}
+                                        </div>
                                     </div>
 
                                     <div className="mt-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 flex gap-3">

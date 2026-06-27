@@ -2,13 +2,14 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession, Pagination
 from app.models.comparison import Comparison
 from app.models.evaluation import Evaluation
+from app.models.evaluation_result import EvaluationResult
 from app.schemas.comparison import (
     AggregateMetrics,
     ComparisonCreate,
@@ -17,7 +18,19 @@ from app.schemas.comparison import (
     ComparisonResponse,
     PerQuestionDelta,
 )
+from app.services.artifact_store import get_artifact_store
 from app.services.comparison_service import get_comparison_service
+from app.services.evaluation_exporter import (
+    HEADLINE_COLUMNS,
+    ExportMember,
+    build_markdown_report,
+    build_question_record,
+    headline_rows,
+    per_question_jsonl,
+    taxonomy_columns,
+    taxonomy_rows,
+    to_csv,
+)
 from app.utils.logging_config import get_logger
 
 router = APIRouter(tags=["Comparisons"])
@@ -86,6 +99,127 @@ def _comparison_to_detail(comparison: Comparison) -> ComparisonDetail:
         per_question_deltas=per_question_deltas,
         created_at=comparison.created_at,
     )
+
+
+def _member_label(eval_model: Evaluation) -> str:
+    """Match the frontend label: notes, then RAG config name, then short id."""
+    if eval_model.notes and eval_model.notes.strip():
+        return eval_model.notes.strip()
+    if eval_model.rag_config and eval_model.rag_config.name:
+        return eval_model.rag_config.name
+    return f"#{str(eval_model.id)[:8]}"
+
+
+def _rag_type_of(eval_model: Evaluation) -> str | None:
+    """Frozen index snapshot wins over the (mutable) RAG config."""
+    if eval_model.index and eval_model.index.config_snapshot:
+        rag_type = eval_model.index.config_snapshot.get("rag_type")
+        if rag_type:
+            return str(rag_type)
+    if eval_model.rag_config:
+        return eval_model.rag_config.rag_type
+    return None
+
+
+def _manifest_dict(eval_model: Evaluation) -> dict | None:
+    manifest = eval_model.run_manifest
+    if manifest is None:
+        return None
+    return {
+        "rag_config_snapshot": manifest.rag_config_snapshot,
+        "build_config_snapshot": manifest.build_config_snapshot,
+        "query_overrides": manifest.query_overrides,
+        "effective_config_snapshot": manifest.effective_config_snapshot,
+        "kb_version_snapshot": manifest.kb_version_snapshot,
+        "generation_model": manifest.generation_model,
+        "eval_judge_model": manifest.eval_judge_model,
+        "prompt_templates": manifest.prompt_templates,
+        "rag_evaluator_version": manifest.rag_evaluator_version,
+        "platform_version": manifest.platform_version,
+    }
+
+
+def _to_export_member(eval_model: Evaluation) -> ExportMember:
+    legal = (eval_model.summary_metrics or {}).get("legal_rag_bench")
+    return ExportMember(
+        label=_member_label(eval_model),
+        rag_config_name=eval_model.rag_config.name if eval_model.rag_config else None,
+        rag_type=_rag_type_of(eval_model),
+        pass_rate=eval_model.pass_rate,
+        summary_metrics=eval_model.summary_metrics,
+        performance_metrics=eval_model.performance_metrics,
+        legal_rag_bench=legal,
+        manifest=_manifest_dict(eval_model),
+    )
+
+
+async def _load_member_evaluations(
+    db: DbSession, comparison: Comparison
+) -> list[Evaluation]:
+    """Load member evaluations (baseline first, then compared in stored order)."""
+    ordered_ids = [comparison.baseline_evaluation_id] + [
+        UUID(id_str) for id_str in comparison.compared_evaluation_ids
+    ]
+    query = (
+        select(Evaluation)
+        .where(Evaluation.id.in_(ordered_ids))
+        .options(
+            selectinload(Evaluation.rag_config),
+            selectinload(Evaluation.index),
+            selectinload(Evaluation.run_manifest),
+        )
+    )
+    result = await db.execute(query)
+    by_id = {e.id: e for e in result.scalars().all()}
+    return [by_id[eid] for eid in ordered_ids if eid in by_id]
+
+
+async def _build_question_records(
+    db: DbSession, evaluations: list[Evaluation]
+) -> list[dict]:
+    """Assemble per-question JSONL records, pulling legal payloads from artifacts."""
+    store = get_artifact_store()
+    records: list[dict] = []
+    for eval_model in evaluations:
+        member_label = _member_label(eval_model)
+        rag_type = _rag_type_of(eval_model)
+        rag_config_name = eval_model.rag_config.name if eval_model.rag_config else None
+
+        query = (
+            select(EvaluationResult)
+            .where(EvaluationResult.evaluation_id == eval_model.id)
+            .options(selectinload(EvaluationResult.test_case))
+            .order_by(EvaluationResult.created_at.asc())
+        )
+        result = await db.execute(query)
+        for r in result.scalars().all():
+            legal = None
+            if r.raw_metrics_artifact_id:
+                raw = await store.retrieve_json_by_id(db, r.raw_metrics_artifact_id)
+                if raw:
+                    legal = raw.get("legal_rag_bench")
+            test_case = r.test_case
+            records.append(
+                build_question_record(
+                    member_label=member_label,
+                    evaluation_id=str(eval_model.id),
+                    rag_type=rag_type,
+                    rag_config_name=rag_config_name,
+                    question=test_case.question if test_case else None,
+                    expected_answer=test_case.expected_answer if test_case else None,
+                    generated_answer=r.generated_answer,
+                    scores={
+                        "faithfulness": r.faithfulness_score,
+                        "relevancy": r.relevancy_score,
+                        "precision": r.precision_score,
+                        "recall": r.recall_score,
+                        "g_eval": r.g_eval_score,
+                    },
+                    latency_seconds=r.latency_seconds,
+                    legal_rag_bench=legal,
+                )
+            )
+    return records
 
 
 @router.post(
@@ -296,4 +430,51 @@ async def list_evaluation_comparisons(
         total=total,
         offset=pagination.offset,
         limit=pagination.limit,
+    )
+
+
+@router.get(
+    "/comparisons/{comparison_id}/export",
+    summary="Export comparison as article-ready CSV / Markdown / JSONL",
+)
+async def export_comparison(
+    db: DbSession,
+    comparison_id: UUID,
+    format: str = Query("markdown", pattern="^(markdown|csv|jsonl)$"),
+    table: str = Query("headline", pattern="^(headline|taxonomy)$"),
+) -> Response:
+    """Export Legal RAG Bench comparison artifacts.
+
+    - ``markdown``: full report (headline + taxonomy tables + run manifests).
+    - ``csv``: a single table (``table=headline`` or ``table=taxonomy``).
+    - ``jsonl``: one reproducibility record per question per evaluation.
+    """
+    comparison = await _get_comparison_or_404(db, comparison_id)
+    evaluations = await _load_member_evaluations(db, comparison)
+    members = [_to_export_member(e) for e in evaluations]
+
+    stem = f"comparison-{str(comparison_id)[:8]}"
+
+    if format == "markdown":
+        title = comparison.name or "Legal RAG Bench - Architecture Comparison"
+        content = build_markdown_report(members, title=title)
+        return _file_response(content, "text/markdown", f"{stem}.md")
+
+    if format == "csv":
+        if table == "taxonomy":
+            content = to_csv(taxonomy_rows(members), taxonomy_columns())
+        else:
+            content = to_csv(headline_rows(members), HEADLINE_COLUMNS)
+        return _file_response(content, "text/csv", f"{stem}-{table}.csv")
+
+    records = await _build_question_records(db, evaluations)
+    content = per_question_jsonl(records)
+    return _file_response(content, "application/x-ndjson", f"{stem}-questions.jsonl")
+
+
+def _file_response(content: str, media_type: str, filename: str) -> Response:
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
