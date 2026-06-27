@@ -314,7 +314,7 @@ class EvaluationRunner:
                 gen_provider = self.evaluation.rag_config.llm_provider
                 gen_base_url = self.evaluation.rag_config.llm_base_url
 
-            # 3. Initialize metrics (judge bucket: own provider/model).
+            # 3. Resolve judge bucket (own provider/model).
             # Resolve explicit credentials so litellm uses its well-tested
             # credential path (env-based pickup hits a broken OpenRouter path).
             # The judge follows the generation endpoint when it shares its provider.
@@ -322,9 +322,6 @@ class EvaluationRunner:
             judge_provider = self.evaluation.eval_judge_provider or gen_provider
             base_override = gen_base_url if judge_provider == gen_provider else None
             endpoint = resolve_provider_endpoint(judge_provider, base_override)
-            metrics = self._initialize_metrics(
-                judge_model, judge_provider, endpoint.base_url, endpoint.api_key
-            )
 
             # 4. Process test cases
             start_index = job.progress_current
@@ -347,7 +344,18 @@ class EvaluationRunner:
                             or self.evaluation_id in self._paused_evaluations
                         ):
                             return
-                        await self._process_test_case(idx, tc, rag, metrics, total, top_k, llm_model)
+                        await self._process_test_case(
+                            idx,
+                            tc,
+                            rag,
+                            total,
+                            top_k,
+                            llm_model,
+                            judge_model,
+                            judge_provider,
+                            endpoint.base_url,
+                            endpoint.api_key,
+                        )
 
                 tasks = [
                     sem_process(start_index + i, tc) for i, tc in enumerate(remaining_test_cases)
@@ -387,7 +395,16 @@ class EvaluationRunner:
                         return
 
                     await self._process_test_case(
-                        i, self.test_cases[i], rag, metrics, total, top_k, llm_model
+                        i,
+                        self.test_cases[i],
+                        rag,
+                        total,
+                        top_k,
+                        llm_model,
+                        judge_model,
+                        judge_provider,
+                        endpoint.base_url,
+                        endpoint.api_key,
                     )
 
             # 5. Calculate final summary and complete
@@ -448,10 +465,13 @@ class EvaluationRunner:
         i: int,
         test_case: TestCase,
         rag: Any,
-        metrics: List[Any],
         total: int,
         top_k: int,
         generation_model: str,
+        judge_model: str,
+        judge_provider: str | None,
+        judge_base_url: str | None,
+        judge_api_key: str | None,
     ) -> None:
         """Process a single test case."""
         start_time = time.time()
@@ -476,26 +496,31 @@ class EvaluationRunner:
                 retrieval_context=retrieved_context,
             )
 
-            # Score metrics
+            # Score metrics. DeepEval metric objects are mutable: a_measure()
+            # writes score/reason onto the object. Create a fresh set per test
+            # case so async evaluation cannot mix scores or reasons across
+            # concurrent cases.
+            metrics = self._initialize_metrics(
+                judge_model, judge_provider, judge_base_url, judge_api_key
+            )
             scores: Dict[str, Any] = {}
+            metric_results: list[dict[str, Any]] = []
             for metric in metrics:
                 await metric.a_measure(llm_test_case)
                 class_name = metric.__class__.__name__
-                if class_name == "FaithfulnessMetric":
-                    name = "faithfulness"
-                elif class_name == "AnswerRelevancyMetric":
-                    name = "relevancy"
-                elif class_name == "ContextualPrecisionMetric":
-                    name = "precision"
-                elif class_name == "ContextualRecallMetric":
-                    name = "recall"
-                elif class_name == "GEval":
-                    name = "g_eval"
-                else:
-                    name = class_name.lower().replace("metric", "")
+                name = self._metric_result_field_name(class_name)
+                score = getattr(metric, "score", None)
+                reason = getattr(metric, "reason", None)
 
-                scores[f"{name}_score"] = metric.score
-                scores[f"{name}_reason"] = getattr(metric, "reason", None)
+                scores[f"{name}_score"] = score
+                scores[f"{name}_reason"] = reason
+                metric_results.append(
+                    {
+                        "name": class_name,
+                        "score": score,
+                        "reason": reason,
+                    }
+                )
 
             # Token usage if available
             prompt_tokens = response.get("metadata", {}).get("token_usage", {}).get("prompt_tokens")
@@ -519,35 +544,28 @@ class EvaluationRunner:
             else:
                 cost_usd = Decimal(str(response.get("metadata", {}).get("cost", 0.0)))
 
-            # Store artifacts
-            retrieval_trace = response.get("retrieval_trace")
-            retrieval_trace_artifact = await self.artifact_store.store_json(
-                self.db, retrieval_trace, ArtifactStore.KIND_RETRIEVAL_TRACE
-            )
+            raw_metrics = {"metric_results": metric_results}
 
-            retrieved_context_data = response.get("context", [])
-            retrieved_context_artifact = await self.artifact_store.store_json(
-                self.db, retrieved_context_data, ArtifactStore.KIND_RETRIEVED_CONTEXT
-            )
-
-            raw_metrics = {
-                "metric_results": [
-                    {
-                        "name": metric.__class__.__name__,
-                        "score": metric.score,
-                        "reason": getattr(metric, "reason", None),
-                    }
-                    for metric in metrics
-                ]
-            }
-            raw_metrics_artifact = await self.artifact_store.store_json(
-                self.db, raw_metrics, ArtifactStore.KIND_RAW_METRICS
-            )
-
-            # CRITICAL: We need a new session or a lock if we want to commit in parallel
-            # Since EvaluationRunner has self.db (AsyncSession), and sessions are not thread-safe/task-safe for concurrent commits
-            # We use a lock for DB operations.
+            # Concurrent test-case tasks share self.db, so every statement that
+            # touches it (artifact flushes, the result commit, progress reads
+            # and writes) must run under the lock. Otherwise SQLite raises
+            # "cannot commit transaction - SQL statements in progress" when one
+            # task commits while another has a flush/select in flight.
             async with self.db_lock:
+                retrieval_trace = response.get("retrieval_trace")
+                retrieval_trace_artifact = await self.artifact_store.store_json(
+                    self.db, retrieval_trace, ArtifactStore.KIND_RETRIEVAL_TRACE
+                )
+
+                retrieved_context_data = response.get("context", [])
+                retrieved_context_artifact = await self.artifact_store.store_json(
+                    self.db, retrieved_context_data, ArtifactStore.KIND_RETRIEVED_CONTEXT
+                )
+
+                raw_metrics_artifact = await self.artifact_store.store_json(
+                    self.db, raw_metrics, ArtifactStore.KIND_RAW_METRICS
+                )
+
                 result_model = EvaluationResult(
                     evaluation_id=self.evaluation_id,
                     test_case_id=test_case.id,
@@ -564,9 +582,16 @@ class EvaluationRunner:
                 self.db.add(result_model)
                 await self.db.commit()
 
-            # Update progress
-            current_completed = await self._get_completed_count()
-            await self.checkpoint_service.update_progress(self.evaluation_id, current_completed)
+                # Update progress (same shared session, so keep it inside the lock)
+                current_completed = await self._get_completed_count()
+                await self.checkpoint_service.update_progress(
+                    self.evaluation_id, current_completed
+                )
+
+                if current_completed % 5 == 0:
+                    await self.checkpoint_service.save_checkpoint(
+                        self.evaluation_id, current_completed, {"last_index": current_completed}
+                    )
 
             # Log progress event
             await self.event_log.log_event(
@@ -589,12 +614,6 @@ class EvaluationRunner:
                 },
             )
 
-            # Save checkpoint every 5 items
-            if current_completed % 5 == 0:
-                await self.checkpoint_service.save_checkpoint(
-                    self.evaluation_id, current_completed, {"last_index": i + 1}
-                )
-
         except Exception as e:
             logger.error(
                 "Error processing test case",
@@ -607,6 +626,20 @@ class EvaluationRunner:
                 "error",
                 {"error_message": f"Test case {i} failed: {str(e)}", "test_case_index": i},
             )
+
+    @staticmethod
+    def _metric_result_field_name(class_name: str) -> str:
+        if class_name == "FaithfulnessMetric":
+            return "faithfulness"
+        if class_name == "AnswerRelevancyMetric":
+            return "relevancy"
+        if class_name == "ContextualPrecisionMetric":
+            return "precision"
+        if class_name == "ContextualRecallMetric":
+            return "recall"
+        if class_name == "GEval":
+            return "g_eval"
+        return class_name.lower().replace("metric", "")
 
     async def _get_completed_count(self) -> int:
         """Get the number of completed results for this evaluation."""

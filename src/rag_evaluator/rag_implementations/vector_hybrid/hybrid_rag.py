@@ -31,6 +31,12 @@ from rag_evaluator.config import settings
 class HybridSearchRAG(BaseRAG):
     """RAG implementation using Qdrant hybrid search (dense + sparse vectors)."""
 
+    EMBEDDING_DIMENSIONS = {
+        "text-embedding-3-small": 1536,
+        "text-embedding-3-large": 3072,
+        "text-embedding-ada-002": 1536,
+    }
+
     def __init__(
         self,
         collection_name: str | None = None,
@@ -65,6 +71,7 @@ class HybridSearchRAG(BaseRAG):
         # are independent endpoints resolved from the config).
         self.openai_client = llm_client(self.config)
         self.embedding_client = embedding_client(self.config)
+        self.embedding_dimension = self._resolve_embedding_dimension()
 
         # Initialize FastEmbed for sparse embeddings (SPLADE)
         self.sparse_model = SparseTextEmbedding(
@@ -102,6 +109,28 @@ class HybridSearchRAG(BaseRAG):
         except Exception:
             pass
 
+    def _resolve_embedding_dimension(self) -> int:
+        raw_dimension = self.config.parameters.get("embedding_dimension")
+        if raw_dimension is not None:
+            try:
+                dimension = int(raw_dimension)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Invalid embedding_dimension {raw_dimension!r}; expected integer"
+                ) from exc
+            if dimension <= 0:
+                raise ValueError("embedding_dimension must be greater than 0")
+            return dimension
+
+        model_name = self.config.embedding_model
+        if model_name in self.EMBEDDING_DIMENSIONS:
+            return self.EMBEDDING_DIMENSIONS[model_name]
+
+        raise ValueError(
+            "Hybrid search requires parameters.embedding_dimension for "
+            f"embedding model {model_name!r}"
+        )
+
     def _ensure_collection(self) -> None:
         """Create collection if it doesn't exist with both dense and sparse vectors."""
         try:
@@ -114,7 +143,7 @@ class HybridSearchRAG(BaseRAG):
                     collection_name=self.collection_name,
                     vectors_config={
                         "dense": models.VectorParams(
-                            size=1536,  # text-embedding-3-small dimension
+                            size=self.embedding_dimension,
                             distance=models.Distance.COSINE,
                         ),
                     },
@@ -588,7 +617,7 @@ class HybridSearchRAG(BaseRAG):
         # Generate answer using LLM with retrieved context
         context_text = "\n\n".join([f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)])
 
-        prompt = f"""Answer the following question based only on the provided context. If the answer cannot be found in the context, say "I cannot answer this question based on the provided context."
+        prompt = f"""Answer the question using only the provided context. The context may state general rules or principles; apply them to the specific situation described in the question. For yes/no questions, give the direct conclusion first, then the supporting rule from the context. Only if the context contains no rule or information relevant to the question, reply exactly: "I cannot answer this question based on the provided context."
 
 Context:
 {context_text}

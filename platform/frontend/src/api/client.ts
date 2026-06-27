@@ -725,12 +725,24 @@ export const api = {
     update: (id: string, data: KnowledgeBaseUpdate) =>
       apiClient.put<KnowledgeBase>(`/knowledge-bases/${id}`, data),
     delete: (id: string) => apiClient.delete(`/knowledge-bases/${id}`),
-    uploadDocuments: (id: string, files: File[]) => {
-      const formData = new FormData()
-      files.forEach((file) => formData.append('files', file))
-      return apiClient.post<DocumentUploadResponse>(`/knowledge-bases/${id}/documents`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+    // Upload in batches: the server (Starlette) rejects multipart requests with
+    // more than 1000 file parts, so large folder uploads must be chunked.
+    uploadDocuments: async (id: string, files: File[]) => {
+      const BATCH_SIZE = 500
+      const result: DocumentUploadResponse = { uploaded: [], failed: [], total_size_bytes: 0 }
+      for (let i = 0; i < files.length; i += BATCH_SIZE) {
+        const formData = new FormData()
+        files.slice(i, i + BATCH_SIZE).forEach((file) => formData.append('files', file))
+        const res = await apiClient.post<DocumentUploadResponse>(
+          `/knowledge-bases/${id}/documents`,
+          formData,
+          { headers: { 'Content-Type': 'multipart/form-data' } }
+        )
+        result.uploaded.push(...res.data.uploaded)
+        result.failed.push(...res.data.failed)
+        result.total_size_bytes += res.data.total_size_bytes
+      }
+      return { data: result }
     },
     deleteDocument: (kbId: string, docId: string) =>
       apiClient.delete(`/knowledge-bases/${kbId}/documents/${docId}`),
