@@ -76,6 +76,34 @@ def test_retrieval_metrics_match_trace_source_filename_ids() -> None:
     assert result["gold_access_rank"] == 1
 
 
+def test_retrieval_metrics_rank_uses_one_id_per_chunk() -> None:
+    # Each retrieved chunk exposes BOTH a real source path and a synthetic
+    # doc_key. Only one id per chunk may count toward rank, otherwise the gold
+    # passage (here the 5th of 5 retrieved) is pushed past top_k and hit@k is
+    # wrongly scored a miss.
+    chunks = [
+        {
+            "source": f"storage/raw/aa{i}_passage_000{i}__{pid}.txt",
+            "metadata": {"doc_key": f"doc_aa{i}deadbeef"},
+        }
+        for i, pid in enumerate(
+            ["1.1-c1-s1", "2.2-c1-s1", "3.3-c1-s1", "4.4-c1-s1", "1.5-c6-s1"],
+            start=1,
+        )
+    ]
+    result = compute_legal_rag_retrieval_metrics(
+        rag_type="vector_semantic",
+        top_k=5,
+        relevant_passage_id="1.5-c6-s1",
+        response={"retrieval_trace": {"retrieved_chunks": chunks}},
+    )
+
+    assert result is not None
+    assert result["gold_access_rank"] == 5
+    assert result["hit_at_k"] is True
+    assert result["hit_at_5"] is True
+
+
 def test_grounded_incorrect_without_retrieval_gets_taxonomy_bucket() -> None:
     taxonomy = derive_taxonomy(
         retrieval_metrics=None,

@@ -112,7 +112,12 @@ def extract_retrieved_passage_ids(response: dict[str, Any]) -> list[str]:
     for key in ("sources", "context_sources", "retrieved_sources", "retrieval_trace"):
         candidates.extend(_extract_ids_from_value(response.get(key)))
 
-    candidates.extend(_extract_ids_from_value(response.get("context")))
+    # Only mine the raw context text for ids when no structured source was found.
+    # Context entries are passage TEXT; parsing them as ids otherwise appends
+    # large text blobs to the ranked list (harmless to hit@k since real ids rank
+    # first, but it pollutes the stored retrieved_passage_ids).
+    if not candidates:
+        candidates.extend(_extract_ids_from_value(response.get("context")))
     return _dedupe_preserving_order(candidates)
 
 
@@ -206,31 +211,41 @@ def _extract_ids_from_value(value: Any) -> list[str]:
     if isinstance(value, str):
         return _ids_from_string(value)
     if isinstance(value, dict):
-        ids: list[str] = []
+        # An explicit passage id wins outright.
+        for key in ("passage_id", "relevant_passage_id"):
+            found = _extract_ids_from_value(value.get(key))
+            if found:
+                return found[:1]
+        # A container of retrieved items (e.g. a retrieval trace holding
+        # retrieved_chunks): recurse so each nested item contributes exactly
+        # one id, preserving retrieval rank order.
+        container_ids: list[str] = []
+        for key in ("retrieved_chunks", "chunks", "chunk_details", "results", "source_documents"):
+            container_ids.extend(_extract_ids_from_value(value.get(key)))
+        if container_ids:
+            return container_ids
+        # A leaf retrieved item: emit EXACTLY ONE id, preferring the document
+        # source path over synthetic ids. Emitting every id-bearing key
+        # interleaves the real passage id with doc_key/chunk_id and corrupts
+        # the rank used by hit@k.
         for key in (
-            "passage_id",
-            "relevant_passage_id",
-            "id",
-            "doc_id",
-            "doc_key",
             "source",
             "source_path",
             "filename",
             "path",
+            "document_id",
+            "id",
+            "doc_id",
+            "doc_key",
         ):
-            ids.extend(_extract_ids_from_value(value.get(key)))
-        for key in (
-            "metadata",
-            "payload",
-            "document",
-            "source_document",
-            "retrieved_chunks",
-            "chunks",
-            "chunk_details",
-            "results",
-        ):
-            ids.extend(_extract_ids_from_value(value.get(key)))
-        return ids
+            found = _extract_ids_from_value(value.get(key))
+            if found:
+                return found[:1]
+        # Last resort: nested wrappers.
+        nested: list[str] = []
+        for key in ("document", "source_document", "payload", "metadata"):
+            nested.extend(_extract_ids_from_value(value.get(key)))
+        return nested
     if isinstance(value, list | tuple | set):
         ids: list[str] = []
         for item in value:
