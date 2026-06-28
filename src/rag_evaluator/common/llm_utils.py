@@ -2,6 +2,24 @@
 
 from typing import Any
 
+_TRANSIENT_STATUS_CODES = {408, 409, 429, 500, 502, 503, 504}
+_TRANSIENT_ERROR_MARKERS = (
+    "api connection",
+    "bad gateway",
+    "badgateway",
+    "connection error",
+    "gateway timeout",
+    "internal server error",
+    "overloaded",
+    "rate limit",
+    "ratelimit",
+    "service unavailable",
+    "temporarily unavailable",
+    "timeout",
+    "timed out",
+    "upstream error",
+)
+
 
 def is_reasoning_model(model_name: str) -> bool:
     """Check if a model is a reasoning model (like OpenAI o1 or o3).
@@ -31,6 +49,24 @@ def is_reasoning_model(model_name: str) -> bool:
         return True
 
     return False
+
+
+def is_transient_llm_error(error: BaseException) -> bool:
+    """Return whether an LLM call failure is likely safe to retry."""
+    status_code = getattr(error, "status_code", None)
+    response = getattr(error, "response", None)
+    if status_code is None and response is not None:
+        status_code = getattr(response, "status_code", None)
+
+    try:
+        if int(status_code) in _TRANSIENT_STATUS_CODES:
+            return True
+    except (TypeError, ValueError):
+        pass
+
+    error_name = error.__class__.__name__.lower()
+    error_text = str(error).lower()
+    return any(marker in error_name or marker in error_text for marker in _TRANSIENT_ERROR_MARKERS)
 
 
 def get_safe_llm_params(
