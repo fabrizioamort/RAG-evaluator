@@ -141,3 +141,7 @@ use managed secrets for API keys, and back up the database and `storage/` direct
 ## License
 
 RAG Evaluator is released under the [MIT License](LICENSE).
+
+Dataset files are separately licensed. In particular, Legal RAG Bench dataset
+files are not covered by the MIT license; see
+[data/LEGAL_RAG_BENCH_NOTICE.md](data/LEGAL_RAG_BENCH_NOTICE.md).
