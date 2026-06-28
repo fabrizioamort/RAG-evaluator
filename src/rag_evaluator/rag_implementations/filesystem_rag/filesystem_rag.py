@@ -7,8 +7,10 @@ vector similarity search.
 
 from __future__ import annotations
 
+import json
+import re
 import time
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
@@ -26,6 +28,8 @@ from rag_evaluator.rag_implementations.filesystem_rag.agent.agent import (
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.pipeline import (
     PreparationPipeline,
 )
+
+_DOC_ID_RE = re.compile(r"doc_\d+")
 
 
 class FilesystemRAG(BaseRAG):
@@ -87,6 +91,9 @@ class FilesystemRAG(BaseRAG):
         # Query tracking
         self._query_metrics: list[dict[str, Any]] = []
         self._total_queries = 0
+
+        # Cache mapping doc id -> original passage file path (from doc meta.json)
+        self._passage_source_cache: dict[str, str | None] = {}
 
     def close(self) -> None:
         """Close agent and clear metrics."""
@@ -198,6 +205,34 @@ class FilesystemRAG(BaseRAG):
             raise RuntimeError("Agent initialization failed")
         return self._agent
 
+    def _resolve_source_to_passage(self, source: str) -> str:
+        """Map a prepared-filesystem source to its original passage file path.
+
+        Filesystem RAG reports sources as synthetic doc ids (e.g.
+        ``documents/doc_182.md`` or ``_summaries/doc_182_summary.md``), but the
+        Legal RAG Bench retrieval metric compares against passage ids such as
+        ``1.5-c8-s1``. Each document's ``meta.json`` records the original passage
+        file, whose name embeds that id, so resolve through it. Non-document
+        sources (index files, etc.) are returned unchanged.
+        """
+        stem = PurePath(source).stem
+        doc_id = stem[: -len("_summary")] if stem.endswith("_summary") else stem
+        if not _DOC_ID_RE.fullmatch(doc_id):
+            return source
+        if doc_id not in self._passage_source_cache:
+            meta_path = Path(self.prepared_path) / "documents" / f"{doc_id}.meta.json"
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                self._passage_source_cache[doc_id] = meta.get("original_file") or None
+            except (OSError, json.JSONDecodeError):
+                self._passage_source_cache[doc_id] = None
+        resolved = self._passage_source_cache[doc_id]
+        return resolved if resolved else source
+
+    def _resolve_sources(self, sources: list[str]) -> list[str]:
+        """Resolve a list of sources to their original passage file paths."""
+        return [self._resolve_source_to_passage(source) for source in sources]
+
     def _context_from_agent_response(
         self,
         question: str,
@@ -208,6 +243,7 @@ class FilesystemRAG(BaseRAG):
         context_sources = response.metadata.get("context_sources") or response.metadata.get(
             "files_read", []
         )
+        context_sources = self._resolve_sources(context_sources)
         files_read = response.metadata.get("files_read", [])
 
         chunk_details = []
@@ -453,12 +489,14 @@ Answer:"""
             "metadata": {
                 "retrieval_time": response.metadata.get("query_time", 0.0),
                 "chunks_retrieved": len(response.context),
-                "files_read": response.metadata.get("files_read", []),
+                "files_read": self._resolve_sources(response.metadata.get("files_read", [])),
                 "tool_calls": response.metadata.get("tool_calls", 0),
                 "search_mode": response.metadata.get("search_mode", "unknown"),
                 "iterations": response.metadata.get("iterations", 0),
                 "reasoning_trace": response.metadata.get("reasoning_trace", []),
-                "context_sources": response.metadata.get("context_sources", []),
+                "context_sources": self._resolve_sources(
+                    response.metadata.get("context_sources", [])
+                ),
                 "prefetch_candidates": response.metadata.get("prefetch_candidates", []),
                 "token_usage": self._token_usage.to_dict(),
             },
@@ -490,11 +528,13 @@ Answer:"""
                 "generation_time": 0.0,
                 "token_usage": self._token_usage.to_dict(),
                 "chunks_retrieved": len(context.chunks),
-                "files_read": response.metadata.get("files_read", []),
+                "files_read": self._resolve_sources(response.metadata.get("files_read", [])),
                 "tool_calls": response.metadata.get("tool_calls", 0),
                 "search_mode": response.metadata.get("search_mode", "unknown"),
                 "iterations": response.metadata.get("iterations", 0),
-                "context_sources": response.metadata.get("context_sources", []),
+                "context_sources": self._resolve_sources(
+                    response.metadata.get("context_sources", [])
+                ),
                 "prefetch_candidates": response.metadata.get("prefetch_candidates", []),
             },
             "retrieval_trace": context.trace.to_dict(),
