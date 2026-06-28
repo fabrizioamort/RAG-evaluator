@@ -1,5 +1,6 @@
 """Tests for LLM provider service."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -63,6 +64,59 @@ class TestLLMProviderService:
         mock_acompletion.assert_called_once()
         args, kwargs = mock_acompletion.call_args
         assert kwargs["model"] == "openai/gpt-4o-mini"
+
+    @pytest.mark.asyncio
+    @patch("litellm.acompletion")
+    async def test_completion_retries_transient_gateway_error(
+        self, mock_acompletion: AsyncMock, llm_service: LLMProviderService
+    ) -> None:
+        """Transient upstream gateway errors should be retried."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Recovered answer"
+        mock_response.get.side_effect = {
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            "_total_cost": 0.001,
+        }.get
+        mock_acompletion.side_effect = [
+            Exception("litellm.BadGatewayError: Upstream error from Morph: undefined"),
+            mock_response,
+        ]
+
+        response = await llm_service.completion(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            provider="openai",
+            retry_base_delay=0,
+        )
+
+        assert response.content == "Recovered answer"
+        assert mock_acompletion.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("litellm.acompletion")
+    async def test_completion_enforces_per_attempt_timeout(
+        self, mock_acompletion: AsyncMock, llm_service: LLMProviderService
+    ) -> None:
+        """Slow provider calls should be bounded by the configured timeout."""
+
+        async def slow_completion(**_kwargs: object) -> None:
+            await asyncio.sleep(0.05)
+
+        mock_acompletion.side_effect = slow_completion
+
+        with pytest.raises(asyncio.TimeoutError):
+            await llm_service.completion(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": "Hello"}],
+                provider="openai",
+                retry_attempts=1,
+                timeout=0.001,
+            )
+
+        assert mock_acompletion.call_count == 1
+        _args, kwargs = mock_acompletion.call_args
+        assert kwargs["timeout"] == 0.001
 
     @pytest.mark.asyncio
     @patch("litellm.aembedding")
