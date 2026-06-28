@@ -553,7 +553,16 @@ async def retry_evaluation(
     """Retry a failed or cancelled evaluation."""
     evaluation = await _get_evaluation_or_404(db, evaluation_id)
 
-    if evaluation.status not in ["failed", "cancelled"]:
+    result_count_query = select(func.count(EvaluationResult.id)).where(
+        EvaluationResult.evaluation_id == evaluation_id
+    )
+    result_count = (await db.execute(result_count_query)).scalar() or 0
+    total_test_cases = len(evaluation.test_set.test_cases) if evaluation.test_set else 0
+    is_incomplete_completed = (
+        evaluation.status == "completed" and total_test_cases > 0 and result_count < total_test_cases
+    )
+
+    if evaluation.status not in ["failed", "cancelled"] and not is_incomplete_completed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot retry evaluation in status {evaluation.status}",
@@ -564,14 +573,19 @@ async def retry_evaluation(
     evaluation.error_message = None
     evaluation.started_at = None
     evaluation.completed_at = None
+    evaluation.summary_metrics = None
+    evaluation.cost_metrics = None
+    evaluation.performance_metrics = None
+    evaluation.pass_rate = None
 
     # Delete results to start fresh if needed, or runner can handle resume
     # For retry, we usually want to start fresh or resume from last successful
-    # EvaluationRunner currently handles resume from job.progress_current
+    # EvaluationRunner handles resume by processing missing test cases.
 
     await db.commit()
     await db.refresh(evaluation)
 
+    get_job_event_log().reset_cache(evaluation_id)
     background_tasks.add_task(_run_evaluation_background, evaluation.id)
     logger.info("Retrying evaluation", evaluation_id=str(evaluation_id))
 

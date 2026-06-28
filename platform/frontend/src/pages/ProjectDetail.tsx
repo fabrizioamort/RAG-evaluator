@@ -639,6 +639,11 @@ function EvaluationsTab({
                 </button>
                 <EvaluationProgress
                     evaluationId={activeEvaluationId}
+                    evaluation={activeEvaluation}
+                    onRetryStarted={() => {
+                        queryClient.invalidateQueries({ queryKey: ['evaluation', activeEvaluationId] })
+                        queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
+                    }}
                     onClose={() => {
                         setActiveEvaluationId(null)
                         queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })

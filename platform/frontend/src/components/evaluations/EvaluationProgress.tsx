@@ -1,16 +1,45 @@
-import { Play, Pause, XCircle, CheckCircle2, AlertCircle, Clock } from 'lucide-react'
+import { useState } from 'react'
+import { Play, Pause, XCircle, CheckCircle2, AlertCircle, Clock, RefreshCcw } from 'lucide-react'
 import { useEvaluationStream } from '../../hooks/useEvaluationStream'
-import { api } from '../../api/client'
+import { api, type Evaluation } from '../../api/client'
 
 interface EvaluationProgressProps {
     evaluationId: string
+    evaluation?: Pick<Evaluation, 'status' | 'result_count' | 'error_message'>
     onClose?: () => void
+    onRetryStarted?: () => void
 }
 
-export function EvaluationProgress({ evaluationId, onClose }: EvaluationProgressProps) {
-    const { completed, total, status, currentQuestion, error, summaryMetrics } = useEvaluationStream(evaluationId)
+export function EvaluationProgress({ evaluationId, evaluation, onClose, onRetryStarted }: EvaluationProgressProps) {
+    const {
+        completed: streamCompleted,
+        total,
+        status: streamStatus,
+        currentQuestion,
+        error: streamError,
+        caseError,
+        summaryMetrics,
+        reconnect,
+    } = useEvaluationStream(evaluationId)
+    const [isRetrying, setIsRetrying] = useState(false)
+    const [retryAccepted, setRetryAccepted] = useState(false)
+    const [retryError, setRetryError] = useState<string | null>(null)
+
+    const hasStreamState =
+        streamStatus !== 'pending' ||
+        total > 0 ||
+        streamCompleted > 0 ||
+        Boolean(streamError || caseError || summaryMetrics)
+    const fallbackStatus = retryAccepted ? 'pending' : evaluation?.status
+    const status = hasStreamState ? streamStatus : fallbackStatus ?? streamStatus
+    const completed = Math.max(streamCompleted, evaluation?.result_count ?? 0)
+    const displayError = retryError ?? streamError ?? (retryAccepted ? undefined : evaluation?.error_message) ?? undefined
+    const canRetry = status === 'failed' || status === 'cancelled'
 
     const progress = total > 0 ? (completed / total) * 100 : 0
+    const progressLabel = total > 0
+        ? `${completed} / ${total} test cases (${Math.round(progress)}%)`
+        : `${completed} test cases saved`
 
     const handlePause = async () => {
         try {
@@ -35,6 +64,25 @@ export function EvaluationProgress({ evaluationId, onClose }: EvaluationProgress
             } catch (err) {
                 console.error('Failed to cancel evaluation:', err)
             }
+        }
+    }
+
+    const handleRetry = async () => {
+        if (!canRetry || isRetrying) return
+
+        setIsRetrying(true)
+        setRetryAccepted(false)
+        setRetryError(null)
+        try {
+            await api.evaluations.retry(evaluationId)
+            setRetryAccepted(true)
+            onRetryStarted?.()
+            reconnect()
+        } catch (err) {
+            console.error('Failed to retry evaluation:', err)
+            setRetryError('Failed to retry evaluation. Please try again.')
+        } finally {
+            setIsRetrying(false)
         }
     }
 
@@ -80,6 +128,16 @@ export function EvaluationProgress({ evaluationId, onClose }: EvaluationProgress
                             <XCircle className="h-4 w-4" /> Cancel
                         </button>
                     )}
+                    {canRetry && (
+                        <button
+                            onClick={handleRetry}
+                            disabled={isRetrying}
+                            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            <RefreshCcw className={`h-4 w-4 ${isRetrying ? 'animate-spin' : ''}`} />
+                            {isRetrying ? 'Retrying...' : 'Retry'}
+                        </button>
+                    )}
                     {onClose && (
                         <button
                             onClick={onClose}
@@ -94,7 +152,7 @@ export function EvaluationProgress({ evaluationId, onClose }: EvaluationProgress
             <div className="space-y-4">
                 <div className="flex items-center justify-between text-sm font-medium">
                     <span>Overall Progress</span>
-                    <span>{completed} / {total} test cases ({Math.round(progress)}%)</span>
+                    <span>{progressLabel}</span>
                 </div>
 
                 <div className="h-4 w-full overflow-hidden rounded-full bg-secondary/30">
@@ -113,13 +171,23 @@ export function EvaluationProgress({ evaluationId, onClose }: EvaluationProgress
                     </div>
                 )}
 
-                {error && (
+                {caseError && status === 'running' && (
+                    <div className="mt-4 rounded-lg bg-yellow-500/10 p-4 border border-yellow-500/20 text-yellow-700">
+                        <div className="flex items-center gap-2 font-semibold">
+                            <AlertCircle className="h-4 w-4" />
+                            <span>Latest Test Case Warning</span>
+                        </div>
+                        <p className="mt-1 text-sm">{caseError}</p>
+                    </div>
+                )}
+
+                {displayError && (
                     <div className="mt-4 rounded-lg bg-red-500/10 p-4 border border-red-500/20 text-red-600">
                         <div className="flex items-center gap-2 font-semibold">
                             <AlertCircle className="h-4 w-4" />
                             <span>Evaluation Error</span>
                         </div>
-                        <p className="mt-1 text-sm">{error}</p>
+                        <p className="mt-1 text-sm">{displayError}</p>
                     </div>
                 )}
 

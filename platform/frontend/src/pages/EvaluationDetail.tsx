@@ -59,6 +59,11 @@ export function EvaluationDetail() {
   return (
     <EvaluationProgress
       evaluationId={evaluationId}
+      evaluation={data.data}
+      onRetryStarted={() => {
+        queryClient.invalidateQueries({ queryKey: ['evaluation', evaluationId] })
+        queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
+      }}
       onClose={() => {
         queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
         goBack()

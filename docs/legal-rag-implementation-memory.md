@@ -515,11 +515,34 @@ and backend development checks.
     not a ranked top-k list, so only `gold_accessed` is meaningful. Not
     retroactive: rerun the FS eval for stored results to carry the resolved ids.
 
+- Added retry UI for partial failed evaluations (2026-06-28):
+  - Trigger: evaluation `4eaffc78-564e-483f-8c50-9d4247b4b742` failed after
+    saving 9/10 test cases and the backend error correctly said retry would run
+    only the missing case, but the UI exposed no retry action.
+  - `EvaluationProgress.tsx`: failed/cancelled evaluations now show a `Retry`
+    button that calls `api.evaluations.retry`, reconnects the SSE stream, and
+    keeps showing the saved-result count/error message when the page is
+    reopened after a refresh.
+  - `EvaluationDetail.tsx` and `ProjectDetail.tsx`: pass the fetched evaluation
+    snapshot into the progress panel and invalidate evaluation queries after a
+    retry starts.
+  - `useEvaluationStream.ts` and frontend API types: handle `test_case_error`
+    and `cancelled` events explicitly, clear stale errors when a new run starts,
+    and reset local stream state on reconnect.
+  - Backend retry now clears the in-memory job-event replay cache before
+    starting the background retry, preventing an old failure SSE event from
+    immediately closing the new retry stream.
+  - Verification passed:
+    `rtk npm run build`, `rtk npm run lint`,
+    `rtk uv run pytest tests/test_api/test_evaluations.py::TestEvaluationControl::test_retry_incomplete_completed_evaluation -q`,
+    and `rtk uv run ruff check app/api/evaluations.py app/services/job_event_log.py`.
+
 ## Current Step
 
-- Backend + UI for Legal RAG Bench comparison/export and the first Filesystem
-  RAG retrieval optimization are complete. Remaining work is rerunning the
-  affected FS evaluation, manual UI verification, and the experiment phases.
+- Backend + UI for Legal RAG Bench comparison/export, the first Filesystem RAG
+  retrieval optimization, the FS gold-accessed mapping fix, and evaluation retry
+  UI are complete. Remaining work is rerunning the affected FS evaluation,
+  manual UI verification, and the experiment phases.
 
 ## Pending
 
