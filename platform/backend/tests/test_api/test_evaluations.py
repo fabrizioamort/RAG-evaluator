@@ -1,5 +1,6 @@
 """Tests for evaluations API endpoints."""
 
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -392,6 +393,34 @@ class TestEvaluationControl:
         response = await client.post(f"/api/v1/evaluations/{running_evaluation.id}/resume")
         assert response.status_code == 400
         assert "Cannot resume" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_retry_incomplete_completed_evaluation(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        sample_evaluation: Evaluation,
+    ) -> None:
+        """Completed evaluations can be retried when some test cases have no result."""
+        sample_evaluation.summary_metrics = {"overall_avg": 0.5}
+        sample_evaluation.cost_metrics = {"total_cost_usd": 1.23}
+        sample_evaluation.performance_metrics = {"avg_latency_seconds": 2.0}
+        await db_session.commit()
+
+        with patch("app.api.evaluations._run_evaluation_background", new=AsyncMock()):
+            response = await client.post(f"/api/v1/evaluations/{sample_evaluation.id}/retry")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "pending"
+        assert data["pass_rate"] is None
+        assert data["summary_metrics"] is None
+        assert data["cost_metrics"] is None
+        assert data["performance_metrics"] is None
+
+        await db_session.refresh(sample_evaluation)
+        assert sample_evaluation.status == "pending"
+        assert sample_evaluation.pass_rate is None
 
 
 class TestSetBaseline:

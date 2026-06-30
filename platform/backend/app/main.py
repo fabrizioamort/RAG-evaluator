@@ -72,6 +72,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if interrupted:
             logger.warning("Marked interrupted index builds as failed", count=interrupted)
 
+        from app.services.job_checkpoint_service import get_checkpoint_service
+
+        orphaned = await get_checkpoint_service(db).reconcile_orphaned_evaluations()
+        if orphaned:
+            logger.warning("Marked orphaned evaluations as failed", count=orphaned)
+
     yield
 
     # Shutdown
