@@ -11,6 +11,41 @@ now*, because work continued on `legal-rag-bench` after the plan was written.
 
 ---
 
+## ✅ EXECUTION STATUS (updated 2026-06-30)
+
+The plan in this report has been **executed**. Summary of the final state:
+
+**Step 1 — WIP committed on `legal-rag-bench`** (tree is now clean):
+- `708d31a` resume + orphaned-eval reconcile · `e4a5767` FS retrieval opt ·
+  `6a7429f` pricing defaults (the three **general** commits)
+- `ef4f7d7` article docs + `.gitignore` · `a985ba7` local settings (branch-only)
+- `data/legal_rag_bench_clean/` (20 MB, regenerable) and `.serena/` were
+  gitignored, not committed.
+
+**Step 2 — all general fixes ported to `port/general-fixes-round-2`** (branched
+off `main`, **6 commits ahead**, contains **no legal-only files**; supersedes the
+older `port/runner-and-rag-fixes`):
+- `15f5fd4` items 1–6 · `88b0d2c` B1 retries · `9c3bf54` B2 retry UI ·
+  `44615e0` B3 reconcile+resume · `bcfd15a` B4 FS prefetch · `7d18ce1` B5 pricing.
+- B3 was the only merge conflict: kept the general resume helpers
+  (`_get_completed_test_case_ids`, `_has_result_for_test_case`), dropped the
+  legal `_collect_legal_rag_summary`.
+
+**Verification:** backend ruff ✅ · root ruff ✅ · frontend lint ✅ ·
+frontend build/tsc ✅ · 36 targeted backend+FS tests ✅. Only
+`test_api/test_evaluations.py` could not run (documented `deepeval`/`chromadb`
+collection hang — not a regression; it passed on `legal-rag-bench`).
+
+**Decisions:** optional items **B6** (FS `gold_accessed` resolution) and **B7**
+(test-case `metadata` column + migration) were **skipped** — they stay on
+`legal-rag-bench`.
+
+**Remaining (owner action):** review and merge `port/general-fixes-round-2` into
+`main` (`git merge --no-ff port/general-fixes-round-2`), then optionally delete
+both `port/*` branches.
+
+---
+
 ## 0. The one thing to know first
 
 > **`main` currently contains NONE of the legal-rag-bench fixes.**
