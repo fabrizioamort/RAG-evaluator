@@ -285,14 +285,21 @@ class EvaluationRunner:
                     self.evaluation_id, len(self.test_cases)
                 )
 
+            completed_test_case_ids = await self._get_completed_test_case_ids()
+            current_completed = len(completed_test_case_ids)
+
             await self.checkpoint_service.update_progress(
-                self.evaluation_id, job.progress_current, state="running"
+                self.evaluation_id, current_completed, state="running"
             )
 
             await self.event_log.log_event(
                 self.evaluation_id,
                 "started",
-                {"total_test_cases": len(self.test_cases), "resuming_from": job.progress_current},
+                {
+                    "total_test_cases": len(self.test_cases),
+                    "completed": current_completed,
+                    "resuming_from": current_completed,
+                },
             )
 
             # 2. Get RAG instance
@@ -334,9 +341,14 @@ class EvaluationRunner:
             endpoint = resolve_provider_endpoint(judge_provider, base_override)
 
             # 4. Process test cases
-            start_index = job.progress_current
             total = len(self.test_cases)
-            remaining_test_cases = self.test_cases[start_index:]
+            remaining_test_cases = [
+                (i, tc)
+                for i, tc in enumerate(self.test_cases)
+                if tc.id not in completed_test_case_ids
+            ]
+            failed_case_indices: list[int] = []
+            failed_case_errors: list[str] = []
 
             if not remaining_test_cases:
                 await self._finalize_evaluation()
@@ -346,15 +358,17 @@ class EvaluationRunner:
                 # Parallel execution
                 semaphore = asyncio.Semaphore(settings.DEEPEVAL_MAX_CONCURRENCY)
 
-                async def sem_process(idx: int, tc: TestCase) -> None:
+                async def sem_process(
+                    idx: int, tc: TestCase
+                ) -> tuple[int, bool, str | None] | None:
                     async with semaphore:
                         # Check for cancellation/pause before starting
                         if (
                             self.evaluation_id in self._cancelled_evaluations
                             or self.evaluation_id in self._paused_evaluations
                         ):
-                            return
-                        await self._process_test_case(
+                            return None
+                        success, error_message = await self._process_test_case(
                             idx,
                             tc,
                             rag,
@@ -366,47 +380,58 @@ class EvaluationRunner:
                             endpoint.base_url,
                             endpoint.api_key,
                         )
+                        return idx, success, error_message
 
-                tasks = [
-                    sem_process(start_index + i, tc) for i, tc in enumerate(remaining_test_cases)
-                ]
-                await asyncio.gather(*tasks)
+                tasks = [sem_process(i, tc) for i, tc in remaining_test_cases]
+                results = await asyncio.gather(*tasks)
+                for result in results:
+                    if result is None:
+                        continue
+                    idx, success, error_message = result
+                    if not success:
+                        failed_case_indices.append(idx)
+                        if error_message:
+                            failed_case_errors.append(error_message)
             else:
                 # Sequential execution
-                for i in range(start_index, total):
+                for i, test_case in remaining_test_cases:
                     # Check for cancellation
                     if self.evaluation_id in self._cancelled_evaluations:
                         self._cancelled_evaluations.remove(self.evaluation_id)
+                        current_completed = await self._get_completed_count()
                         await self.checkpoint_service.update_evaluation_status(
                             self.evaluation_id, "cancelled"
                         )
                         await self.checkpoint_service.update_progress(
-                            self.evaluation_id, i, state="cancelled"
+                            self.evaluation_id, current_completed, state="cancelled"
                         )
                         await self.event_log.log_event(
-                            self.evaluation_id, "cancelled", {"completed": i}
+                            self.evaluation_id, "cancelled", {"completed": current_completed}
                         )
                         return
 
                     # Check for pause
                     if self.evaluation_id in self._paused_evaluations:
+                        current_completed = await self._get_completed_count()
                         await self.checkpoint_service.save_checkpoint(
-                            self.evaluation_id, i, {"last_index": i}
+                            self.evaluation_id,
+                            current_completed,
+                            {"last_index": i, "completed": current_completed},
                         )
                         await self.checkpoint_service.update_evaluation_status(
                             self.evaluation_id, "paused"
                         )
                         await self.checkpoint_service.update_progress(
-                            self.evaluation_id, i, state="paused"
+                            self.evaluation_id, current_completed, state="paused"
                         )
                         await self.event_log.log_event(
-                            self.evaluation_id, "paused", {"completed": i}
+                            self.evaluation_id, "paused", {"completed": current_completed}
                         )
                         return
 
-                    await self._process_test_case(
+                    success, error_message = await self._process_test_case(
                         i,
-                        self.test_cases[i],
+                        test_case,
                         rag,
                         total,
                         top_k,
@@ -416,6 +441,10 @@ class EvaluationRunner:
                         endpoint.base_url,
                         endpoint.api_key,
                     )
+                    if not success:
+                        failed_case_indices.append(i)
+                        if error_message:
+                            failed_case_errors.append(error_message)
 
             # 5. Calculate final summary and complete
             # In parallel mode, we need to check if we were cancelled/paused
@@ -444,6 +473,20 @@ class EvaluationRunner:
                     self.evaluation_id, "paused", {"completed": current_completed}
                 )
                 return
+
+            current_completed = await self._get_completed_count()
+            if current_completed < total:
+                failed_display = ", ".join(str(idx) for idx in failed_case_indices)
+                failed_suffix = (
+                    f" Failed test case indexes: {failed_display}." if failed_display else ""
+                )
+                failure_details = (
+                    f" First failure: {failed_case_errors[0]}." if failed_case_errors else ""
+                )
+                raise RuntimeError(
+                    f"Evaluation finished with {current_completed}/{total} test cases saved."
+                    f"{failed_suffix}{failure_details} Retry will run only the missing test cases."
+                )
 
             await self._finalize_evaluation()
 
@@ -482,10 +525,14 @@ class EvaluationRunner:
         judge_provider: str | None,
         judge_base_url: str | None,
         judge_api_key: str | None,
-    ) -> None:
+    ) -> tuple[bool, str | None]:
         """Process a single test case."""
         start_time = time.time()
         try:
+            async with self.db_lock:
+                if await self._has_result_for_test_case(test_case.id):
+                    return True, None
+
             # RAG Query with full trace
             response = await self.rag_adapter.query_with_trace(rag, test_case.question, top_k)
             latency = time.time() - start_time
@@ -665,7 +712,10 @@ class EvaluationRunner:
                 },
             )
 
+            return True, None
+
         except Exception as e:
+            error_message = f"Test case {i} failed: {str(e)}"
             logger.error(
                 "Error processing test case",
                 i=i,
@@ -674,9 +724,10 @@ class EvaluationRunner:
             )
             await self.event_log.log_event(
                 self.evaluation_id,
-                "error",
-                {"error_message": f"Test case {i} failed: {str(e)}", "test_case_index": i},
+                "test_case_error",
+                {"error_message": error_message, "test_case_index": i},
             )
+            return False, error_message
 
     @staticmethod
     def _metric_result_field_name(class_name: str) -> str:
@@ -704,6 +755,28 @@ class EvaluationRunner:
             )
         )
         return result.scalar_one()
+
+    async def _get_completed_test_case_ids(self) -> set[uuid.UUID]:
+        """Get test case IDs that already have a saved result for this evaluation."""
+        result = await self.db.execute(
+            select(EvaluationResult.test_case_id).where(
+                EvaluationResult.evaluation_id == self.evaluation_id,
+                EvaluationResult.test_case_id.is_not(None),
+            )
+        )
+        return {row[0] for row in result.all() if row[0] is not None}
+
+    async def _has_result_for_test_case(self, test_case_id: uuid.UUID) -> bool:
+        """Return whether this evaluation already has a result for a test case."""
+        result = await self.db.execute(
+            select(EvaluationResult.id)
+            .where(
+                EvaluationResult.evaluation_id == self.evaluation_id,
+                EvaluationResult.test_case_id == test_case_id,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
 
     async def _collect_legal_rag_summary(self) -> dict[str, Any] | None:
         result = await self.db.execute(

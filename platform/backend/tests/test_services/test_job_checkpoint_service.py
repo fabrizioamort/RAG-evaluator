@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.evaluation import Evaluation
+from app.models.evaluation_result import EvaluationResult
 from app.models.project import Project
 from app.services.job_checkpoint_service import JobCheckpointService
 
@@ -109,3 +110,58 @@ async def test_fail_job(db_session: AsyncSession, sample_evaluation: Evaluation)
     assert job is not None
     assert job.state == "failed"
     assert job.error_message == "Connection timeout"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_orphaned_evaluations(db_session: AsyncSession) -> None:
+    """Orphaned running/pending evaluations become failed-but-recoverable."""
+    project = Project(name="Test Project")
+    db_session.add(project)
+    await db_session.flush()
+
+    running = Evaluation(project_id=project.id, status="running")
+    pending = Evaluation(project_id=project.id, status="pending")
+    paused = Evaluation(project_id=project.id, status="paused")
+    completed = Evaluation(project_id=project.id, status="completed")
+    db_session.add_all([running, pending, paused, completed])
+    await db_session.flush()
+
+    service = JobCheckpointService(db_session)
+    await service.create_job(running.id, 3)
+    await service.update_progress(running.id, 2, state="running")
+    # Two test cases already have results saved for the running evaluation.
+    db_session.add_all(
+        [
+            EvaluationResult(evaluation_id=running.id),
+            EvaluationResult(evaluation_id=running.id),
+        ]
+    )
+    await db_session.commit()
+
+    reconciled = await service.reconcile_orphaned_evaluations()
+    assert reconciled == 2
+
+    for evaluation in (running, pending, paused, completed):
+        await db_session.refresh(evaluation)
+
+    # Orphaned active evaluations are now retryable.
+    assert running.status == "failed"
+    assert running.error_message is not None
+    assert running.completed_at is not None
+    assert pending.status == "failed"
+    # Deliberate / terminal states are untouched.
+    assert paused.status == "paused"
+    assert completed.status == "completed"
+
+    # The linked job is marked failed too.
+    job = await service.get_job(running.id)
+    assert job is not None
+    assert job.state == "failed"
+
+    # Partial results are preserved so retry can resume from where it stopped.
+    results = await db_session.execute(
+        EvaluationResult.__table__.select().where(
+            EvaluationResult.evaluation_id == running.id
+        )
+    )
+    assert len(results.all()) == 2

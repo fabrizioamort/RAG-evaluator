@@ -205,6 +205,39 @@ class JobCheckpointService:
         )
         await self.db.commit()
 
+    async def reconcile_orphaned_evaluations(self) -> int:
+        """Mark evaluations interrupted by a restart as failed-but-recoverable.
+
+        At startup no evaluation task can be live, so any evaluation still in an
+        active, non-terminal state was orphaned by the previous process. Retrying
+        resumes them, skipping test cases that already have a saved result.
+
+        Returns:
+            Number of evaluations reconciled.
+        """
+        now = datetime.now(timezone.utc)
+        message = (
+            "Evaluation was interrupted by a backend restart and can be "
+            "resumed by retrying."
+        )
+        result = await self.db.execute(
+            select(Evaluation).where(Evaluation.status.in_(["running", "pending"]))
+        )
+        evaluations = result.scalars().all()
+        for evaluation in evaluations:
+            evaluation.status = "failed"
+            evaluation.error_message = message
+            evaluation.completed_at = now
+        if evaluations:
+            eval_ids = [e.id for e in evaluations]
+            await self.db.execute(
+                update(EvaluationJob)
+                .where(EvaluationJob.evaluation_id.in_(eval_ids))
+                .values(state="failed", error_message=message, last_heartbeat=now)
+            )
+            await self.db.commit()
+        return len(evaluations)
+
 
 def get_checkpoint_service(db_session: AsyncSession) -> JobCheckpointService:
     """Factory to get the checkpoint service."""

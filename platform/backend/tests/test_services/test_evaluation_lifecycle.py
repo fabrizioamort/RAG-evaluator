@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest import LogCaptureFixture
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.artifact import Artifact
@@ -85,6 +86,7 @@ def get_mock_patches() -> list[Any]:
         patch("app.services.evaluation_runner.AnswerRelevancyMetric"),
         patch("app.services.evaluation_runner.ContextualPrecisionMetric"),
         patch("app.services.evaluation_runner.ContextualRecallMetric"),
+        patch("app.services.evaluation_runner.GEval"),
         patch("app.services.evaluation_runner.get_job_event_log"),
         patch("app.services.cost_tracker.get_cost_tracker"),
         patch("app.services.evaluation_runner.get_artifact_store"),
@@ -101,10 +103,11 @@ def setup_common_mocks(
     mock_rel = stack.enter_context(patches[2])
     mock_prec = stack.enter_context(patches[3])
     mock_recall = stack.enter_context(patches[4])
-    mock_get_event_log = stack.enter_context(patches[5])
-    mock_get_cost_tracker = stack.enter_context(patches[6])
-    mock_get_artifact_store = stack.enter_context(patches[7])
-    mock_get_checkpoint_service = stack.enter_context(patches[8])
+    mock_geval = stack.enter_context(patches[5])
+    mock_get_event_log = stack.enter_context(patches[6])
+    mock_get_cost_tracker = stack.enter_context(patches[7])
+    mock_get_artifact_store = stack.enter_context(patches[8])
+    mock_get_checkpoint_service = stack.enter_context(patches[9])
 
     # RAG Adapter
     mock_adapter = mock_get_rag.return_value
@@ -118,6 +121,7 @@ def setup_common_mocks(
         (mock_rel, "AnswerRelevancyMetric"),
         (mock_prec, "ContextualPrecisionMetric"),
         (mock_recall, "ContextualRecallMetric"),
+        (mock_geval, "GEval"),
     ]:
         inst = MagicMock()
         inst.__class__.__name__ = name
@@ -138,6 +142,7 @@ def setup_common_mocks(
     # Artifact Store
     mock_artifact_store = mock_get_artifact_store.return_value
     mock_artifact_store.store_json = AsyncMock()
+    mock_artifact_store.retrieve_json_by_id = AsyncMock(return_value=None)
     # Cycle through our real artifact IDs
     mock_artifact_store.store_json.side_effect = [
         MagicMock(id=artifact_ids[0]),  # trace
@@ -239,6 +244,9 @@ async def test_evaluation_cancel_lifecycle(
 
     patches = get_mock_patches()
     with ExitStack() as stack:
+        import app.services.evaluation_runner as runner_module
+
+        stack.enter_context(patch.object(runner_module.settings, "DEEPEVAL_ASYNC_MODE", False))
         mock_adapter, mock_checkpoint = setup_common_mocks(stack, patches, mock_rag, artifact_ids)
 
         # Override query_with_trace with our side effect
@@ -295,6 +303,9 @@ async def test_evaluation_pause_resume_lifecycle(
 
     patches = get_mock_patches()
     with ExitStack() as stack:
+        import app.services.evaluation_runner as runner_module
+
+        stack.enter_context(patch.object(runner_module.settings, "DEEPEVAL_ASYNC_MODE", False))
         mock_adapter, mock_checkpoint = setup_common_mocks(stack, patches, mock_rag, artifact_ids)
         mock_adapter.query_with_trace = mock_rag.query_with_trace
 
@@ -353,3 +364,130 @@ async def test_evaluation_pause_resume_lifecycle(
 
         # Verify completion reported
         mock_checkpoint.complete_job.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_evaluation_retry_processes_only_missing_cases(
+    db_session: AsyncSession, caplog: LogCaptureFixture
+) -> None:
+    """Retry should keep existing results and process only missing test cases."""
+    evaluation, artifact_ids = await create_setup_data(db_session, case_count=4)
+    evaluation.metric_config = {"metrics": ["faithfulness"]}
+    await db_session.commit()
+
+    cases = (
+        (
+            await db_session.execute(
+                select(TestCase)
+                .where(TestCase.test_set_id == evaluation.test_set_id)
+                .order_by(TestCase.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for case in (cases[0], cases[2]):
+        db_session.add(
+            EvaluationResult(
+                evaluation_id=evaluation.id,
+                test_case_id=case.id,
+                generated_answer=f"Existing answer for {case.question}",
+                faithfulness_score=0.8,
+                faithfulness_reason="Existing",
+                latency_seconds=0.01,
+                prompt_tokens=10,
+                completion_tokens=5,
+                cost_usd=Decimal("0.001"),
+                retrieved_context_artifact_id=artifact_ids[0],
+                retrieval_trace_artifact_id=artifact_ids[1],
+                raw_metrics_artifact_id=artifact_ids[2],
+            )
+        )
+    await db_session.commit()
+
+    async def query_side_effect(_rag: Any, question: str, _top_k: int) -> dict[str, Any]:
+        return {
+            "answer": f"Generated answer for {question}",
+            "context": ["Mock Context"],
+            "metadata": {"token_usage": {"prompt_tokens": 10, "completion_tokens": 5}},
+            "retrieval_trace": {"strategy": "vector"},
+        }
+
+    mock_rag = MagicMock()
+    mock_rag.query_with_trace = AsyncMock(side_effect=query_side_effect)
+
+    patches = get_mock_patches()
+    with ExitStack() as stack:
+        mock_adapter, mock_checkpoint = setup_common_mocks(stack, patches, mock_rag, artifact_ids)
+        mock_adapter.query_with_trace = mock_rag.query_with_trace
+        mock_checkpoint.get_job.return_value = EvaluationJob(
+            evaluation_id=evaluation.id,
+            progress_current=2,
+            progress_total=4,
+        )
+
+        runner = EvaluationRunner(db_session, evaluation.id)
+        await runner.run()
+
+        if mock_checkpoint.fail_job.called:
+            args = mock_checkpoint.fail_job.call_args
+            print("\nCaptured Logs:")
+            for record in caplog.records:
+                print(f"{record.levelname}: {record.message}")
+            pytest.fail(f"Retry failed with: {args}")
+
+    queried_questions = [call.args[1] for call in mock_adapter.query_with_trace.await_args_list]
+    assert queried_questions == ["Question 1?", "Question 3?"]
+
+    results = (
+        (
+            await db_session.execute(
+                select(EvaluationResult).where(EvaluationResult.evaluation_id == evaluation.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(results) == 4
+    assert {result.test_case_id for result in results} == {case.id for case in cases}
+
+
+@pytest.mark.asyncio
+async def test_evaluation_failure_reports_first_test_case_error(
+    db_session: AsyncSession,
+) -> None:
+    """Final failure should include the first per-test-case exception."""
+    evaluation, artifact_ids = await create_setup_data(db_session, case_count=3)
+    evaluation.metric_config = {"metrics": ["faithfulness"]}
+    await db_session.commit()
+
+    async def query_side_effect(_rag: Any, question: str, _top_k: int) -> dict[str, Any]:
+        if question == "Question 1?":
+            raise RuntimeError("retriever timeout")
+        return {
+            "answer": f"Generated answer for {question}",
+            "context": ["Mock Context"],
+            "metadata": {"token_usage": {"prompt_tokens": 10, "completion_tokens": 5}},
+            "retrieval_trace": {"strategy": "vector"},
+        }
+
+    mock_rag = MagicMock()
+    mock_rag.query_with_trace = AsyncMock(side_effect=query_side_effect)
+
+    patches = get_mock_patches()
+    with ExitStack() as stack:
+        import app.services.evaluation_runner as runner_module
+
+        stack.enter_context(patch.object(runner_module.settings, "DEEPEVAL_ASYNC_MODE", False))
+        mock_adapter, mock_checkpoint = setup_common_mocks(stack, patches, mock_rag, artifact_ids)
+        mock_adapter.query_with_trace = mock_rag.query_with_trace
+
+        runner = EvaluationRunner(db_session, evaluation.id)
+        await runner.run()
+
+    mock_checkpoint.fail_job.assert_called_once()
+    error_message = mock_checkpoint.fail_job.call_args.args[1]
+    assert "Evaluation finished with 2/3 test cases saved." in error_message
+    assert "Failed test case indexes: 1." in error_message
+    assert "First failure: Test case 1 failed: retriever timeout." in error_message
+    assert "Retry will run only the missing test cases." in error_message

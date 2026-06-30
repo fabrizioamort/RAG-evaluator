@@ -34,6 +34,9 @@ export function EvaluationProgress({ evaluationId, evaluation, onClose, onRetryS
     const status = hasStreamState ? streamStatus : fallbackStatus ?? streamStatus
     const completed = Math.max(streamCompleted, evaluation?.result_count ?? 0)
     const displayError = retryError ?? streamError ?? (retryAccepted ? undefined : evaluation?.error_message) ?? undefined
+    const showCaseError =
+        Boolean(caseError) &&
+        (status === 'running' || (status === 'failed' && !displayError?.includes(caseError ?? '')))
     const canRetry = status === 'failed' || status === 'cancelled'
 
     const progress = total > 0 ? (completed / total) * 100 : 0
@@ -171,11 +174,11 @@ export function EvaluationProgress({ evaluationId, evaluation, onClose, onRetryS
                     </div>
                 )}
 
-                {caseError && status === 'running' && (
+                {caseError && showCaseError && (
                     <div className="mt-4 rounded-lg bg-yellow-500/10 p-4 border border-yellow-500/20 text-yellow-700">
                         <div className="flex items-center gap-2 font-semibold">
                             <AlertCircle className="h-4 w-4" />
-                            <span>Latest Test Case Warning</span>
+                            <span>{status === 'failed' ? 'Failed Test Case' : 'Latest Test Case Warning'}</span>
                         </div>
                         <p className="mt-1 text-sm">{caseError}</p>
                     </div>
