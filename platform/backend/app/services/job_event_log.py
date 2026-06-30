@@ -77,6 +77,10 @@ class JobEventLog:
             for queue in self._queues[eval_id_str]:
                 await queue.put(event)
 
+    def reset_cache(self, evaluation_id: UUID) -> None:
+        """Clear replayed in-memory events for a job before starting a retry."""
+        self._cache.pop(str(evaluation_id), None)
+
     async def subscribe(
         self, evaluation_id: UUID, last_event_id: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:

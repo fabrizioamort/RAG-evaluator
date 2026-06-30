@@ -8,6 +8,7 @@ export interface EvaluationStreamState {
     currentQuestion?: string
     lastResult?: unknown
     error?: string
+    caseError?: string
     summaryMetrics?: SummaryMetrics
 }
 
@@ -27,6 +28,12 @@ export function useEvaluationStream(evaluationId: string | null) {
             eventSourceRef.current.close()
         }
 
+        setState({
+            completed: 0,
+            total: 0,
+            status: 'pending',
+        })
+
         const url = api.evaluations.getStreamUrl(evaluationId)
         const es = new EventSource(url)
         eventSourceRef.current = es
@@ -36,7 +43,12 @@ export function useEvaluationStream(evaluationId: string | null) {
             setState((s) => ({
                 ...s,
                 status: 'running',
-                total: data.total_test_cases || s.total,
+                completed: data.completed ?? data.resuming_from ?? s.completed,
+                total: data.total_test_cases ?? s.total,
+                error: undefined,
+                caseError: undefined,
+                currentQuestion: undefined,
+                summaryMetrics: undefined,
             }))
         })
 
@@ -45,8 +57,8 @@ export function useEvaluationStream(evaluationId: string | null) {
             setState((s) => ({
                 ...s,
                 status: 'running',
-                completed: data.completed || s.completed,
-                total: data.total || s.total,
+                completed: data.completed ?? s.completed,
+                total: data.total ?? s.total,
                 currentQuestion: data.current_question,
                 lastResult: data.last_result,
             }))
@@ -66,6 +78,13 @@ export function useEvaluationStream(evaluationId: string | null) {
             // Check if it's a "real" evaluation error vs a connection error
             try {
                 const data: ProgressEvent = JSON.parse(event.data)
+                if (data.test_case_index !== undefined && data.test_case_index !== null) {
+                    setState((s) => ({
+                        ...s,
+                        caseError: data.error_message,
+                    }))
+                    return
+                }
                 setState((s) => ({
                     ...s,
                     status: 'failed',
@@ -78,13 +97,31 @@ export function useEvaluationStream(evaluationId: string | null) {
             es.close()
         })
 
+        es.addEventListener('test_case_error', (event: MessageEvent) => {
+            const data: ProgressEvent = JSON.parse(event.data)
+            setState((s) => ({
+                ...s,
+                caseError: data.error_message,
+            }))
+        })
+
         es.addEventListener('paused', (event: MessageEvent) => {
             const data: ProgressEvent = JSON.parse(event.data)
             setState((s) => ({
                 ...s,
                 status: 'paused',
-                completed: data.completed || s.completed,
+                completed: data.completed ?? s.completed,
             }))
+        })
+
+        es.addEventListener('cancelled', (event: MessageEvent) => {
+            const data: ProgressEvent = JSON.parse(event.data)
+            setState((s) => ({
+                ...s,
+                status: 'cancelled',
+                completed: data.completed ?? s.completed,
+            }))
+            es.close()
         })
 
         es.addEventListener('resumed', (event: MessageEvent) => {
@@ -92,7 +129,7 @@ export function useEvaluationStream(evaluationId: string | null) {
             setState((s) => ({
                 ...s,
                 status: 'running',
-                completed: data.resuming_from || s.completed,
+                completed: data.resuming_from ?? s.completed,
             }))
         })
 

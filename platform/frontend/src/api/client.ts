@@ -440,7 +440,7 @@ export interface ProjectTrends {
 
 
 export interface ProgressEvent {
-  event_type: 'started' | 'progress' | 'completed' | 'error' | 'paused' | 'resumed'
+  event_type: 'started' | 'progress' | 'completed' | 'error' | 'test_case_error' | 'paused' | 'resumed' | 'cancelled'
   evaluation_id: string
   timestamp: string
   total_test_cases?: number
@@ -451,6 +451,7 @@ export interface ProgressEvent {
   summary_metrics?: SummaryMetrics
   pass_rate?: number
   error_message?: string
+  test_case_index?: number
   resuming_from?: number
 }
 
