@@ -10,11 +10,42 @@ const formatRate = (val: number | null | undefined) =>
     val === null || val === undefined ? '—' : `${(val * 100).toFixed(1)}%`
 
 /** Headline rate rows compared across members (higher is better). */
-const RATE_ROWS: { key: string; label: string; get: (m: ComparisonMember) => number | null }[] = [
+const RATE_ROWS: {
+    key: string
+    label: string
+    highlightBest?: boolean
+    get: (m: ComparisonMember) => number | null
+}[] = [
     { key: 'hit_at_k', label: 'Hit@5', get: (m) => m.legalRagBench?.retrieval?.hit_at_k_rate ?? null },
     { key: 'gold_accessed', label: 'Gold accessed', get: (m) => m.legalRagBench?.retrieval?.gold_accessed_rate ?? null },
-    { key: 'correct', label: 'Correct', get: (m) => m.legalRagBench?.judge?.correct_rate ?? null },
-    { key: 'grounded', label: 'Grounded', get: (m) => m.legalRagBench?.judge?.grounded_rate ?? null },
+    { key: 'g_eval', label: 'G-Eval', get: (m) => m.legalRagBench?.success_signals?.g_eval_pass_rate ?? null },
+    {
+        key: 'correct',
+        label: 'Judge correct',
+        get: (m) => m.legalRagBench?.success_signals?.judge_correct_rate ?? m.legalRagBench?.judge?.correct_rate ?? null,
+    },
+    {
+        key: 'grounded',
+        label: 'Judge grounded',
+        get: (m) => m.legalRagBench?.success_signals?.judge_grounded_rate ?? m.legalRagBench?.judge?.grounded_rate ?? null,
+    },
+    {
+        key: 'taxonomy_success',
+        label: 'Taxonomy success',
+        get: (m) => m.legalRagBench?.success_signals?.taxonomy_success_rate ?? m.legalRagBench?.taxonomy_success_rate ?? null,
+    },
+    {
+        key: 'alternate_evidence',
+        label: 'Alt evidence',
+        highlightBest: false,
+        get: (m) => m.legalRagBench?.success_signals?.alternate_evidence_supported_rate ?? null,
+    },
+    {
+        key: 'correct_without_gold',
+        label: 'Correct w/o gold',
+        highlightBest: false,
+        get: (m) => m.legalRagBench?.success_signals?.correct_without_gold_rate ?? null,
+    },
 ]
 
 const TAXONOMY_ROWS: { key: string; label: string; color: string }[] = [
@@ -77,7 +108,7 @@ export function LegalRagBenchComparison({ members }: LegalRagBenchComparisonProp
                     </thead>
                     <tbody>
                         {RATE_ROWS.map((row) => {
-                            const best = bestRateIndex(members, row.get)
+                            const best = row.highlightBest === false ? null : bestRateIndex(members, row.get)
                             return (
                                 <tr key={row.key} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
                                     <td className="sticky left-0 z-10 bg-card px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">

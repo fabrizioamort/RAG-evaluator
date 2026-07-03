@@ -21,10 +21,25 @@ interface LegalRagJudge {
     parse_error?: string | null
 }
 
+interface LegalRagSuccessSignals {
+    g_eval_score?: number | null
+    g_eval_pass?: boolean | null
+    judge_correct?: boolean | null
+    judge_grounded?: boolean | null
+    taxonomy?: string | null
+    taxonomy_success?: boolean | null
+    retrieval_hit?: boolean | null
+    gold_accessed?: boolean | null
+    supported_by_retrieved_context?: boolean | null
+    alternate_evidence_supported?: boolean | null
+    correct_without_gold?: boolean | null
+}
+
 interface LegalRagResult {
     retrieval?: LegalRagRetrieval | null
     judge?: LegalRagJudge | null
     taxonomy?: string | null
+    success_signals?: LegalRagSuccessSignals | null
 }
 
 /** Aggregate Legal RAG Bench payload stored in the evaluation summary metrics. */
@@ -43,6 +58,19 @@ export interface LegalRagBenchSummaryData {
         parse_error_count?: number
     }
     taxonomy?: Record<string, number>
+    taxonomy_success_rate?: number | null
+    success_signals?: {
+        count?: number
+        g_eval_pass_rate?: number | null
+        judge_correct_rate?: number | null
+        judge_grounded_rate?: number | null
+        taxonomy_success_rate?: number | null
+        gold_accessed_rate?: number | null
+        alternate_evidence_supported_rate?: number | null
+        alternate_evidence_supported_count?: number
+        correct_without_gold_rate?: number | null
+        correct_without_gold_count?: number
+    }
 }
 
 const TAXONOMY_STYLES: Record<string, { label: string; color: string; bg: string; border: string }> = {
@@ -57,19 +85,31 @@ const TAXONOMY_STYLES: Record<string, { label: string; color: string; bg: string
 const formatRate = (val: number | null | undefined) =>
     val === null || val === undefined ? 'N/A' : `${(val * 100).toFixed(1)}%`
 
+const formatScore = (val: number | null | undefined) =>
+    val === null || val === undefined ? 'N/A' : val.toFixed(3)
+
 const taxonomyStyle = (key: string) =>
     TAXONOMY_STYLES[key] ?? { label: key, color: 'text-muted-foreground', bg: 'bg-muted/40', border: 'border-border' }
 
-function BoolBadge({ value, label }: { value: boolean | null | undefined; label: string }) {
+function BoolBadge({
+    value,
+    label,
+    neutralFalse = false,
+}: {
+    value: boolean | null | undefined
+    label: string
+    neutralFalse?: boolean
+}) {
     const known = value === true || value === false
-    const Icon = value === true ? CheckCircle2 : value === false ? XCircle : MinusCircle
+    const falseIsNeutral = value === false && neutralFalse
+    const Icon = value === true ? CheckCircle2 : value === false && !falseIsNeutral ? XCircle : MinusCircle
     return (
         <div
             className={cn(
                 'flex items-center gap-2 rounded-lg border px-3 py-2',
                 value === true && 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600',
-                value === false && 'bg-rose-500/10 border-rose-500/20 text-rose-600',
-                !known && 'bg-muted/40 border-border text-muted-foreground',
+                value === false && !falseIsNeutral && 'bg-rose-500/10 border-rose-500/20 text-rose-600',
+                (!known || falseIsNeutral) && 'bg-muted/40 border-border text-muted-foreground',
             )}
         >
             <Icon className="h-4 w-4" />
@@ -91,12 +131,17 @@ function AbstainedBadge() {
 
 /** Summary card shown above the results list when the evaluation ran Legal RAG Bench metrics. */
 export function LegalRagBenchSummary({ data }: { data: LegalRagBenchSummaryData }) {
+    const signals = data.success_signals
     const retrievalRate =
-        data.retrieval?.hit_at_k_rate ?? data.retrieval?.gold_accessed_rate ?? null
+        data.retrieval?.hit_at_k_rate ?? signals?.gold_accessed_rate ?? data.retrieval?.gold_accessed_rate ?? null
     const retrievalLabel =
         data.retrieval?.hit_at_k_rate !== null && data.retrieval?.hit_at_k_rate !== undefined
             ? 'Hit@5'
             : 'Gold Accessed'
+    const correctRate = signals?.judge_correct_rate ?? data.judge?.correct_rate ?? null
+    const groundedRate = signals?.judge_grounded_rate ?? data.judge?.grounded_rate ?? null
+    const taxonomySuccessRate =
+        signals?.taxonomy_success_rate ?? data.taxonomy_success_rate ?? taxonomySuccessFromCounts(data.taxonomy)
     const taxonomyEntries = Object.entries(data.taxonomy ?? {})
 
     return (
@@ -109,18 +154,34 @@ export function LegalRagBenchSummary({ data }: { data: LegalRagBenchSummaryData 
                 )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
                 <div className="rounded-xl border border-indigo-500/20 bg-card p-4">
                     <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">{retrievalLabel}</p>
                     <p className="text-xl sm:text-2xl font-black mt-1 text-indigo-500">{formatRate(retrievalRate)}</p>
                 </div>
                 <div className="rounded-xl border border-indigo-500/20 bg-card p-4">
-                    <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Correct</p>
-                    <p className="text-xl sm:text-2xl font-black mt-1 text-emerald-500">{formatRate(data.judge?.correct_rate)}</p>
+                    <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">G-Eval</p>
+                    <p className="text-xl sm:text-2xl font-black mt-1 text-indigo-500">{formatRate(signals?.g_eval_pass_rate)}</p>
+                </div>
+                <div className="rounded-xl border border-indigo-500/20 bg-card p-4">
+                    <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Judge Correct</p>
+                    <p className="text-xl sm:text-2xl font-black mt-1 text-emerald-500">{formatRate(correctRate)}</p>
                 </div>
                 <div className="rounded-xl border border-indigo-500/20 bg-card p-4">
                     <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Grounded</p>
-                    <p className="text-xl sm:text-2xl font-black mt-1 text-emerald-500">{formatRate(data.judge?.grounded_rate)}</p>
+                    <p className="text-xl sm:text-2xl font-black mt-1 text-emerald-500">{formatRate(groundedRate)}</p>
+                </div>
+                <div className="rounded-xl border border-indigo-500/20 bg-card p-4">
+                    <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Taxonomy Success</p>
+                    <p className="text-xl sm:text-2xl font-black mt-1 text-emerald-500">{formatRate(taxonomySuccessRate)}</p>
+                </div>
+                <div className="rounded-xl border border-indigo-500/20 bg-card p-4">
+                    <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Alt Evidence</p>
+                    <p className="text-xl sm:text-2xl font-black mt-1 text-sky-500">{formatRate(signals?.alternate_evidence_supported_rate)}</p>
+                </div>
+                <div className="rounded-xl border border-indigo-500/20 bg-card p-4">
+                    <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Correct w/o Gold</p>
+                    <p className="text-xl sm:text-2xl font-black mt-1 text-sky-500">{formatRate(signals?.correct_without_gold_rate)}</p>
                 </div>
                 {(data.judge?.parse_error_count ?? 0) > 0 && (
                     <div className="rounded-xl border border-zinc-500/20 bg-card p-4">
@@ -168,6 +229,7 @@ export function LegalRagResultMetrics({
 
     const retrieval = legal.retrieval ?? undefined
     const judge = legal.judge ?? undefined
+    const signals = legal.success_signals ?? undefined
     const tax = legal.taxonomy ? taxonomyStyle(legal.taxonomy) : null
 
     return (
@@ -185,6 +247,9 @@ export function LegalRagResultMetrics({
             </div>
 
             <div className="flex flex-wrap gap-2">
+                {signals?.g_eval_pass !== undefined && (
+                    <BoolBadge value={signals.g_eval_pass} label="G-Eval" />
+                )}
                 {retrieval && retrieval.hit_at_k !== null && (
                     <BoolBadge value={retrieval.hit_at_k} label={retrieval.retrieval_metric} />
                 )}
@@ -200,6 +265,16 @@ export function LegalRagResultMetrics({
                         <BoolBadge value={judge.correct} label="Correct" />
                         <BoolBadge value={judge.grounded} label="Grounded" />
                     </>
+                )}
+                {signals?.alternate_evidence_supported !== undefined && (
+                    <BoolBadge
+                        value={signals.alternate_evidence_supported}
+                        label="Alt Evidence"
+                        neutralFalse
+                    />
+                )}
+                {signals?.correct_without_gold === true && (
+                    <BoolBadge value={signals.correct_without_gold} label="Correct w/o Gold" />
                 )}
             </div>
 
@@ -224,6 +299,23 @@ export function LegalRagResultMetrics({
                 </div>
             )}
 
+            {signals && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                        <p className="font-semibold uppercase tracking-wider text-muted-foreground">G-Eval Score</p>
+                        <p className="font-mono mt-0.5">{formatScore(signals.g_eval_score)}</p>
+                    </div>
+                    <div>
+                        <p className="font-semibold uppercase tracking-wider text-muted-foreground">Taxonomy Success</p>
+                        <p className="font-mono mt-0.5">{boolText(signals.taxonomy_success)}</p>
+                    </div>
+                    <div>
+                        <p className="font-semibold uppercase tracking-wider text-muted-foreground">Context Support</p>
+                        <p className="font-mono mt-0.5">{boolText(signals.supported_by_retrieved_context)}</p>
+                    </div>
+                </div>
+            )}
+
             {judge?.reasoning && (
                 <div className="text-xs">
                     <p className="font-semibold uppercase tracking-wider text-muted-foreground">Judge Reasoning</p>
@@ -238,4 +330,16 @@ export function LegalRagResultMetrics({
             )}
         </div>
     )
+}
+
+function taxonomySuccessFromCounts(taxonomy: Record<string, number> | undefined): number | null {
+    const entries = Object.values(taxonomy ?? {})
+    const total = entries.reduce((sum, value) => sum + value, 0)
+    return total > 0 ? (taxonomy?.success ?? 0) / total : null
+}
+
+function boolText(value: boolean | null | undefined) {
+    if (value === true) return 'true'
+    if (value === false) return 'false'
+    return 'N/A'
 }
