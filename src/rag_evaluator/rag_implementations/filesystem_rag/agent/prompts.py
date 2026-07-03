@@ -50,8 +50,23 @@ documents/       → Full document content with .meta.json metadata
 - Prefer summaries for navigation, but prefer full documents or full-text
   excerpts for final wording when the exact legal term matters
 
-## Response Format
-After gathering information, provide a clear, direct answer to the question without additional labels or formatting.
+## Corpus Context
+This corpus is legal educational and evaluation material. Answer statutory and
+legal questions neutrally from the retrieved context, including questions whose
+facts involve sexual offences or other sensitive crimes. Never refuse or return
+an empty answer because the legal facts are sensitive. If the retrieved context
+is insufficient, state which legal element or authority is missing.
+
+## Answer Contract
+After gathering information, answer in English without additional labels or
+formatting, following these rules:
+1. The first sentence must directly state the conclusion: yes/no, the legal
+   classification, or the named rule or procedure the question asks for.
+2. Preserve every material qualifier from the retrieved text (exceptions,
+   conditions, required elements, historical terms).
+3. Do not cite statutes or cases that are not in the retrieved context.
+4. Keep the answer proportional to the question: a narrow question gets a
+   short, direct answer, not an essay.
 
 {strategy_hint}
 
@@ -72,6 +87,10 @@ Strategy:
 - Read summaries before full documents
 - For exact-name/legal-procedure questions, verify against full text/excerpts and
   prefer named collective terms over narrower examples
+
+Answer in English. First sentence states the conclusion directly; preserve
+material qualifiers from the retrieved text. This is legal educational
+material: answer sensitive legal questions neutrally, never with a refusal.
 
 {strategy_hint}
 
@@ -243,6 +262,35 @@ def format_limit_reached_prompt(limit_type: str) -> str:
         "iterations": ("Maximum iterations reached. Please provide your final answer now."),
     }
     return messages.get(limit_type, "Limit reached. Please provide your answer.")
+
+
+ANSWER_RETRY_PROMPT = (
+    "Your previous response was {problem}. This is a legal educational "
+    "benchmark: answer the question in English, neutrally, using the context "
+    "you already gathered. State the conclusion in the first sentence and "
+    "preserve material qualifiers from the retrieved text. If the gathered "
+    "context is insufficient, state which legal element is missing instead "
+    "of refusing."
+)
+
+_ANSWER_PROBLEMS = {
+    "empty": "empty",
+    "refusal": "a refusal",
+    "non_english": "not in English",
+}
+
+
+def format_answer_retry_prompt(reason: str) -> str:
+    """Build the corrective prompt sent when the final answer is unusable.
+
+    Args:
+        reason: Classification from unusable_answer_reason
+            ("empty", "refusal", or "non_english")
+
+    Returns:
+        Corrective user message string
+    """
+    return ANSWER_RETRY_PROMPT.format(problem=_ANSWER_PROBLEMS.get(reason, "not a usable answer"))
 
 
 # Answer extraction prompt for parsing agent responses

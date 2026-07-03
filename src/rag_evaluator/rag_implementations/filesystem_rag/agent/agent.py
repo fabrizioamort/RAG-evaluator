@@ -20,6 +20,7 @@ from rag_evaluator.common.llm_utils import get_safe_llm_params, is_transient_llm
 from rag_evaluator.config import settings
 from rag_evaluator.rag_implementations.filesystem_rag.agent.cache import SessionCache
 from rag_evaluator.rag_implementations.filesystem_rag.agent.prompts import (
+    format_answer_retry_prompt,
     format_limit_reached_prompt,
     format_system_prompt,
     format_tool_result,
@@ -77,6 +78,38 @@ _PREFETCH_DOCUMENT_CANDIDATES = 2
 _PREFETCH_DOCUMENT_MAX_CHARS = 4500
 _CONTEXT_CHUNK_MAX_CHARS = 20_000
 _NAVIGATION_CONTEXT_PREFIXES = ("_index/questions/",)
+_REFUSAL_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"^\s*i(?:'m| am) sorry\b",
+        r"^\s*i can(?:not|'t) (?:help|assist|answer|provide|comply)\b",
+        r"^\s*i (?:will not|won't) (?:help|assist|answer|provide)\b",
+        r"^\s*(?:sorry,? )?(?:but )?(?:i )?can(?:not|'t) assist\b",
+    )
+)
+
+
+def unusable_answer_reason(answer: str) -> str | None:
+    """Classify final answers that warrant a single corrective retry.
+
+    Returns "empty", "non_english", "refusal", or None for usable answers.
+    Detection is deliberately conservative: only the failure shapes observed
+    on the legal benchmark (empty answers, CJK refusals, refusal openings).
+    """
+    stripped = answer.strip()
+    if not stripped:
+        return "empty"
+
+    cjk_count = sum(1 for ch in stripped if chr(0x4E00) <= ch <= chr(0x9FFF))
+    if cjk_count > 0.2 * len(stripped):
+        return "non_english"
+
+    if any(pattern.search(stripped) for pattern in _REFUSAL_PATTERNS):
+        return "refusal"
+
+    return None
+
+
 _PREFETCH_STOP_WORDS = {
     "about",
     "according",
@@ -650,6 +683,11 @@ class FilesystemRAGAgent:
             else:
                 # LLM provided final answer (no tool calls)
                 answer = response.choices[0].message.content or ""
+                retry_reason = unusable_answer_reason(answer)
+                answer_retries = 0
+                if retry_reason is not None:
+                    answer = self._retry_unusable_answer(messages, answer, retry_reason)
+                    answer_retries = 1
 
                 query_time = time.time() - start_time
 
@@ -659,6 +697,8 @@ class FilesystemRAGAgent:
                     metadata={
                         "files_read": files_read,
                         "context_sources": context_sources,
+                        "answer_retries": answer_retries,
+                        "answer_retry_reason": retry_reason,
                         "tool_calls": tool_call_count,
                         "reasoning_trace": [
                             {
@@ -711,9 +751,32 @@ class FilesystemRAGAgent:
             "tool_choice": "auto",
         }
 
-        kwargs = get_safe_llm_params(self.llm_model, reasoning_effort=self.reasoning_effort, **kwargs)
+        kwargs = get_safe_llm_params(
+            self.llm_model, reasoning_effort=self.reasoning_effort, **kwargs
+        )
 
         return self._create_chat_completion_with_retries(kwargs)
+
+    def _retry_unusable_answer(
+        self,
+        messages: list[dict[str, Any]],
+        answer: str,
+        reason: str,
+    ) -> str:
+        """Request one corrected final answer after an unusable one.
+
+        Reuses the gathered conversation so the retry is a single plain
+        completion without further tool use.
+        """
+        messages.append({"role": "assistant", "content": answer})
+        messages.append({"role": "user", "content": format_answer_retry_prompt(reason)})
+
+        kwargs: dict[str, Any] = {"model": self.llm_model, "messages": messages}
+        kwargs = get_safe_llm_params(
+            self.llm_model, temperature=0.0, reasoning_effort=self.reasoning_effort, **kwargs
+        )
+        response = self._create_chat_completion_with_retries(kwargs)
+        return response.choices[0].message.content or ""
 
     def _create_chat_completion_with_retries(self, kwargs: dict[str, Any]) -> Any:
         """Call the chat completion API, retrying transient provider failures."""
@@ -795,11 +858,18 @@ class FilesystemRAGAgent:
             "model": self.llm_model,
             "messages": messages,  # type: ignore[arg-type]
         }
-        kwargs = get_safe_llm_params(self.llm_model, temperature=0.0, reasoning_effort=self.reasoning_effort, **kwargs)
+        kwargs = get_safe_llm_params(
+            self.llm_model, temperature=0.0, reasoning_effort=self.reasoning_effort, **kwargs
+        )
 
         response = self._create_chat_completion_with_retries(kwargs)
 
         answer = response.choices[0].message.content or ""
+        retry_reason = unusable_answer_reason(answer)
+        answer_retries = 0
+        if retry_reason is not None:
+            answer = self._retry_unusable_answer(messages, answer, retry_reason)
+            answer_retries = 1
         query_time = time.time() - start_time
 
         return AgentResponse(
@@ -808,6 +878,8 @@ class FilesystemRAGAgent:
             metadata={
                 "files_read": files_read,
                 "context_sources": context_sources,
+                "answer_retries": answer_retries,
+                "answer_retry_reason": retry_reason,
                 "tool_calls": tool_call_count,
                 "reasoning_trace": [
                     {

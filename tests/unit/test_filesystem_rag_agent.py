@@ -180,6 +180,82 @@ def test_agent_retries_transient_gateway_error(monkeypatch: Any) -> None:
         assert completions.calls == 2
 
 
+def test_unusable_answer_reason_classification() -> None:
+    assert agent_module.unusable_answer_reason("") == "empty"
+    assert agent_module.unusable_answer_reason("   \n") == "empty"
+    assert agent_module.unusable_answer_reason("抱歉，我无法协助处理该请求。") == "non_english"
+    assert (
+        agent_module.unusable_answer_reason("I'm sorry, but I can't assist with that.") == "refusal"
+    )
+    assert agent_module.unusable_answer_reason("Yes.") is None
+    assert (
+        agent_module.unusable_answer_reason(
+            "The procedure is called a view under s 53 of the Evidence Act 2008."
+        )
+        is None
+    )
+
+
+def test_agent_retries_unusable_final_answer() -> None:
+    class FakeMessage:
+        def __init__(self, content: str) -> None:
+            self.content = content
+            self.tool_calls = None
+
+    class FakeChoice:
+        def __init__(self, content: str) -> None:
+            self.message = FakeMessage(content)
+
+    class FakeResponse:
+        def __init__(self, content: str) -> None:
+            self.choices = [FakeChoice(content)]
+
+    class FakeCompletions:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def create(self, **kwargs: Any) -> object:
+            self.calls += 1
+            if self.calls == 1:
+                return FakeResponse("抱歉，我无法协助处理该请求。")
+            assert "tools" not in kwargs
+            return FakeResponse("The recording procedure is called a VARE.")
+
+    class FakeChat:
+        def __init__(self, completions: FakeCompletions) -> None:
+            self.completions = completions
+
+    class FakeClient:
+        def __init__(self, completions: FakeCompletions) -> None:
+            self.chat = FakeChat(completions)
+
+    with TemporaryDirectory() as tmp_dir:
+        prepared_path = Path(tmp_dir)
+        _write_prepared_fixture(prepared_path)
+        completions = FakeCompletions()
+        agent = FilesystemRAGAgent(str(prepared_path), client=FakeClient(completions))  # type: ignore[arg-type]
+
+        response = agent.query(LEGAL_VARE_QUESTION)
+
+        assert response.answer == "The recording procedure is called a VARE."
+        assert response.metadata["answer_retries"] == 1
+        assert response.metadata["answer_retry_reason"] == "non_english"
+        assert completions.calls == 2
+
+
+def test_system_prompt_contains_answer_contract_and_sensitive_framing() -> None:
+    from rag_evaluator.rag_implementations.filesystem_rag.agent.prompts import (
+        format_system_prompt,
+    )
+
+    prompt = format_system_prompt(strategy_hint="", initial_context="ctx")
+
+    assert "Answer Contract" in prompt
+    assert "first sentence must directly state the conclusion" in prompt.lower()
+    assert "sexual offences" in prompt
+    assert "Never refuse" in prompt
+
+
 def test_format_tool_result_read_file_is_plain_text_with_large_budget() -> None:
     content = "The object's condition may have changed since the offence.\n" * 100
     result = {"content": content, "total_lines": 100, "is_partial": False, "headers": []}
