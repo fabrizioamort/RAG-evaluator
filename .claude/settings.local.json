@@ -79,7 +79,12 @@
       "Bash(echo \"--- B exit: $? ---\")",
       "Bash(echo \"--- C exit: $? ---\")",
       "Bash(echo \"--- D exit: $? ---\")",
-      "Bash(echo \"--- E exit: $? ---\")"
+      "Bash(echo \"--- E exit: $? ---\")",
+      "WebFetch(domain:isaacus.com)",
+      "PowerShell(& \"C:\\\\Users\\\\fabri\\\\projects\\\\RAG-evaluator\\\\platform\\\\backend\\\\.venv\\\\Scripts\\\\python.exe\" \"C:\\\\Users\\\\fabri\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-fabri-projects-RAG-evaluator\\\\9c2119ec-5e7c-4cfa-8bf3-19542726fb06\\\\scratchpad\\\\inspect_db.py\")",
+      "PowerShell(& \"C:\\\\Users\\\\fabri\\\\projects\\\\RAG-evaluator\\\\platform\\\\backend\\\\.venv\\\\Scripts\\\\python.exe\" \"C:\\\\Users\\\\fabri\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-fabri-projects-RAG-evaluator\\\\9c2119ec-5e7c-4cfa-8bf3-19542726fb06\\\\scratchpad\\\\inspect_evals.py\")",
+      "Skill(dataviz)",
+      "PowerShell(node \"C:\\\\Users\\\\fabri\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\bundled-skills\\\\2.1.198\\\\fec85bdbd1aca507741b92be03f2de59\\\\dataviz\\\\scripts\\\\validate_palette.js\" \"#2a78d6,#1baf7a\" --mode light; node \"C:\\\\Users\\\\fabri\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\bundled-skills\\\\2.1.198\\\\fec85bdbd1aca507741b92be03f2de59\\\\dataviz\\\\scripts\\\\validate_palette.js\" \"#3987e5,#199e70\" --mode dark)"
     ],
     "deny": [],
     "ask": []
