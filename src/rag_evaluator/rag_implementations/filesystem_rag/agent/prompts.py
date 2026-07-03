@@ -31,7 +31,7 @@ documents/       → Full document content with .meta.json metadata
 ## Navigation Strategy
 1. Use the cached corpus overview to understand the corpus scope
 2. Based on query type:
-   - For specific lookups: Check question_seeds.md or use grep_search
+   - For specific lookups: use grep_search on question_seeds.md with targeted terms
    - For topic exploration: Navigate topic indexes first
    - For entity queries: Check entity registry
 3. Read summaries before full documents
@@ -67,7 +67,7 @@ Tools: list_directory, read_file, grep_search, find_files, get_file_info
 Structure: _meta/ (overview), _index/ (topics, entities, questions), _summaries/, documents/
 
 Strategy:
-- Check _index/questions/question_seeds.md for direct matches
+- Search _index/questions/question_seeds.md with grep_search for direct matches
 - Use _index/topics/_topic_map.md for topic queries
 - Read summaries before full documents
 - For exact-name/legal-procedure questions, verify against full text/excerpts and
@@ -85,9 +85,9 @@ TOOL_EXAMPLES = """## Tool Usage Examples
 ### Example 1: Finding information about a specific topic
 Question: "What are the main challenges with RAG implementations?"
 
-Step 1 - Check question seeds:
-Tool: read_file
-Args: {"path": "_index/questions/question_seeds.md"}
+Step 1 - Search question seeds:
+Tool: grep_search
+Args: {"pattern": "RAG challenges", "path": "_index/questions", "file_pattern": "question_seeds.md"}
 Result: Found "What are RAG challenges?" → doc_007 (section 6), doc_012 (section 1)
 
 Step 2 - Read summary first:

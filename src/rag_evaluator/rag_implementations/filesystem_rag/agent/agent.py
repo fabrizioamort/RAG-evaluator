@@ -75,6 +75,8 @@ _LLM_MAX_ATTEMPTS = 3
 _LLM_RETRY_BASE_DELAY_SECONDS = 1.0
 _PREFETCH_DOCUMENT_CANDIDATES = 2
 _PREFETCH_DOCUMENT_MAX_CHARS = 4500
+_CONTEXT_CHUNK_MAX_CHARS = 20_000
+_NAVIGATION_CONTEXT_PREFIXES = ("_index/questions/",)
 _PREFETCH_STOP_WORDS = {
     "about",
     "according",
@@ -491,6 +493,31 @@ class FilesystemRAGAgent:
             "sources": sources,
         }
 
+    def _context_chunk_from_tool_result(
+        self,
+        file_path: str,
+        result: Any,
+    ) -> str | None:
+        """Return a bounded evidence chunk for evaluation metadata."""
+        normalized_path = file_path.replace("\\", "/").lstrip("./")
+        if normalized_path.startswith(_NAVIGATION_CONTEXT_PREFIXES):
+            return None
+
+        if isinstance(result, dict) and "content" in result:
+            content = str(result["content"])
+        elif isinstance(result, str):
+            content = result
+        else:
+            return None
+
+        if len(content) <= _CONTEXT_CHUNK_MAX_CHARS:
+            return content
+
+        return (
+            content[:_CONTEXT_CHUNK_MAX_CHARS].rstrip()
+            + "\n... [retrieved context chunk truncated]"
+        )
+
     def query(self, question: str) -> AgentResponse:
         """Answer a question by navigating the filesystem.
 
@@ -590,12 +617,12 @@ class FilesystemRAGAgent:
                         file_path = tool_args.get("path", "")
                         files_read.append(file_path)
 
-                        # Store content for context
-                        if isinstance(result, dict) and "content" in result:
-                            context_chunks.append(result["content"])
-                            context_sources.append(file_path)
-                        elif isinstance(result, str):
-                            context_chunks.append(result)
+                        # Store bounded evidence context only. Navigation indexes
+                        # can be useful to the agent, but they are not evidence for
+                        # downstream judges.
+                        context_chunk = self._context_chunk_from_tool_result(file_path, result)
+                        if context_chunk is not None:
+                            context_chunks.append(context_chunk)
                             context_sources.append(file_path)
 
                     # Format result for conversation
