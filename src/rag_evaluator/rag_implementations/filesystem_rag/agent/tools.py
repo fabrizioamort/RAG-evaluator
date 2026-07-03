@@ -12,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+_MAX_FULL_READ_BYTES = 100_000
+
 
 class FilesystemRAGTools:
     """Tools for navigating the prepared filesystem.
@@ -145,6 +147,27 @@ class FilesystemRAGTools:
                 "headers": [],
             }
 
+        full_read_requested = start_line is None and end_line is None and not headers_only
+        if full_read_requested:
+            try:
+                stat = full_path.stat()
+            except OSError:
+                stat = None
+            if stat is not None and stat.st_size > _MAX_FULL_READ_BYTES:
+                total_lines = self._count_lines(full_path)
+                return {
+                    "content": (
+                        f"File '{path}' is too large for a full read "
+                        f"({stat.st_size} bytes, {total_lines} lines). Use grep_search "
+                        "with targeted terms, headers_only=True, or start_line/end_line."
+                    ),
+                    "total_lines": total_lines,
+                    "is_partial": True,
+                    "headers": [],
+                    "truncated": True,
+                    "size_bytes": stat.st_size,
+                }
+
         # Read file content
         try:
             # First check if it looks like binary by reading first block
@@ -201,6 +224,16 @@ class FilesystemRAGTools:
             "is_partial": False,
             "headers": [],
         }
+
+    def _count_lines(self, path: Path) -> int:
+        try:
+            with open(path, encoding="utf-8") as f:
+                return sum(1 for _ in f)
+        except UnicodeDecodeError:
+            with open(path, encoding="latin-1") as f:
+                return sum(1 for _ in f)
+        except OSError:
+            return 0
 
     def _extract_headers(self, lines: list[str]) -> list[dict[str, Any]]:
         """Extract markdown headers from lines.

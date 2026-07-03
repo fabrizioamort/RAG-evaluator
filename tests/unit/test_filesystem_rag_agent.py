@@ -13,6 +13,7 @@ from rag_evaluator.rag_implementations.filesystem_rag.agent.router import (
     QueryRouter,
     SearchMode,
 )
+from rag_evaluator.rag_implementations.filesystem_rag.agent.tools import FilesystemRAGTools
 from rag_evaluator.rag_implementations.filesystem_rag.filesystem_rag import FilesystemRAG
 
 LEGAL_VARE_QUESTION = (
@@ -173,6 +174,36 @@ def test_agent_retries_transient_gateway_error(monkeypatch: Any) -> None:
 
         assert response is recovered_response
         assert completions.calls == 2
+
+
+def test_read_file_rejects_oversized_full_read() -> None:
+    with TemporaryDirectory() as tmp_dir:
+        prepared_path = Path(tmp_dir)
+        (prepared_path / "_index" / "questions").mkdir(parents=True)
+        question_seeds = prepared_path / "_index" / "questions" / "question_seeds.md"
+        question_seeds.write_text("# Question Seeds\n" + ("seed -> doc_001\n" * 10_000))
+        tools = FilesystemRAGTools(str(prepared_path))
+
+        result = tools.read_file("_index/questions/question_seeds.md")
+
+        assert result["is_partial"] is True
+        assert result["truncated"] is True
+        assert "too large for a full read" in result["content"]
+        assert "seed -> doc_001" not in result["content"]
+
+
+def test_agent_excludes_question_seed_reads_from_evidence_context() -> None:
+    with TemporaryDirectory() as tmp_dir:
+        prepared_path = Path(tmp_dir)
+        _write_prepared_fixture(prepared_path)
+        agent = FilesystemRAGAgent(str(prepared_path), client=object())  # type: ignore[arg-type]
+
+        chunk = agent._context_chunk_from_tool_result(
+            "_index/questions/question_seeds.md",
+            {"content": "# Question Seeds\nseed -> doc_001"},
+        )
+
+        assert chunk is None
 
 
 def test_query_with_trace_uses_single_agent_call() -> None:
