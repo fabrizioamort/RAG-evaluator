@@ -152,6 +152,7 @@ class JobCheckpointService:
             "completed_at": now,
             "summary_metrics": summary_metrics,
             "pass_rate": pass_rate,
+            "error_message": None,
         }
         if cost_metrics:
             values["cost_metrics"] = cost_metrics
@@ -168,29 +169,51 @@ class JobCheckpointService:
             .where(EvaluationJob.evaluation_id == evaluation_id)
             .values(
                 state="completed",
+                error_message=None,
                 last_heartbeat=now,
             )
         )
         await self.db.commit()
 
-    async def fail_job(self, evaluation_id: uuid.UUID, error_message: str) -> None:
+    async def fail_job(
+        self,
+        evaluation_id: uuid.UUID,
+        error_message: str,
+        summary_metrics: dict[str, Any] | None = None,
+        pass_rate: float | None = None,
+        cost_metrics: dict[str, Any] | None = None,
+        performance_metrics: dict[str, Any] | None = None,
+    ) -> None:
         """Mark a job and evaluation as failed.
 
         Args:
             evaluation_id: ID of the evaluation.
             error_message: Error that caused the failure.
+            summary_metrics: Optional aggregate metrics from saved partial results.
+            pass_rate: Optional pass rate from saved partial results.
+            cost_metrics: Optional cost metrics from saved partial results.
+            performance_metrics: Optional performance metrics from saved partial results.
         """
         now = datetime.now(timezone.utc)
+        evaluation_values: dict[str, Any] = {
+            "status": "failed",
+            "completed_at": now,
+            "error_message": error_message,
+        }
+        if summary_metrics is not None:
+            evaluation_values["summary_metrics"] = summary_metrics
+        if pass_rate is not None:
+            evaluation_values["pass_rate"] = pass_rate
+        if cost_metrics is not None:
+            evaluation_values["cost_metrics"] = cost_metrics
+        if performance_metrics is not None:
+            evaluation_values["performance_metrics"] = performance_metrics
 
         # Update Evaluation
         await self.db.execute(
             update(Evaluation)
             .where(Evaluation.id == evaluation_id)
-            .values(
-                status="failed",
-                completed_at=now,
-                error_message=error_message,
-            )
+            .values(**evaluation_values)
         )
 
         # Update Job

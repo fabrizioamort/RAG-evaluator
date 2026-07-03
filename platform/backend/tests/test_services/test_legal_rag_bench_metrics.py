@@ -131,6 +131,19 @@ def test_ungrounded_without_abstention_stays_hallucination() -> None:
     assert taxonomy == "hallucination_or_ungrounded"
 
 
+def test_judge_parse_error_gets_taxonomy_bucket() -> None:
+    taxonomy = derive_taxonomy(
+        retrieval_metrics={"gold_accessed": True},
+        judge_result={
+            "correct": None,
+            "grounded": None,
+            "parse_error": "judge_response_not_json",
+        },
+    )
+
+    assert taxonomy == "judge_error"
+
+
 def test_summary_reports_abstention_rate_and_counts() -> None:
     summary = summarize_legal_rag_metrics(
         [
@@ -180,3 +193,33 @@ def test_summary_taxonomy_counts_all_classified_judge_results() -> None:
         "success": 1,
         "hallucination_or_ungrounded": 1,
     }
+
+
+def test_summary_reports_judge_parse_errors_without_dropping_taxonomy() -> None:
+    summary = summarize_legal_rag_metrics(
+        [
+            {
+                "retrieval": None,
+                "judge": {"correct": True, "grounded": True},
+                "taxonomy": "success",
+            },
+            {
+                "retrieval": None,
+                "judge": {
+                    "correct": None,
+                    "grounded": None,
+                    "parse_error": "judge_response_not_json",
+                },
+                "taxonomy": "judge_error",
+            },
+        ]
+    )
+
+    assert summary is not None
+    assert summary["count"] == 2
+    assert summary["classified_count"] == 2
+    assert summary["judge"]["count"] == 2
+    assert summary["judge"]["scored_count"] == 1
+    assert summary["judge"]["correct_rate"] == 1.0
+    assert summary["judge"]["parse_error_count"] == 1
+    assert summary["taxonomy"] == {"success": 1, "judge_error": 1}

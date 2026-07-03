@@ -6,19 +6,25 @@ from typing import Any
 
 import pytest
 
-from app.services.legal_rag_bench_judge import LegalRAGBenchJudge, _is_non_answer
+from app.services.legal_rag_bench_judge import (
+    LegalRAGBenchJudge,
+    _is_non_answer,
+)
 from app.services.llm_provider import LLMCompletionResponse, TokenUsage
 
 
 class FakeProviderService:
-    def __init__(self, content: str) -> None:
-        self.content = content
+    def __init__(self, content: str | list[str]) -> None:
+        self.content = [content] if isinstance(content, str) else content
         self.messages: list[dict[str, str]] | None = None
+        self.calls = 0
 
     async def completion(self, **kwargs: Any) -> LLMCompletionResponse:
         self.messages = kwargs["messages"]
+        content = self.content[min(self.calls, len(self.content) - 1)]
+        self.calls += 1
         return LLMCompletionResponse(
-            content=self.content,
+            content=content,
             usage=TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
             model=kwargs["model"],
             provider=kwargs.get("provider") or "test",
@@ -96,3 +102,66 @@ async def test_judge_prompt_separates_generated_answer_from_reference() -> None:
     assert "Reference answer, used only for correctness:\nReference." in provider.messages[1][
         "content"
     ]
+
+
+@pytest.mark.asyncio
+async def test_judge_retries_unparsable_response() -> None:
+    provider = FakeProviderService(
+        content=[
+            "",
+            '{"correct": true, "grounded": true, "reasoning": "Supported."}',
+        ]
+    )
+    judge = LegalRAGBenchJudge(provider_service=provider)  # type: ignore[arg-type]
+
+    result = await judge.judge(
+        question="Question?",
+        reference_answer="Reference.",
+        generated_answer="Generated.",
+        retrieved_context=["Context."],
+        model="judge-model",
+        provider="test-provider",
+        base_url=None,
+        api_key=None,
+    )
+
+    assert provider.calls == 2
+    assert result["correct"] is True
+    assert result["grounded"] is True
+    assert result["attempts"] == 2
+    assert result["token_usage"] == {
+        "prompt_tokens": 20,
+        "completion_tokens": 10,
+        "total_tokens": 30,
+    }
+
+
+@pytest.mark.asyncio
+async def test_judge_filters_navigation_context_and_caps_prompt() -> None:
+    provider = FakeProviderService(
+        content='{"correct": true, "grounded": true, "reasoning": "Supported."}'
+    )
+    judge = LegalRAGBenchJudge(provider_service=provider)  # type: ignore[arg-type]
+
+    await judge.judge(
+        question="Question?",
+        reference_answer="Reference.",
+        generated_answer="Generated.",
+        retrieved_context=[
+            "# Question Seeds\n" + ("seed question -> doc_001\n" * 100_000),
+            "Evidence A. " + ("x" * 50_000),
+            "Evidence B. " + ("y" * 50_000),
+        ],
+        model="judge-model",
+        provider="test-provider",
+        base_url=None,
+        api_key=None,
+    )
+
+    assert provider.messages is not None
+    prompt = provider.messages[1]["content"]
+    assert "# Question Seeds" not in prompt
+    assert "seed question" not in prompt
+    assert "Evidence A." in prompt
+    assert "... [retrieved context chunk truncated]" in prompt
+    assert len(prompt) < 45_000

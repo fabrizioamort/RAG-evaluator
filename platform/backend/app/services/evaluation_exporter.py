@@ -27,6 +27,7 @@ TAXONOMY_ORDER = [
     ("retrieval_error", "Retrieval error"),
     ("reasoning_error", "Reasoning error"),
     ("abstention", "Abstention"),
+    ("judge_error", "Judge error"),
 ]
 
 HEADLINE_COLUMNS = [

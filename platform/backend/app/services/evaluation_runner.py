@@ -483,35 +483,21 @@ class EvaluationRunner:
                 failure_details = (
                     f" First failure: {failed_case_errors[0]}." if failed_case_errors else ""
                 )
-                raise RuntimeError(
+                error_message = (
                     f"Evaluation finished with {current_completed}/{total} test cases saved."
                     f"{failed_suffix}{failure_details} Retry will run only the missing test cases."
                 )
+                aggregate_metrics = (
+                    await self._calculate_aggregate_metrics() if current_completed > 0 else None
+                )
+                await self._fail_evaluation(error_message, aggregate_metrics)
+                return
 
             await self._finalize_evaluation()
 
         except Exception as e:
             logger.exception("Evaluation runner failed", evaluation_id=str(self.evaluation_id))
-            await self.checkpoint_service.fail_job(self.evaluation_id, str(e))
-            await self.event_log.log_event(self.evaluation_id, "error", {"error_message": str(e)})
-
-            # Trigger webhook
-            try:
-                if self.evaluation:
-                    from app.services.webhook_service import get_webhook_service
-
-                    await get_webhook_service().trigger_event(
-                        self.db,
-                        self.evaluation.project_id,
-                        "evaluation.failed",
-                        {
-                            "evaluation_id": str(self.evaluation_id),
-                            "status": "failed",
-                            "error_message": str(e),
-                        },
-                    )
-            except Exception as webhook_err:
-                logger.error("Failed to trigger failure webhook", error=str(webhook_err))
+            await self._fail_evaluation(str(e))
 
     async def _process_test_case(
         self,
@@ -795,12 +781,9 @@ class EvaluationRunner:
                 legal_results.append(raw_metrics["legal_rag_bench"])
         return summarize_legal_rag_metrics(legal_results)
 
-    async def _finalize_evaluation(self) -> None:
-        """Calculate aggregate metrics and mark evaluation as complete."""
-        # Query all results for this evaluation
+    async def _calculate_aggregate_metrics(self) -> dict[str, Any]:
+        """Calculate aggregate metrics from saved evaluation results."""
         from sqlalchemy import func
-
-        from app.models.evaluation_result import EvaluationResult
 
         result = await self.db.execute(
             select(
@@ -894,22 +877,33 @@ class EvaluationRunner:
         if legal_rag_summary:
             summary_metrics["legal_rag_bench"] = legal_rag_summary
 
+        return {
+            "summary_metrics": summary_metrics,
+            "pass_rate": pass_rate,
+            "cost_metrics": cost_metrics,
+            "performance_metrics": performance_metrics,
+        }
+
+    async def _finalize_evaluation(self) -> None:
+        """Calculate aggregate metrics and mark evaluation as complete."""
+        aggregate_metrics = await self._calculate_aggregate_metrics()
+
         await self.checkpoint_service.complete_job(
             self.evaluation_id,
-            summary_metrics=summary_metrics,
-            pass_rate=pass_rate,
-            cost_metrics=cost_metrics,
-            performance_metrics=performance_metrics,
+            summary_metrics=aggregate_metrics["summary_metrics"],
+            pass_rate=aggregate_metrics["pass_rate"],
+            cost_metrics=aggregate_metrics["cost_metrics"],
+            performance_metrics=aggregate_metrics["performance_metrics"],
         )
 
         await self.event_log.log_event(
             self.evaluation_id,
             "completed",
             {
-                "summary_metrics": summary_metrics,
-                "pass_rate": pass_rate,
-                "cost_metrics": cost_metrics,
-                "performance_metrics": performance_metrics,
+                "summary_metrics": aggregate_metrics["summary_metrics"],
+                "pass_rate": aggregate_metrics["pass_rate"],
+                "cost_metrics": aggregate_metrics["cost_metrics"],
+                "performance_metrics": aggregate_metrics["performance_metrics"],
                 "duration_seconds": 0.0,  # Placeholder
             },
         )
@@ -927,12 +921,52 @@ class EvaluationRunner:
                     {
                         "evaluation_id": str(self.evaluation_id),
                         "status": "completed",
-                        "pass_rate": pass_rate,
-                        "summary_metrics": summary_metrics,
+                        "pass_rate": aggregate_metrics["pass_rate"],
+                        "summary_metrics": aggregate_metrics["summary_metrics"],
                     },
                 )
         except Exception as webhook_err:
             logger.error("Failed to trigger completion webhook", error=str(webhook_err))
+
+    async def _fail_evaluation(
+        self,
+        error_message: str,
+        aggregate_metrics: dict[str, Any] | None = None,
+    ) -> None:
+        """Mark evaluation as failed, optionally preserving aggregate partial results."""
+        fail_kwargs = aggregate_metrics or {}
+        await self.checkpoint_service.fail_job(
+            self.evaluation_id,
+            error_message,
+            **fail_kwargs,
+        )
+
+        event_payload = {"error_message": error_message}
+        if aggregate_metrics:
+            event_payload.update(aggregate_metrics)
+        await self.event_log.log_event(self.evaluation_id, "error", event_payload)
+
+        try:
+            if self.evaluation:
+                from app.services.webhook_service import get_webhook_service
+
+                webhook_payload = {
+                    "evaluation_id": str(self.evaluation_id),
+                    "status": "failed",
+                    "error_message": error_message,
+                }
+                if aggregate_metrics:
+                    webhook_payload["pass_rate"] = aggregate_metrics["pass_rate"]
+                    webhook_payload["summary_metrics"] = aggregate_metrics["summary_metrics"]
+
+                await get_webhook_service().trigger_event(
+                    self.db,
+                    self.evaluation.project_id,
+                    "evaluation.failed",
+                    webhook_payload,
+                )
+        except Exception as webhook_err:
+            logger.error("Failed to trigger failure webhook", error=str(webhook_err))
 
 
 def get_evaluation_runner(db_session: AsyncSession, evaluation_id: uuid.UUID) -> EvaluationRunner:

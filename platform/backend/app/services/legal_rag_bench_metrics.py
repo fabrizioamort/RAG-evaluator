@@ -129,6 +129,9 @@ def derive_taxonomy(
     if not judge_result:
         return None
 
+    if judge_result.get("parse_error"):
+        return "judge_error"
+
     correct = judge_result.get("correct")
     grounded = judge_result.get("grounded")
 
@@ -155,6 +158,8 @@ def derive_taxonomy(
         return "reasoning_error"
     if grounded is True and correct is False:
         return "grounded_but_incorrect"
+    if correct is None or grounded is None:
+        return "judge_error"
     return None
 
 
@@ -188,11 +193,14 @@ def summarize_legal_rag_metrics(results: list[dict[str, Any]]) -> dict[str, Any]
         correct_values = [r["judge"].get("correct") for r in judge_results]
         grounded_values = [r["judge"].get("grounded") for r in judge_results]
         abstention_values = [bool(r["judge"].get("abstention")) for r in judge_results]
+        parse_error_count = sum(1 for r in judge_results if r["judge"].get("parse_error"))
         summary["judge"] = {
             "count": len(judge_results),
+            "scored_count": sum(1 for value in correct_values if isinstance(value, bool)),
             "correct_rate": _rate(correct_values),
             "grounded_rate": _rate(grounded_values),
             "abstention_rate": _rate(abstention_values),
+            "parse_error_count": parse_error_count,
         }
 
     if taxonomy_results:
@@ -201,6 +209,11 @@ def summarize_legal_rag_metrics(results: list[dict[str, Any]]) -> dict[str, Any]
             taxonomy = str(result["taxonomy"])
             counts[taxonomy] = counts.get(taxonomy, 0) + 1
         summary["taxonomy"] = counts
+        summary["classified_count"] = len(taxonomy_results)
+
+    unclassified_count = len(results) - len(taxonomy_results)
+    if unclassified_count:
+        summary["unclassified_count"] = unclassified_count
 
     return summary
 

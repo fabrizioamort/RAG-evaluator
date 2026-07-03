@@ -7,6 +7,17 @@ import re
 from typing import Any
 
 from app.services.llm_provider import LLMProviderService
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+JUDGE_PARSE_RETRY_ATTEMPTS = 3
+JUDGE_CONTEXT_MAX_CHARS = 40_000
+JUDGE_CONTEXT_CHUNK_MAX_CHARS = 8_000
+
+_NAVIGATION_CONTEXT_MARKERS = (
+    "# Question Seeds",
+    "_index/questions/question_seeds.md",
+)
 
 _NON_ANSWER_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
@@ -43,8 +54,9 @@ class LegalRAGBenchJudge:
         provider: str | None,
         base_url: str | None,
         api_key: str | None,
+        timeout_seconds: float | None = None,
     ) -> dict[str, Any]:
-        context = "\n\n".join(retrieved_context)
+        context = _format_judge_context(retrieved_context)
         messages = [
             {
                 "role": "system",
@@ -79,25 +91,57 @@ class LegalRAGBenchJudge:
                 ),
             },
         ]
-        response = await self.provider_service.completion(
-            model=model,
-            messages=messages,
-            provider=provider,
-            base_url=base_url,
-            api_key=api_key,
-            temperature=0,
-            response_format={"type": "json_object"},
-        )
-        parsed = _parse_judge_json(response.content)
+        parsed: dict[str, Any] | None = None
+        prompt_tokens = 0
+        completion_tokens = 0
+        total_tokens = 0
+        cost_usd = 0.0
+
+        for attempt in range(1, JUDGE_PARSE_RETRY_ATTEMPTS + 1):
+            completion_kwargs: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "provider": provider,
+                "base_url": base_url,
+                "api_key": api_key,
+                "temperature": 0,
+                "response_format": {"type": "json_object"},
+            }
+            if timeout_seconds is not None:
+                completion_kwargs["timeout"] = timeout_seconds
+
+            response = await self.provider_service.completion(
+                **completion_kwargs,
+            )
+            prompt_tokens += response.usage.prompt_tokens
+            completion_tokens += response.usage.completion_tokens
+            total_tokens += response.usage.total_tokens
+            cost_usd += response.usage.cost_usd
+
+            parsed = _parse_judge_json(response.content)
+            if not parsed.get("parse_error"):
+                break
+
+            logger.warning(
+                "Legal RAG judge returned unparsable response",
+                model=model,
+                provider=provider,
+                attempt=attempt,
+                max_attempts=JUDGE_PARSE_RETRY_ATTEMPTS,
+                content_preview=response.content[:200],
+            )
+
+        assert parsed is not None
         parsed = _apply_answer_sanity_checks(parsed, generated_answer)
         parsed["model"] = model
         parsed["provider"] = provider
+        parsed["attempts"] = attempt
         parsed["token_usage"] = {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "completion_tokens": response.usage.completion_tokens,
-            "total_tokens": response.usage.total_tokens,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
         }
-        parsed["cost_usd"] = response.usage.cost_usd
+        parsed["cost_usd"] = cost_usd
         return parsed
 
 
@@ -130,6 +174,45 @@ def _parse_judge_json(content: str) -> dict[str, Any]:
         "reasoning": str(data.get("reasoning", "")).strip(),
         "raw": data,
     }
+
+
+def _format_judge_context(retrieved_context: list[str]) -> str:
+    """Build a bounded evidence context for the judge prompt."""
+    chunks: list[str] = []
+    total_chars = 0
+
+    for raw_chunk in retrieved_context:
+        chunk = str(raw_chunk).strip()
+        if not chunk or _is_navigation_context(chunk):
+            continue
+
+        if len(chunk) > JUDGE_CONTEXT_CHUNK_MAX_CHARS:
+            chunk = (
+                chunk[:JUDGE_CONTEXT_CHUNK_MAX_CHARS].rstrip()
+                + "\n... [retrieved context chunk truncated]"
+            )
+
+        separator_chars = 2 if chunks else 0
+        remaining = JUDGE_CONTEXT_MAX_CHARS - total_chars - separator_chars
+        if remaining <= 0:
+            break
+
+        if len(chunk) > remaining:
+            chunk = (
+                chunk[: max(0, remaining - 41)].rstrip()
+                + "\n... [retrieved context truncated]"
+            )
+            chunks.append(chunk)
+            break
+
+        chunks.append(chunk)
+        total_chars += len(chunk) + separator_chars
+
+    return "\n\n".join(chunks)
+
+
+def _is_navigation_context(chunk: str) -> bool:
+    return any(marker in chunk[:500] for marker in _NAVIGATION_CONTEXT_MARKERS)
 
 
 def _coerce_bool(value: Any) -> bool | None:
