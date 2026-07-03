@@ -7,12 +7,16 @@ vector similarity search.
 
 from __future__ import annotations
 
+import json
+import re
 import time
-from pathlib import Path
+from pathlib import Path, PurePath
+from threading import Lock
 from typing import Any
 
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
 from rag_evaluator.common.indexing import CheckpointStore, discover_source_documents
+from rag_evaluator.common.llm_utils import get_safe_llm_params
 from rag_evaluator.common.openai_client import llm_client
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
@@ -26,6 +30,19 @@ from rag_evaluator.rag_implementations.filesystem_rag.agent.agent import (
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.pipeline import (
     PreparationPipeline,
 )
+
+_PASSAGE_STEM_RE = re.compile(r"^\d+(?:\.\d+)*-c\d+-s\d+$")
+
+
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    """Coerce config values that may arrive from JSON/UI forms."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 class FilesystemRAG(BaseRAG):
@@ -56,6 +73,8 @@ class FilesystemRAG(BaseRAG):
         max_iterations: int = 10,
         max_tool_calls: int = 20,
         max_file_reads: int = 10,
+        force_analysis_method: str | None = None,
+        use_llm_synthesis: bool | None = None,
         config: RAGConfig | None = None,
     ) -> None:
         """Initialize Filesystem RAG.
@@ -67,15 +86,28 @@ class FilesystemRAG(BaseRAG):
             max_iterations: Maximum ReAct loop iterations per query
             max_tool_calls: Maximum tool calls per query
             max_file_reads: Maximum file reads per query
+            force_analysis_method: Force "heuristic" or "llm" analysis during preparation
+            use_llm_synthesis: Whether preparation should use LLM corpus synthesis
             config: Optional RAGConfig for configuration
         """
         super().__init__("Filesystem RAG", config=config)
 
         # Override llm_model from config if provided
         self.llm_model = self.config.llm_model if config else llm_model
+        parameters = self.config.parameters
         # Resolve to absolute path to ensure robustness against CWD changes
         self.prepared_path = str(Path(prepared_path).resolve())
-        self.word_threshold = word_threshold
+        self.word_threshold = int(parameters.get("filesystem_word_threshold", word_threshold))
+        self.force_analysis_method = parameters.get(
+            "filesystem_force_analysis_method",
+            force_analysis_method,
+        )
+        if self.force_analysis_method not in {"heuristic", "llm", None}:
+            self.force_analysis_method = None
+        self.use_llm_synthesis = _coerce_bool(
+            parameters.get("filesystem_use_llm_synthesis"),
+            default=use_llm_synthesis if use_llm_synthesis is not None else False,
+        )
         self.max_iterations = max_iterations
         self.max_tool_calls = max_tool_calls
         self.max_file_reads = max_file_reads
@@ -87,6 +119,10 @@ class FilesystemRAG(BaseRAG):
         # Query tracking
         self._query_metrics: list[dict[str, Any]] = []
         self._total_queries = 0
+        self._metrics_lock = Lock()
+
+        # Cache mapping doc id -> original passage file path (from doc meta.json)
+        self._passage_source_cache: dict[str, str | None] = {}
 
     def close(self) -> None:
         """Close agent and clear metrics."""
@@ -118,8 +154,9 @@ class FilesystemRAG(BaseRAG):
             input_path=documents_path,
             output_path=self.prepared_path,
             word_threshold=self.word_threshold,
-            use_llm_synthesis=False,  # Use heuristic for cost savings
+            use_llm_synthesis=self.use_llm_synthesis,
             preserve_originals=True,
+            force_analysis_method=self.force_analysis_method,
         )
 
         result = pipeline.run()
@@ -147,20 +184,16 @@ class FilesystemRAG(BaseRAG):
 
         self.prepare_documents(documents_path)
 
-        prepared_root = Path(self.prepared_path)
+        artifacts_by_source = self._prepared_artifacts_by_source()
         for idx, source in enumerate(sources, start=1):
-            doc_id = f"doc_{idx:03d}"
-            required = [
-                prepared_root / "documents" / f"{doc_id}.md",
-                prepared_root / "documents" / f"{doc_id}.meta.json",
-                prepared_root / "_summaries" / f"{doc_id}_summary.md",
-            ]
+            source_key = str(Path(source.source_path).resolve())
+            required = artifacts_by_source.get(source_key, [])
             if all(path.exists() for path in required):
                 checkpoint_store.complete_document(source.doc_key, 1)
             else:
                 checkpoint_store.fail_document(
                     source.doc_key,
-                    f"Missing prepared artifacts for {doc_id}",
+                    f"Missing prepared artifacts for source #{idx}: {source.relative_path}",
                 )
 
         checkpoint_store.update_progress(len(sources), len(sources), {"stage": "complete"})
@@ -197,6 +230,72 @@ class FilesystemRAG(BaseRAG):
         if self._agent is None:
             raise RuntimeError("Agent initialization failed")
         return self._agent
+
+    def _prepared_artifacts_by_source(self) -> dict[str, list[Path]]:
+        """Return prepared document artifacts keyed by resolved original source path."""
+        prepared_root = Path(self.prepared_path)
+        docs_dir = prepared_root / "documents"
+        artifacts: dict[str, list[Path]] = {}
+        for meta_path in docs_dir.glob("*.meta.json"):
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            original_file = meta.get("original_file")
+            doc_id = str(meta.get("id") or meta_path.name.removesuffix(".meta.json"))
+            if not original_file:
+                continue
+            artifacts[str(Path(original_file).resolve())] = [
+                docs_dir / f"{doc_id}.md",
+                meta_path,
+                prepared_root / str(meta.get("summary_path") or f"_summaries/{doc_id}_summary.md"),
+            ]
+        return artifacts
+
+    def _resolve_source_to_passage(self, source: str) -> str:
+        """Map a prepared-filesystem source to its original passage file path.
+
+        Each document's ``meta.json`` records the original passage file. Resolve
+        both synthetic ids (``doc_182``) and passage-id filenames
+        (``1.5-c8-s1``) through metadata when available; non-document sources
+        are returned unchanged.
+        """
+        stem = PurePath(source).stem
+        doc_id = stem[: -len("_summary")] if stem.endswith("_summary") else stem
+        if doc_id not in self._passage_source_cache:
+            meta_path = Path(self.prepared_path) / "documents" / f"{doc_id}.meta.json"
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                self._passage_source_cache[doc_id] = meta.get("original_file") or None
+            except (OSError, json.JSONDecodeError):
+                self._passage_source_cache[doc_id] = None
+        resolved = self._passage_source_cache[doc_id]
+        return resolved if resolved else source
+
+    def _resolve_sources(self, sources: list[str]) -> list[str]:
+        """Resolve a list of sources to their original passage file paths."""
+        return [self._resolve_source_to_passage(source) for source in sources]
+
+    def _is_passage_source(self, source: str, resolved: str) -> bool:
+        """True when a source maps to an original passage rather than an index."""
+        if resolved != source:
+            return True
+        stem = PurePath(source).stem.removesuffix("_summary")
+        return bool(_PASSAGE_STEM_RE.match(stem))
+
+    def _reportable_sources(self, sources: list[str]) -> list[str]:
+        """Resolve sources for reporting, dropping navigation-index noise.
+
+        Falls back to the full resolved list when nothing passes the filter so
+        corpora without passage-id naming still report their sources.
+        """
+        resolved_list = self._resolve_sources(sources)
+        filtered = [
+            resolved
+            for source, resolved in zip(sources, resolved_list)
+            if self._is_passage_source(source, resolved)
+        ]
+        return filtered or resolved_list
 
     def _context_from_agent_response(
         self,
@@ -280,8 +379,15 @@ class FilesystemRAG(BaseRAG):
             retrieval_time=retrieval_time,
         )
 
+    def _record_token_usage(self, usage: dict[str, Any] | None) -> None:
+        """Record measured prompt/completion token usage."""
+        if not usage:
+            return
+        self._token_usage.add_prompt_tokens(int(usage.get("prompt_tokens") or 0))
+        self._token_usage.add_completion_tokens(int(usage.get("completion_tokens") or 0))
+
     def _track_agent_response(self, question: str, response: Any) -> None:
-        """Track query metrics and estimated token use for an agent response."""
+        """Track query metrics and measured token use for an agent response."""
         query_metric = {
             "question": question,
             "query_time": response.metadata.get("query_time", 0.0),
@@ -294,10 +400,7 @@ class FilesystemRAG(BaseRAG):
             self._query_metrics.append(query_metric)
             self._total_queries += 1
 
-        estimated_prompt = len(question) * response.metadata.get("iterations", 1) * 10
-        estimated_completion = len(response.answer) // 4
-        self._token_usage.add_prompt_tokens(estimated_prompt)
-        self._token_usage.add_completion_tokens(estimated_completion)
+        self._record_token_usage(response.metadata.get("token_usage"))
 
     def retrieve(self, question: str, top_k: int = 5) -> RetrievedContext:
         """Retrieve context using LLM-guided filesystem navigation.
@@ -321,6 +424,7 @@ class FilesystemRAG(BaseRAG):
         response = agent.query(question)
 
         retrieval_time = time.time() - start_time
+        self._record_token_usage(response.metadata.get("token_usage"))
 
         return self._context_from_agent_response(question, response, retrieval_time)
 
@@ -363,35 +467,48 @@ class FilesystemRAG(BaseRAG):
         Returns:
             Generated answer text
         """
-        # FilesystemRAG doesn't have a separate generation step
-        # The agent generates during query. For re-generation, we'd need
-        # to call the agent's LLM directly.
-        if self._agent is None:
-            raise ValueError("Agent not initialized")
+        agent = self._ensure_agent()
 
-        # Build context prompt and call agent's LLM
         context_text = "\n\n".join([f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)])
-
-        prompt = f"""Based on the following context gathered from the filesystem, answer the question.
+        agent.reset_llm_usage()
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You answer questions from retrieved filesystem context. "
+                    "Answer in English. The first sentence must directly state "
+                    "the conclusion, preserve material qualifiers, and cite no "
+                    "authority absent from the context."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"""Based on the following context gathered from the filesystem, answer the question.
 
 Context:
 {context_text}
 
 Question: {question}
 
-Answer:"""
+Answer:""",
+            },
+        ]
 
-        # Use the agent to answer (simplified - ideally we'd call LLM directly)
-        response = self._agent.query(f"Using this context: {context_text}\n\nAnswer: {question}")
+        kwargs: dict[str, Any] = {
+            "model": self.llm_model,
+            "messages": messages,
+        }
+        kwargs = get_safe_llm_params(
+            self.llm_model,
+            temperature=0.0,
+            reasoning_effort=self.config.llm_reasoning_effort if self.config else None,
+            **kwargs,
+        )
 
-        # Estimate token usage
-        estimated_prompt_tokens = len(prompt) // 4
-        estimated_completion_tokens = len(response.answer) // 4
+        response = agent._create_chat_completion_with_retries(kwargs)
+        self._record_token_usage(agent.get_llm_usage())
 
-        self._token_usage.add_prompt_tokens(estimated_prompt_tokens)
-        self._token_usage.add_completion_tokens(estimated_completion_tokens)
-
-        return response.answer
+        return response.choices[0].message.content or ""
 
     def generate(self, question: str, context: RetrievedContext) -> GeneratedAnswer:
         """Generate answer from retrieved context.
@@ -453,12 +570,14 @@ Answer:"""
             "metadata": {
                 "retrieval_time": response.metadata.get("query_time", 0.0),
                 "chunks_retrieved": len(response.context),
-                "files_read": response.metadata.get("files_read", []),
+                "files_read": self._reportable_sources(response.metadata.get("files_read", [])),
                 "tool_calls": response.metadata.get("tool_calls", 0),
                 "search_mode": response.metadata.get("search_mode", "unknown"),
                 "iterations": response.metadata.get("iterations", 0),
                 "reasoning_trace": response.metadata.get("reasoning_trace", []),
-                "context_sources": response.metadata.get("context_sources", []),
+                "context_sources": self._reportable_sources(
+                    response.metadata.get("context_sources", [])
+                ),
                 "prefetch_candidates": response.metadata.get("prefetch_candidates", []),
                 "answer_retries": response.metadata.get("answer_retries", 0),
                 "answer_retry_reason": response.metadata.get("answer_retry_reason"),
@@ -493,11 +612,13 @@ Answer:"""
                 "generation_time": 0.0,
                 "token_usage": self._token_usage.to_dict(),
                 "chunks_retrieved": len(context.chunks),
-                "files_read": response.metadata.get("files_read", []),
+                "files_read": self._reportable_sources(response.metadata.get("files_read", [])),
                 "tool_calls": response.metadata.get("tool_calls", 0),
                 "search_mode": response.metadata.get("search_mode", "unknown"),
                 "iterations": response.metadata.get("iterations", 0),
-                "context_sources": response.metadata.get("context_sources", []),
+                "context_sources": self._reportable_sources(
+                    response.metadata.get("context_sources", [])
+                ),
                 "prefetch_candidates": response.metadata.get("prefetch_candidates", []),
                 "answer_retries": response.metadata.get("answer_retries", 0),
                 "answer_retry_reason": response.metadata.get("answer_retry_reason"),
@@ -606,8 +727,6 @@ Answer:"""
         Returns:
             Statistics dictionary or None if not available
         """
-        import json
-
         stats_path = Path(self.prepared_path) / "_meta" / "statistics.json"
         if stats_path.exists():
             result: dict[str, Any] = json.loads(stats_path.read_text(encoding="utf-8"))

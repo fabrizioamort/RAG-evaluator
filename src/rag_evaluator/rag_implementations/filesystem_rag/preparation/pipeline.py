@@ -304,6 +304,7 @@ class PreparationPipeline:
             "_index/entities",
             "_index/temporal",
             "_index/questions",
+            "_index/passages",
             "_summaries",
             "documents",
         ]
@@ -321,6 +322,7 @@ class PreparationPipeline:
             "_index/topics/_topic_map.md",
             "_index/entities/_entity_registry.md",
             "_index/questions/question_seeds.md",
+            "_index/passages/bm25.json",
             "_index/temporal/timeline.md",
         ]
 

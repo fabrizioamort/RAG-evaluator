@@ -14,6 +14,9 @@ from typing import Any
 
 from rag_evaluator.common.document_loaders import Document, create_loader
 
+_LEGAL_PASSAGE_ID_RE = re.compile(r"\b\d+(?:[._]\d+)*-c\d+-s\d+\b", re.IGNORECASE)
+_SAFE_DOC_ID_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
 
 @dataclass
 class RawDocument:
@@ -89,6 +92,7 @@ def load_documents(documents_path: str) -> list[RawDocument]:
         raise ValueError(f"Documents path is not a directory: {documents_path}")
 
     raw_documents: list[RawDocument] = []
+    used_doc_ids: set[str] = set()
     supported_extensions = {".txt", ".pdf", ".docx"}
 
     # Get all files recursively and sort by name
@@ -97,7 +101,7 @@ def load_documents(documents_path: str) -> list[RawDocument]:
     )
 
     for idx, file_path in enumerate(files, start=1):
-        doc_id = f"doc_{idx:03d}"
+        doc_id = _unique_document_id(_derive_document_id(file_path, idx), used_doc_ids)
         try:
             loader = create_loader(str(file_path))
             doc: Document = loader.load(str(file_path))
@@ -127,6 +131,47 @@ def load_documents(documents_path: str) -> list[RawDocument]:
 
     print(f"Loaded {len(raw_documents)} documents from {documents_path}")
     return raw_documents
+
+
+def _derive_document_id(file_path: Path, index: int) -> str:
+    """Derive a readable prepared document id when a passage id is embedded.
+
+    Legal RAG Bench source files often look like
+    ``hash_passage_0035__1_5-c6-s1.txt``. Using ``1.5-c6-s1`` as the prepared
+    filename makes navigation and retrieval traces human-readable while keeping
+    the existing ``doc_NNN`` fallback for ordinary corpora.
+    """
+    stem = file_path.stem
+    candidates = []
+    if "__" in stem:
+        candidates.append(stem.rsplit("__", maxsplit=1)[1])
+    candidates.append(stem)
+
+    for candidate in candidates:
+        normalized = re.sub(r"(?<=\d)_(?=\d)", ".", candidate)
+        match = _LEGAL_PASSAGE_ID_RE.search(normalized)
+        if match:
+            return _sanitize_document_id(match.group(0))
+
+    return f"doc_{index:03d}"
+
+
+def _sanitize_document_id(value: str) -> str:
+    """Return a filesystem-safe document id."""
+    sanitized = _SAFE_DOC_ID_RE.sub("_", value.strip())
+    sanitized = sanitized.strip("._-")
+    return sanitized or "document"
+
+
+def _unique_document_id(base_id: str, used_doc_ids: set[str]) -> str:
+    """Return a unique document id, preserving the base id when possible."""
+    candidate = base_id
+    counter = 2
+    while candidate in used_doc_ids:
+        candidate = f"{base_id}_{counter}"
+        counter += 1
+    used_doc_ids.add(candidate)
+    return candidate
 
 
 def detect_txt_structure(content: str) -> list[dict[str, Any]]:
