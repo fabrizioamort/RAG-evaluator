@@ -21,11 +21,17 @@ def _members() -> list[ExportMember]:
             label="Chroma semantic",
             rag_type="vector_semantic",
             pass_rate=0.61,
+            summary_metrics={"g_eval_avg": 0.83},
             performance_metrics={"avg_latency_seconds": 1.23},
             legal_rag_bench={
                 "retrieval": {"hit_at_k_rate": 0.52},
                 "judge": {"correct_rate": 0.61, "grounded_rate": 0.88},
                 "taxonomy": {"success": 61, "retrieval_error": 30, "reasoning_error": 9},
+                "success_signals": {
+                    "g_eval_pass_rate": 0.6,
+                    "taxonomy_success_rate": 0.61,
+                    "alternate_evidence_supported_rate": 0.12,
+                },
             },
             manifest={
                 "generation_model": "gpt-4o-mini",
@@ -37,11 +43,17 @@ def _members() -> list[ExportMember]:
             label="Filesystem RAG",
             rag_type="filesystem_rag",
             pass_rate=0.55,
+            summary_metrics={"g_eval_avg": 0.9},
             performance_metrics={"avg_latency_seconds": 4.1},
             legal_rag_bench={
                 "retrieval": {"gold_accessed_rate": 0.70},
                 "judge": {"correct_rate": 0.55, "grounded_rate": 0.80},
                 "taxonomy": {"success": 55},
+                "success_signals": {
+                    "g_eval_pass_rate": 0.0,
+                    "taxonomy_success_rate": 0.55,
+                    "alternate_evidence_supported_rate": 0.25,
+                },
             },
         ),
     ]
@@ -56,6 +68,12 @@ def test_headline_rows_pick_retrieval_metric_per_system():
     assert rows[1]["Retrieval score"] == "70.0%"
     assert rows[1]["Retrieval mode"] == "agentic file search"
     assert rows[0]["Avg latency"] == "1.23s"
+    assert rows[0]["G-Eval"] == "60.0%"
+    assert rows[1]["G-Eval"] == "0.0%"
+    assert rows[0]["Judge correct"] == "61.0%"
+    assert rows[0]["Judge grounded"] == "88.0%"
+    assert rows[0]["Taxonomy success"] == "61.0%"
+    assert rows[0]["Alt evidence"] == "12.0%"
 
 
 def test_headline_csv_has_header_and_rows():
@@ -91,12 +109,24 @@ def test_per_question_jsonl_is_one_object_per_line():
         question="q",
         expected_answer="a",
         generated_answer="g",
-        scores={"faithfulness": 0.9},
+        scores={"faithfulness": 0.9, "g_eval": 0.72},
         latency_seconds=1.0,
         legal_rag_bench={
-            "retrieval": {"hit_at_k": True},
-            "judge": {"correct": True, "grounded": True},
+            "retrieval": {
+                "hit_at_k": True,
+                "gold_accessed": False,
+                "gold_access_rank": None,
+                "relevant_passage_id": "gold-id",
+                "retrieved_passage_ids": ["alt-id"],
+            },
+            "judge": {"correct": True, "grounded": True, "reasoning": "supported"},
             "taxonomy": "success",
+            "success_signals": {
+                "g_eval_pass": True,
+                "supported_by_retrieved_context": True,
+                "alternate_evidence_supported": True,
+                "correct_without_gold": True,
+            },
         },
     )
     text = per_question_jsonl([record, record])
@@ -104,5 +134,16 @@ def test_per_question_jsonl_is_one_object_per_line():
     assert len(lines) == 2
     parsed = json.loads(lines[0])
     assert parsed["system"] == "Chroma semantic"
+    assert parsed["generated_answer"] == "g"
+    assert parsed["g_eval_score"] == 0.72
+    assert parsed["g_eval_pass"] is True
     assert parsed["legal_taxonomy"] == "success"
+    assert parsed["judge_correct"] is True
+    assert parsed["judge_grounded"] is True
+    assert parsed["judge_reason"] == "supported"
+    assert parsed["gold_accessed"] is False
+    assert parsed["relevant_passage_id"] == "gold-id"
+    assert parsed["retrieved_passage_ids"] == ["alt-id"]
+    assert parsed["alternate_evidence_supported"] is True
+    assert parsed["correct_without_gold"] is True
     assert parsed["legal_judge"]["correct"] is True

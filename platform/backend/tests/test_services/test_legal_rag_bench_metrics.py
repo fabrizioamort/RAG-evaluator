@@ -2,6 +2,7 @@
 
 from app.services.legal_rag_bench_metrics import (
     compute_legal_rag_retrieval_metrics,
+    derive_success_signals,
     derive_taxonomy,
     extract_relevant_passage_id,
     summarize_legal_rag_metrics,
@@ -144,6 +145,31 @@ def test_judge_parse_error_gets_taxonomy_bucket() -> None:
     assert taxonomy == "judge_error"
 
 
+def test_success_signals_credit_grounded_answer_without_gold_access() -> None:
+    signals = derive_success_signals(
+        retrieval_metrics={
+            "hit_at_k": False,
+            "gold_accessed": False,
+            "retrieved_passage_ids": ["alternate-source"],
+        },
+        judge_result={"correct": True, "grounded": True},
+        taxonomy="success",
+        g_eval_score=0.81,
+        g_eval_threshold=0.7,
+    )
+
+    assert signals["g_eval_score"] == 0.81
+    assert signals["g_eval_pass"] is True
+    assert signals["judge_correct"] is True
+    assert signals["judge_grounded"] is True
+    assert signals["taxonomy_success"] is True
+    assert signals["retrieval_hit"] is False
+    assert signals["gold_accessed"] is False
+    assert signals["supported_by_retrieved_context"] is True
+    assert signals["alternate_evidence_supported"] is True
+    assert signals["correct_without_gold"] is True
+
+
 def test_summary_reports_abstention_rate_and_counts() -> None:
     summary = summarize_legal_rag_metrics(
         [
@@ -163,6 +189,52 @@ def test_summary_reports_abstention_rate_and_counts() -> None:
     assert summary is not None
     assert summary["judge"]["abstention_rate"] == 0.5
     assert summary["taxonomy"] == {"abstention": 1, "success": 1}
+
+
+def test_summary_reports_split_success_signals_and_alternate_evidence() -> None:
+    summary = summarize_legal_rag_metrics(
+        [
+            {
+                "retrieval": {"gold_accessed": False},
+                "judge": {"correct": True, "grounded": True},
+                "taxonomy": "success",
+                "success_signals": derive_success_signals(
+                    retrieval_metrics={"gold_accessed": False},
+                    judge_result={"correct": True, "grounded": True},
+                    taxonomy="success",
+                    g_eval_score=0.8,
+                    g_eval_threshold=0.7,
+                ),
+            },
+            {
+                "retrieval": {"gold_accessed": True},
+                "judge": {"correct": False, "grounded": True},
+                "taxonomy": "reasoning_error",
+                "success_signals": derive_success_signals(
+                    retrieval_metrics={"gold_accessed": True},
+                    judge_result={"correct": False, "grounded": True},
+                    taxonomy="reasoning_error",
+                    g_eval_score=0.2,
+                    g_eval_threshold=0.7,
+                ),
+            },
+        ]
+    )
+
+    assert summary is not None
+    assert summary["taxonomy_success_rate"] == 0.5
+    assert summary["success_signals"] == {
+        "count": 2,
+        "g_eval_pass_rate": 0.5,
+        "judge_correct_rate": 0.5,
+        "judge_grounded_rate": 1.0,
+        "taxonomy_success_rate": 0.5,
+        "gold_accessed_rate": 0.5,
+        "alternate_evidence_supported_rate": 0.5,
+        "alternate_evidence_supported_count": 1,
+        "correct_without_gold_rate": 0.5,
+        "correct_without_gold_count": 1,
+    }
 
 
 def test_summary_taxonomy_counts_all_classified_judge_results() -> None:

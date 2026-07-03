@@ -163,6 +163,51 @@ def derive_taxonomy(
     return None
 
 
+def derive_success_signals(
+    *,
+    retrieval_metrics: dict[str, Any] | None,
+    judge_result: dict[str, Any] | None,
+    taxonomy: str | None,
+    g_eval_score: float | None = None,
+    g_eval_threshold: float = 0.7,
+) -> dict[str, Any]:
+    """Return explicit per-case success signals for reporting/export.
+
+    These fields deliberately keep G-Eval correctness, binary-judge correctness,
+    groundedness, taxonomy success, and gold retrieval separate. A grounded
+    answer without gold access is tracked as alternate evidence support, not
+    hidden inside a failed retrieval metric.
+    """
+    retrieval = retrieval_metrics or {}
+    judge = judge_result or {}
+    gold_accessed = retrieval.get("gold_accessed")
+    retrieval_hit = retrieval.get("hit_at_k")
+    if retrieval_hit is None:
+        retrieval_hit = gold_accessed
+
+    judge_correct = judge.get("correct")
+    judge_grounded = judge.get("grounded")
+    g_eval_pass = None if g_eval_score is None else g_eval_score >= g_eval_threshold
+    alternate_evidence_supported = judge_grounded is True and gold_accessed is False
+    correct_without_gold = (
+        judge_correct is True and judge_grounded is True and gold_accessed is False
+    )
+
+    return {
+        "g_eval_score": g_eval_score,
+        "g_eval_pass": g_eval_pass,
+        "judge_correct": judge_correct,
+        "judge_grounded": judge_grounded,
+        "taxonomy": taxonomy,
+        "taxonomy_success": taxonomy == "success" if taxonomy is not None else None,
+        "retrieval_hit": retrieval_hit,
+        "gold_accessed": gold_accessed,
+        "supported_by_retrieved_context": judge_grounded is True,
+        "alternate_evidence_supported": alternate_evidence_supported,
+        "correct_without_gold": correct_without_gold,
+    }
+
+
 def summarize_legal_rag_metrics(results: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not results:
         return None
@@ -170,6 +215,11 @@ def summarize_legal_rag_metrics(results: list[dict[str, Any]]) -> dict[str, Any]
     retrieval_results = [r for r in results if r.get("retrieval")]
     judge_results = [r for r in results if r.get("judge")]
     taxonomy_results = [r for r in results if r.get("taxonomy")]
+    signal_results = [
+        r["success_signals"]
+        for r in results
+        if isinstance(r.get("success_signals"), dict)
+    ]
 
     summary: dict[str, Any] = {"count": len(results)}
     if retrieval_results:
@@ -210,6 +260,35 @@ def summarize_legal_rag_metrics(results: list[dict[str, Any]]) -> dict[str, Any]
             counts[taxonomy] = counts.get(taxonomy, 0) + 1
         summary["taxonomy"] = counts
         summary["classified_count"] = len(taxonomy_results)
+        summary["taxonomy_success_rate"] = counts.get("success", 0) / len(taxonomy_results)
+
+    if signal_results:
+        alternate_values = [
+            s.get("alternate_evidence_supported")
+            for s in signal_results
+            if isinstance(s.get("alternate_evidence_supported"), bool)
+        ]
+        correct_without_gold_values = [
+            s.get("correct_without_gold")
+            for s in signal_results
+            if isinstance(s.get("correct_without_gold"), bool)
+        ]
+        summary["success_signals"] = {
+            "count": len(signal_results),
+            "g_eval_pass_rate": _rate([s.get("g_eval_pass") for s in signal_results]),
+            "judge_correct_rate": _rate([s.get("judge_correct") for s in signal_results]),
+            "judge_grounded_rate": _rate([s.get("judge_grounded") for s in signal_results]),
+            "taxonomy_success_rate": _rate(
+                [s.get("taxonomy_success") for s in signal_results]
+            ),
+            "gold_accessed_rate": _rate([s.get("gold_accessed") for s in signal_results]),
+            "alternate_evidence_supported_rate": _rate(alternate_values),
+            "alternate_evidence_supported_count": sum(
+                1 for value in alternate_values if value
+            ),
+            "correct_without_gold_rate": _rate(correct_without_gold_values),
+            "correct_without_gold_count": sum(1 for value in correct_without_gold_values if value),
+        }
 
     unclassified_count = len(results) - len(taxonomy_results)
     if unclassified_count:

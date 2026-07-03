@@ -6,16 +6,6 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Set
 
-# Import DeepEval metrics (we'll need them for individual scoring)
-from deepeval.metrics import (
-    AnswerRelevancyMetric,
-    ContextualPrecisionMetric,
-    ContextualRecallMetric,
-    FaithfulnessMetric,
-    GEval,
-)
-from deepeval.models.base_model import DeepEvalBaseLLM
-from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -32,6 +22,7 @@ from app.services.job_event_log import get_job_event_log
 from app.services.legal_rag_bench_judge import LegalRAGBenchJudge
 from app.services.legal_rag_bench_metrics import (
     compute_legal_rag_retrieval_metrics,
+    derive_success_signals,
     derive_taxonomy,
     extract_relevant_passage_id,
     is_legal_rag_judge_enabled,
@@ -45,8 +36,116 @@ from app.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+AnswerRelevancyMetric: Any | None = None
+ContextualPrecisionMetric: Any | None = None
+ContextualRecallMetric: Any | None = None
+FaithfulnessMetric: Any | None = None
+GEval: Any | None = None
+LLMTestCase: Any | None = None
+LLMTestCaseParams: Any | None = None
+_DEEPEVAL_REAL_LOADED = False
+_SAFE_DEEPEVAL_LLM_CLASS: Any | None = None
 
-class SafeDeepEvalLLM(DeepEvalBaseLLM):
+
+class _LocalLLMTestCase:
+    """Minimal DeepEval-compatible test case used when metrics are test-patched."""
+
+    def __init__(
+        self,
+        *,
+        input: str,
+        actual_output: str,
+        expected_output: str,
+        context: list[str],
+        retrieval_context: list[str],
+    ) -> None:
+        self.input = input
+        self.actual_output = actual_output
+        self.expected_output = expected_output
+        self.context = context
+        self.retrieval_context = retrieval_context
+
+
+class _LocalLLMTestCaseParams:
+    INPUT = "input"
+    ACTUAL_OUTPUT = "actual_output"
+    EXPECTED_OUTPUT = "expected_output"
+
+
+def _ensure_deepeval_loaded() -> None:
+    """Import DeepEval symbols on demand to keep pytest collection lightweight."""
+    global AnswerRelevancyMetric
+    global ContextualPrecisionMetric
+    global ContextualRecallMetric
+    global FaithfulnessMetric
+    global GEval
+    global LLMTestCase
+    global LLMTestCaseParams
+    global _DEEPEVAL_REAL_LOADED
+
+    if all(
+        symbol is not None
+        for symbol in (
+            AnswerRelevancyMetric,
+            ContextualPrecisionMetric,
+            ContextualRecallMetric,
+            FaithfulnessMetric,
+            GEval,
+            LLMTestCase,
+            LLMTestCaseParams,
+        )
+    ):
+        return
+
+    metrics_are_patched = all(
+        symbol is not None
+        for symbol in (
+            AnswerRelevancyMetric,
+            ContextualPrecisionMetric,
+            ContextualRecallMetric,
+            FaithfulnessMetric,
+            GEval,
+        )
+    )
+    if metrics_are_patched:
+        if LLMTestCase is None:
+            LLMTestCase = _LocalLLMTestCase
+        if LLMTestCaseParams is None:
+            LLMTestCaseParams = _LocalLLMTestCaseParams
+        return
+
+    from deepeval.metrics import (
+        AnswerRelevancyMetric as DeepEvalAnswerRelevancyMetric,
+    )
+    from deepeval.metrics import (
+        ContextualPrecisionMetric as DeepEvalContextualPrecisionMetric,
+    )
+    from deepeval.metrics import (
+        ContextualRecallMetric as DeepEvalContextualRecallMetric,
+    )
+    from deepeval.metrics import FaithfulnessMetric as DeepEvalFaithfulnessMetric
+    from deepeval.metrics import GEval as DeepEvalGEval
+    from deepeval.test_case import LLMTestCase as DeepEvalLLMTestCase
+    from deepeval.test_case import LLMTestCaseParams as DeepEvalLLMTestCaseParams
+
+    if AnswerRelevancyMetric is None:
+        AnswerRelevancyMetric = DeepEvalAnswerRelevancyMetric
+    if ContextualPrecisionMetric is None:
+        ContextualPrecisionMetric = DeepEvalContextualPrecisionMetric
+    if ContextualRecallMetric is None:
+        ContextualRecallMetric = DeepEvalContextualRecallMetric
+    if FaithfulnessMetric is None:
+        FaithfulnessMetric = DeepEvalFaithfulnessMetric
+    if GEval is None:
+        GEval = DeepEvalGEval
+    if LLMTestCase is None:
+        LLMTestCase = DeepEvalLLMTestCase
+    if LLMTestCaseParams is None:
+        LLMTestCaseParams = DeepEvalLLMTestCaseParams
+    _DEEPEVAL_REAL_LOADED = True
+
+
+class _SafeDeepEvalLLMCore:
     """DeepEval LLM wrapper that uses our safe LLMProviderService."""
 
     def __init__(
@@ -65,7 +164,7 @@ class SafeDeepEvalLLM(DeepEvalBaseLLM):
     def get_model_name(self) -> str:
         return self.model_name
 
-    def load_model(self, *args: Any, **kwargs: Any) -> DeepEvalBaseLLM:
+    def load_model(self, *args: Any, **kwargs: Any) -> Any:
         return self
 
     def generate(self, prompt: str, schema: Any = None) -> str:
@@ -130,6 +229,28 @@ class SafeDeepEvalLLM(DeepEvalBaseLLM):
         except Exception as e:
             logger.error("SafeDeepEvalLLM.a_generate failed", error=str(e))
             raise
+
+
+def _safe_deepeval_llm_class() -> Any:
+    """Return a DeepEvalBaseLLM subclass without importing DeepEval at module load."""
+    global _SAFE_DEEPEVAL_LLM_CLASS
+    if _SAFE_DEEVAL_CLASS := _SAFE_DEEPEVAL_LLM_CLASS:
+        return _SAFE_DEEVAL_CLASS
+
+    from deepeval.models.base_model import DeepEvalBaseLLM
+
+    class _SafeDeepEvalLLM(_SafeDeepEvalLLMCore, DeepEvalBaseLLM):
+        pass
+
+    _SAFE_DEEPEVAL_LLM_CLASS = _SafeDeepEvalLLM
+    return _SafeDeepEvalLLM
+
+
+def SafeDeepEvalLLM(*args: Any, **kwargs: Any) -> Any:
+    """Construct the model wrapper, subclassing DeepEval's base only when needed."""
+    if _DEEPEVAL_REAL_LOADED:
+        return _safe_deepeval_llm_class()(*args, **kwargs)
+    return _SafeDeepEvalLLMCore(*args, **kwargs)
 
 
 class EvaluationRunner:
@@ -209,17 +330,42 @@ class EvaluationRunner:
             config_value = self.evaluation.metric_config.get("include_reason")
             if config_value is not None:
                 include_reason = bool(config_value)
+
+        # Get selected metrics from config, fallback to all
+        selected_metrics = ["faithfulness", "relevancy", "precision", "recall", "g_eval"]
+        if self.evaluation and self.evaluation.metric_config:
+            selected_metrics = self.evaluation.metric_config.get("metrics", selected_metrics)
+
+        uses_deepeval = bool(
+            {
+                "faithfulness",
+                "relevancy",
+                "answer_relevancy",
+                "precision",
+                "contextual_precision",
+                "recall",
+                "contextual_recall",
+                "g_eval",
+            }
+            & set(selected_metrics)
+        )
+        if not uses_deepeval:
+            return []
+
+        _ensure_deepeval_loaded()
+        assert FaithfulnessMetric is not None
+        assert AnswerRelevancyMetric is not None
+        assert ContextualPrecisionMetric is not None
+        assert ContextualRecallMetric is not None
+        assert GEval is not None
+        assert LLMTestCaseParams is not None
+
         safe_model = SafeDeepEvalLLM(
             model_name=llm_model,
             provider_name=provider,
             base_url=base_url,
             api_key=api_key,
         )
-
-        # Get selected metrics from config, fallback to all
-        selected_metrics = ["faithfulness", "relevancy", "precision", "recall", "g_eval"]
-        if self.evaluation and self.evaluation.metric_config:
-            selected_metrics = self.evaluation.metric_config.get("metrics", selected_metrics)
 
         metrics: List[Any] = []
         if "faithfulness" in selected_metrics:
@@ -570,14 +716,6 @@ class EvaluationRunner:
                     ),
                 }
 
-            llm_test_case = LLMTestCase(
-                input=test_case.question,
-                actual_output=response["answer"],
-                expected_output=test_case.expected_answer,
-                context=ground_truth_context,
-                retrieval_context=retrieved_context,
-            )
-
             # Score metrics. DeepEval metric objects are mutable: a_measure()
             # writes score/reason onto the object. Create a fresh set per test
             # case so async evaluation cannot mix scores or reasons across
@@ -587,21 +725,40 @@ class EvaluationRunner:
             )
             scores: Dict[str, Any] = {}
             metric_results: list[dict[str, Any]] = []
-            for metric in metrics:
-                await metric.a_measure(llm_test_case)
-                class_name = metric.__class__.__name__
-                name = self._metric_result_field_name(class_name)
-                score = getattr(metric, "score", None)
-                reason = getattr(metric, "reason", None)
+            if metrics:
+                llm_test_case_cls = LLMTestCase or _LocalLLMTestCase
+                llm_test_case = llm_test_case_cls(
+                    input=test_case.question,
+                    actual_output=response["answer"],
+                    expected_output=test_case.expected_answer,
+                    context=ground_truth_context,
+                    retrieval_context=retrieved_context,
+                )
+                for metric in metrics:
+                    await metric.a_measure(llm_test_case)
+                    class_name = metric.__class__.__name__
+                    name = self._metric_result_field_name(class_name)
+                    score = getattr(metric, "score", None)
+                    reason = getattr(metric, "reason", None)
 
-                scores[f"{name}_score"] = score
-                scores[f"{name}_reason"] = reason
-                metric_results.append(
-                    {
-                        "name": class_name,
-                        "score": score,
-                        "reason": reason,
-                    }
+                    scores[f"{name}_score"] = score
+                    scores[f"{name}_reason"] = reason
+                    metric_results.append(
+                        {
+                            "name": class_name,
+                            "score": score,
+                            "reason": reason,
+                        }
+                    )
+
+            if legal_rag_result:
+                taxonomy = legal_rag_result.get("taxonomy")
+                legal_rag_result["success_signals"] = derive_success_signals(
+                    retrieval_metrics=legal_rag_result.get("retrieval"),
+                    judge_result=legal_rag_result.get("judge"),
+                    taxonomy=taxonomy if isinstance(taxonomy, str) else None,
+                    g_eval_score=scores.get("g_eval_score"),
+                    g_eval_threshold=settings.EVAL_G_EVAL_THRESHOLD,
                 )
 
             # Token usage if available

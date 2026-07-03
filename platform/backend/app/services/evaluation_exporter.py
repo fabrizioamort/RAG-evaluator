@@ -35,9 +35,12 @@ HEADLINE_COLUMNS = [
     "Retrieval mode",
     "Retrieval metric",
     "Retrieval score",
-    "Correct",
-    "Grounded",
-    "RAG accuracy",
+    "G-Eval",
+    "Judge correct",
+    "Judge grounded",
+    "Taxonomy success",
+    "Alt evidence",
+    "RAG pass rate",
     "Avg latency",
     "Notes",
 ]
@@ -75,6 +78,31 @@ def _retrieval_metric_and_score(legal: dict[str, Any] | None) -> tuple[str, floa
     return "—", None
 
 
+def _taxonomy_success_rate(legal: dict[str, Any] | None) -> float | None:
+    legal = legal or {}
+    explicit = legal.get("taxonomy_success_rate")
+    if explicit is not None:
+        return explicit
+    taxonomy = legal.get("taxonomy") or {}
+    total = sum(value for value in taxonomy.values() if isinstance(value, int | float))
+    if total <= 0:
+        return None
+    return float(taxonomy.get("success", 0)) / total
+
+
+def _success_signal_rate(legal: dict[str, Any] | None, key: str) -> float | None:
+    signals = (legal or {}).get("success_signals") or {}
+    value = signals.get(key)
+    return value if isinstance(value, int | float) else None
+
+
+def _first_number(*values: Any) -> float | None:
+    for value in values:
+        if isinstance(value, int | float):
+            return float(value)
+    return None
+
+
 def _pct(value: float | None) -> str:
     return "—" if value is None else f"{value * 100:.1f}%"
 
@@ -91,15 +119,24 @@ def headline_rows(members: list[ExportMember]) -> list[dict[str, str]]:
         judge = legal.get("judge") or {}
         metric, score = _retrieval_metric_and_score(legal)
         avg_latency = (m.performance_metrics or {}).get("avg_latency_seconds")
+        summary = m.summary_metrics or {}
         rows.append(
             {
                 "System": m.label,
                 "Retrieval mode": _retrieval_mode(m.rag_type),
                 "Retrieval metric": metric,
                 "Retrieval score": _pct(score),
-                "Correct": _pct(judge.get("correct_rate")),
-                "Grounded": _pct(judge.get("grounded_rate")),
-                "RAG accuracy": _pct(m.pass_rate),
+                "G-Eval": _pct(_first_number(
+                    _success_signal_rate(legal, "g_eval_pass_rate"),
+                    summary.get("g_eval_avg"),
+                )),
+                "Judge correct": _pct(judge.get("correct_rate")),
+                "Judge grounded": _pct(judge.get("grounded_rate")),
+                "Taxonomy success": _pct(_taxonomy_success_rate(legal)),
+                "Alt evidence": _pct(
+                    _success_signal_rate(legal, "alternate_evidence_supported_rate")
+                ),
+                "RAG pass rate": _pct(m.pass_rate),
                 "Avg latency": _secs(avg_latency),
                 "Notes": m.notes or (m.rag_config_name or ""),
             }
@@ -222,6 +259,9 @@ def build_question_record(
 ) -> dict[str, Any]:
     """Assemble one reproducibility record for the per-question JSONL export."""
     legal = legal_rag_bench or {}
+    retrieval = legal.get("retrieval") or {}
+    judge = legal.get("judge") or {}
+    signals = legal.get("success_signals") or {}
     return {
         "evaluation_id": evaluation_id,
         "system": member_label,
@@ -232,7 +272,21 @@ def build_question_record(
         "generated_answer": generated_answer,
         "latency_seconds": latency_seconds,
         "scores": scores,
+        "g_eval_score": scores.get("g_eval"),
+        "g_eval_pass": signals.get("g_eval_pass"),
+        "judge_correct": judge.get("correct"),
+        "judge_grounded": judge.get("grounded"),
+        "judge_reason": judge.get("reasoning"),
+        "judge_parse_error": judge.get("parse_error"),
+        "legal_taxonomy": legal.get("taxonomy"),
+        "gold_accessed": retrieval.get("gold_accessed"),
+        "gold_access_rank": retrieval.get("gold_access_rank"),
+        "relevant_passage_id": retrieval.get("relevant_passage_id"),
+        "retrieved_passage_ids": retrieval.get("retrieved_passage_ids"),
+        "supported_by_retrieved_context": signals.get("supported_by_retrieved_context"),
+        "alternate_evidence_supported": signals.get("alternate_evidence_supported"),
+        "correct_without_gold": signals.get("correct_without_gold"),
         "legal_retrieval": legal.get("retrieval"),
         "legal_judge": legal.get("judge"),
-        "legal_taxonomy": legal.get("taxonomy"),
+        "legal_success_signals": legal.get("success_signals"),
     }
