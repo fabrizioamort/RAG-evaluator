@@ -155,29 +155,62 @@ def format_user_message(question: str) -> str:
     return f"Question: {question}"
 
 
-def format_tool_result(tool_name: str, result: str | dict, truncate_at: int = 2000) -> str:
+# Per-tool result budgets. read_file is the agent's evidence channel, so it
+# gets a much larger budget than navigation tools; grep_search sits in between.
+TOOL_RESULT_LIMITS = {
+    "read_file": 10_000,
+    "grep_search": 6_000,
+}
+DEFAULT_TOOL_RESULT_LIMIT = 2000
+
+
+def format_tool_result(
+    tool_name: str,
+    result: str | dict | list,
+    truncate_at: int | None = None,
+) -> str:
     """Format a tool result for the conversation.
+
+    read_file results are rendered as plain text (not JSON) so the whole
+    truncation budget goes to document content.
 
     Args:
         tool_name: Name of the tool that was called
         result: Result from the tool
-        truncate_at: Maximum characters before truncation
+        truncate_at: Maximum characters before truncation; defaults per tool
 
     Returns:
         Formatted tool result string
     """
-    if isinstance(result, dict):
-        import json
+    if truncate_at is None:
+        truncate_at = TOOL_RESULT_LIMITS.get(tool_name, DEFAULT_TOOL_RESULT_LIMIT)
 
-        result_str = json.dumps(result, indent=2)
+    if tool_name == "read_file" and isinstance(result, dict) and "content" in result:
+        result_str = _format_read_file_result(result)
+        truncation_notice = (
+            "\n... [truncated: call read_file again with start_line/end_line to see more]"
+        )
     else:
-        result_str = str(result)
+        if isinstance(result, (dict, list)):
+            import json
 
-    # Truncate if too long
+            result_str = json.dumps(result, indent=2)
+        else:
+            result_str = str(result)
+        truncation_notice = "\n... [truncated]"
+
     if len(result_str) > truncate_at:
-        result_str = result_str[:truncate_at] + "\n... [truncated]"
+        result_str = result_str[:truncate_at] + truncation_notice
 
     return result_str
+
+
+def _format_read_file_result(result: dict) -> str:
+    """Render a read_file result as plain text with a one-line scope header."""
+    total_lines = result.get("total_lines", 0)
+    scope = "partial read" if result.get("is_partial") else "full read"
+    content = str(result.get("content", ""))
+    return f"[{scope}; file has {total_lines} lines]\n{content}"
 
 
 def format_final_answer_prompt() -> str:
