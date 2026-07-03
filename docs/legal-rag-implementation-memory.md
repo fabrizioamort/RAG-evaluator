@@ -747,14 +747,131 @@ and backend development checks.
     tests pass including a new one asserting deepseek sends `temperature=0` to
     litellm while gpt-5 sends None; ruff and mypy clean.
 
+- Implemented roadmap steps 4-8, completing the full improvement plan
+  (2026-07-03, committed together with the round-2 fixes below):
+  - Step 4 (A2/B2/B3): new `passage_index.py` builds an Okapi BM25
+    (`k1=1.5, b=0.75`) passage index at preparation time, persisted to
+    `_index/passages/bm25.json` via `index_builder.py:build_all_indexes()`.
+    New `agent/prefetch.py` + `tools.py` `search_passages()` tool replace the
+    old hand-tuned prefetch. The old `_extract_prefetch_terms`/
+    `_prefetch_term_weight` benchmark-specific term-weight functions in
+    `agent/agent.py` are deleted outright (zero remaining matches in `src/`),
+    not merely extracted; `agent.py` shrank from ~850 to 676 lines.
+    LLM summary/question-seed prompts in `analyzer.py` were strengthened to
+    preserve decisive rules/qualifiers, and `use_llm_synthesis`/
+    `force_analysis_method` are now real config knobs
+    (`filesystem_use_llm_synthesis`, `filesystem_force_analysis_method`)
+    instead of hardcoded off. Gap: the heuristic (default) summary and
+    question-seed generators themselves are unchanged - only the opt-in LLM
+    path improved.
+  - Step 5 (A6/A10): `grep_search()` now ranks matches by relevance and
+    reports `total_matches`/`returned_matches`/`truncated`. The agent loop
+    short-circuits into `_synthesize_partial_answer()` the instant a
+    tool-call/file-read limit is hit, instead of idling through remaining
+    `max_iterations`.
+  - Step 6 (A8/A9): token accounting now comes from `response.usage` on every
+    chat completion (`agent.py` `_record_llm_usage`), flowing through
+    `filesystem_rag.py` to `evaluation_runner.py`; the fabricated
+    character-based estimate is deleted. `filesystem_rag.py:_generate_only()`
+    now issues one plain chat completion instead of re-running the full agent
+    loop.
+  - Step 7 (C1/C3): new `derive_success_signals()` in
+    `legal_rag_bench_metrics.py` splits `g_eval_pass`/`judge_correct`/
+    `judge_grounded`/`taxonomy_success`/`gold_accessed` into separate fields
+    and adds `alternate_evidence_supported`/`correct_without_gold` (credits
+    grounded-but-gold-missed answers). Exporter headline columns and both
+    frontend Legal RAG components (`LegalRagBenchMetrics.tsx`,
+    `LegalRagBenchComparison.tsx`) updated to show the split signals.
+  - Step 8 (B1/B4/C6/C5): analyzer topic/entity keywords swapped from
+    tech-corpus to legal-corpus terms (still hardcoded, just retargeted, not
+    truly corpus-adaptive outside the LLM path); document ids now derive from
+    passage ids embedded in source filenames when present (B4); unused
+    prompt/prefetch exports deleted (C6); `evaluation_runner.py` deepeval
+    imports made lazy, removing that specific pytest-collection-hang cause
+    (C5; other import-time hangs, e.g. chromadb, untouched). Roadmap item A11
+    (router) was not addressed - `router.py` still carries the tech-corpus
+    term list, only its hint text was updated.
+  - New/expanded test coverage: `tests/unit/test_filesystem_rag_agent.py`
+    (+536 lines) and `tests/unit/test_index_builder.py` (+51 lines) cover
+    BM25 prefetch, the `search_passages` tool, grep ranking/truncation,
+    limit short-circuiting, real token usage, passage-id filename
+    resolution, and single-call `generate()`; backend
+    `test_legal_rag_bench_metrics.py`/`test_evaluation_exporter.py` cover the
+    split success signals and alternate-evidence credit.
+  - Status update (later 2026-07-03 session): tests were run and everything
+    was committed together with the round-2 fixes below. The failed-28 subset
+    has still not been rerun. `prompt-example.txt` (untracked, 3.3MB) is an
+    unrelated manual debugging dump, left alone.
+
+- Ran the 28-case clean re-eval and implemented the round-2 improvement plan
+  (2026-07-03):
+  - Input eval: `Legal RAG clean - filesystem - 2026-07-03 12:15`
+    (`a870ea4306eb4b5798c9703d82748dfe`, 28 previously-failed cases, DeepSeek):
+    `gold_accessed` 14/28 (50%), judge-correct 11/28. Failure analysis + plan:
+    `reports/filesystem_rag_improvement_plan_round2.md` (local, gitignored).
+    Root causes: BM25 top-k crowd-out (one doc's section windows filling all
+    slots), sibling-chunk satisficing (gold unread in the agent's own tool
+    output in 5 cases), vocabulary gap (benchmark wording vs statute-book
+    wording, echo summaries), and a DeepSeek DSML tool-call-markup leak
+    returned as a final answer.
+  - Implemented plan Fixes 1-7 (Fix 8, the prep-time concept-alias index, was
+    deliberately skipped - it requires corpus re-preparation approval):
+    - Fix 1 `passage_index.py`: `search()` dedupes ranked results to the best
+      section window per `doc_id` and reports suppressed windows as
+      `other_matching_sections`; prefetch candidates bumped 3 -> 5
+      (`agent.py:_build_prefetch_context`).
+    - Fix 2 `agent/agent.py` + `prompts.py`: `unusable_answer_reason()` now
+      returns `tool_markup` (DSML/invoke-whitelist regex, fullwidth-bar safe);
+      the loop gives ONE chance to re-issue the intended action as a real tool
+      call (`TOOL_MARKUP_RETRY_PROMPT`, `markup_recovery_used` metadata),
+      falling back to the plain-completion retry when budgets are exhausted.
+    - Fix 3 `agent/tools.py` + `prompts.py`: reading `documents/<id>.md` now
+      returns `section_siblings` (same-section chunks with first informative
+      header, noise-header `# <hex8> Passage NNNN` skipped, cap 40, per-section
+      cache). `format_tool_result` reserves budget so the sibling block
+      survives content truncation.
+    - Fix 4 `prompts.py`: strategy rules 9 (search with question vocabulary AND
+      statutory paraphrase; zero grep hits are not proof of absence) and 10
+      (bench-notes vs charge-book siblings; check the sibling list before
+      finalizing).
+    - Fix 5 `agent/agent.py`: one-shot evidence nudge - a usable final answer
+      built on <2 distinct `documents/` reads triggers a single verification
+      request (`format_evidence_nudge_prompt`, `evidence_nudge_used` metadata)
+      when budgets allow, then the next answer is accepted either way.
+    - Fix 6 `agent/tools.py`: `grep_search` refactored into `_grep_once` +
+      orchestration; a plain multi-word pattern with 0 matches transparently
+      re-runs in AND-mode and marks `"fallback": "match_all_terms"`. Deviation
+      from plan: used an explicit regex-metacharacter-set check instead of the
+      suggested `re.escape(p) == p`, which can never pass on Python 3.12
+      (escapes spaces).
+    - Fix 7 `filesystem_rag.py`: `_reportable_sources`/`_is_passage_source`
+      filter `_index/`/`.meta.json` noise from `files_read`/`context_sources`
+      metadata (keep meta.json-resolved or passage-stem-matching entries; fall
+      back to unfiltered when the filter empties the list, so `doc_NNN`
+      corpora still report sources). `_track_agent_response` perf counter
+      untouched.
+  - Verified: 49 unit tests pass (13 new) in `test_filesystem_rag_agent.py` +
+    `test_index_builder.py`; `test_filesystem_preparation.py` integration
+    passes; ruff + mypy clean. Read-only replay against the real corpus
+    (`idx_46d32975669e4340bc6d031f`): provocation gold `8.12-c3-s1` rank 7 ->
+    4 among 10 distinct docs; "jury room experiments" -> `1.5-c5-s1` rank 1;
+    alibi gold `3.6-c1-s1` rank 3; paraphrase "punished more than once same
+    act" -> `3.12-c1-s1` rank 1; `8.12-c2-s1` sibling map lists `8.12-c3-s1`
+    titled "Heat of passion".
+  - Known write-offs (plan section 4): `7.3.13.5-c4-s6` (near-duplicate charge
+    scripts across offences, benchmark-hard), `4.23-c2-s1` (correct via
+    duplicate passage; `alternate_evidence_supported` already credits it),
+    `3.6-c1-s1` (misleading alibi framing; expect improvement, not certainty).
+
 ## Current Step
 
-- Filesystem RAG improvement roadmap steps 1-3 are complete on `legal-rag-bench`
-  (2026-07-03): tool-result budget fix (`fea4212`), answer contract + refusal
-  retry (`36c0fa5`), deepseek temperature determinism + `llm_request_params`
-  manifest (`1caf39d`). All prior WIP is committed as a clean 5-commit baseline.
-- Full improvement plan with remaining findings and roadmap:
-  `reports/filesystem_rag_improvement_plan.md` (local, gitignored).
+- Round-1 roadmap (steps 1-8) AND round-2 plan Fixes 1-7 are implemented,
+  tested, and committed on `legal-rag-bench` (steps 1-3: `fea4212`, `36c0fa5`,
+  `1caf39d`; steps 4-8 + round 2: this session's commits). Round-2 Fix 8
+  (concept-alias index) is deliberately deferred - it needs corpus re-prep
+  approval.
+- Improvement plans: `reports/filesystem_rag_improvement_plan.md` and
+  `reports/filesystem_rag_improvement_plan_round2.md` (local, gitignored).
 - Branch strategy decided: no permanent legal branch. `main` has zero commits
   the branch lacks, so once article work stabilizes, merge `legal-rag-bench`
   into `main`, delete the branch, and work main-first from then on. The
@@ -762,18 +879,16 @@ and backend development checks.
 
 ## Pending
 
-- Rerun the failed-28 subset (same settings) to measure what roadmap steps 1-3
-  bought before starting step 4; ideally 3 identical runs to quantify the
-  remaining variance now that temperature is pinned.
-- Roadmap step 4 (retrieval fix, requires index re-preparation): BM25 passage
-  index built at preparation time + LLM summaries/question seeds; delete the
-  hand-tuned prefetch expansions/weights in `agent/agent.py`.
-- Roadmap steps 5-8: grep_search ranking + truncation signaling, limit
-  short-circuit, real token accounting (replace fabricated estimates with
-  `response.usage`), single-call `generate()`, reporting split
-  (g_eval/correct/grounded/taxonomy/gold_accessed columns), alternate-evidence
-  credit, corpus-adaptive or removed topic/entity indexes, passage-id filenames,
-  lazy imports so full pytest collection stops hanging.
+- Rerun the 28-case clean subset from the web UI with the SAME model settings
+  as `a870ea4306eb4b5798c9703d82748dfe` and compare `gold_accessed_rate`
+  (baseline 0.50, target >=0.75 without Fix 8) and judge-correct (baseline
+  11/28). Do NOT re-prepare the corpus (re-prep changes the KB index id)
+  unless round-2 Fix 8 is explicitly approved.
+- Decide on round-2 Fix 8 (prep-time concept-alias index + BM25 alias
+  folding, gated behind `filesystem_use_llm_synthesis`): requires re-prep
+  (~8.5 min + one LLM call per section) and a new KB index.
+- Re-preparation is required for the BM25 index (`_index/passages/bm25.json`)
+  to exist on any prepared corpus that predates roadmap step 4.
 - Manual UI refresh/check for `Legal RAG clean - filesystem - 28 giu, 22:35` to
   confirm the results page shows 100 classified Legal RAG rows and no judge
   errors after the DB rejudge.
