@@ -1,6 +1,10 @@
 """Tests for LLM utilities."""
 
-from rag_evaluator.common.llm_utils import get_safe_llm_params, is_reasoning_model
+from rag_evaluator.common.llm_utils import (
+    get_safe_llm_params,
+    is_reasoning_model,
+    rejects_temperature,
+)
 
 
 def test_is_reasoning_model():
@@ -19,6 +23,32 @@ def test_is_reasoning_model():
     assert is_reasoning_model("claude-3-5-sonnet") is False
     assert is_reasoning_model(None) is False
     assert is_reasoning_model("") is False
+
+
+def test_rejects_temperature():
+    """Only OpenAI o-series and gpt-5 models reject temperature."""
+    assert rejects_temperature("o1-mini") is True
+    assert rejects_temperature("openai/o3") is True
+    assert rejects_temperature("gpt-5-nano") is True
+
+    assert rejects_temperature("deepseek-v4-flash") is False
+    assert rejects_temperature("deepseek/deepseek-v4-flash") is False
+    assert rejects_temperature("gpt-4o") is False
+    assert rejects_temperature("") is False
+
+
+def test_deepseek_v4_flash_keeps_temperature_but_is_reasoning():
+    """deepseek-v4-flash accepts temperature; dropping it made runs non-deterministic."""
+    assert is_reasoning_model("deepseek/deepseek-v4-flash") is True
+
+    params = get_safe_llm_params("deepseek/deepseek-v4-flash")
+    assert params["temperature"] == 0.0
+
+    params = get_safe_llm_params("deepseek/deepseek-v4-flash", temperature=0.3)
+    assert params["temperature"] == 0.3
+
+    params = get_safe_llm_params("deepseek/deepseek-v4-flash", reasoning_effort="high")
+    assert params["reasoning_effort"] == "high"
 
 
 def test_get_safe_llm_params_reasoning_model():

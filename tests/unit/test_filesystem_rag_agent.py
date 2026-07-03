@@ -241,6 +241,11 @@ def test_agent_retries_unusable_final_answer() -> None:
         assert response.metadata["answer_retries"] == 1
         assert response.metadata["answer_retry_reason"] == "non_english"
         assert completions.calls == 2
+        assert response.metadata["llm_request_params"] == {
+            "model": "gpt-4o-mini",
+            "temperature": 0.0,
+            "reasoning_effort": None,
+        }
 
 
 def test_system_prompt_contains_answer_contract_and_sensitive_framing() -> None:
