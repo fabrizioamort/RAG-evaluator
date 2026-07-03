@@ -9,6 +9,9 @@ from rag_evaluator.rag_implementations.filesystem_rag.agent.agent import (
     AgentResponse,
     FilesystemRAGAgent,
 )
+from rag_evaluator.rag_implementations.filesystem_rag.agent.prompts import (
+    format_tool_result,
+)
 from rag_evaluator.rag_implementations.filesystem_rag.agent.router import (
     QueryRouter,
     SearchMode,
@@ -26,8 +29,8 @@ LEGAL_VARE_QUESTION = (
 
 SALLY_VIEW_QUESTION = (
     "Sally is accused of cultivating narcotic plants in her backyard. One of the "
-    "elements of this charge is that \"the accused intentionally cultivated or "
-    "attempted to cultivate a particular substance.\" To establish whether this "
+    'elements of this charge is that "the accused intentionally cultivated or '
+    'attempted to cultivate a particular substance." To establish whether this '
     "is the case, the judge believes it would be valuable to visit Sally's "
     "backyard and have the jury examine it for themselves. What is the name of "
     "the legal procedure whereby the court travels to a location relevant to the "
@@ -56,14 +59,14 @@ def _write_prepared_fixture(root: Path) -> None:
     (root / "_index" / "questions" / "question_seeds.md").write_text(
         "\n".join(
             [
-                '# Question Seeds',
+                "# Question Seeds",
                 '- "What is Use of Circumstantial Evidence?" -> doc_013',
                 '- "What is The VARE Procedure?" -> doc_029',
                 '- "What is 2.1 Views?" -> doc_045',
                 '- "What is view?" -> doc_045',
                 (
-                    '- "What does the section on a prosecution witness\'s '
-                    'evidence-in-chief by way of an audio or audiovisual recording '
+                    "- \"What does the section on a prosecution witness's "
+                    "evidence-in-chief by way of an audio or audiovisual recording "
                     'cover?" -> doc_029'
                 ),
             ]
@@ -93,7 +96,7 @@ def _write_prepared_fixture(root: Path) -> None:
     (root / "documents" / "doc_045.md").write_text(
         "# 2.1 Views\n\n"
         "## What is a view?\n\n"
-        '## 1. Under s 53 of the Evidence Act 2008, the court may order a '
+        "## 1. Under s 53 of the Evidence Act 2008, the court may order a "
         '"demonstration, experiment or inspection" (collectively, a "view").\n\n'
         "## 2. These terms are not defined in the Evidence Act 2008. Based on "
         "the common law and the conventional meaning of the terms:\n\n"
@@ -122,7 +125,9 @@ def test_prefetch_promotes_vare_candidate_for_recorded_witness_question() -> Non
 
         assert prefetch["candidates"][0]["doc_id"] == "doc_029"
         assert any("VARE" in chunk for chunk in prefetch["chunks"])
-        assert any("recording" in candidate["matched_terms"] for candidate in prefetch["candidates"])
+        assert any(
+            "recording" in candidate["matched_terms"] for candidate in prefetch["candidates"]
+        )
 
 
 def test_prefetch_includes_full_document_excerpt_for_view_question() -> None:
@@ -136,8 +141,7 @@ def test_prefetch_includes_full_document_excerpt_for_view_question() -> None:
         assert prefetch["candidates"][0]["doc_id"] == "doc_045"
         assert "documents/doc_045.md" in prefetch["sources"]
         assert any(
-            "Candidate Full Text Excerpt: doc_045" in chunk
-            and 'collectively, a "view"' in chunk
+            "Candidate Full Text Excerpt: doc_045" in chunk and 'collectively, a "view"' in chunk
             for chunk in prefetch["chunks"]
         )
 
@@ -174,6 +178,37 @@ def test_agent_retries_transient_gateway_error(monkeypatch: Any) -> None:
 
         assert response is recovered_response
         assert completions.calls == 2
+
+
+def test_format_tool_result_read_file_is_plain_text_with_large_budget() -> None:
+    content = "The object's condition may have changed since the offence.\n" * 100
+    result = {"content": content, "total_lines": 100, "is_partial": False, "headers": []}
+
+    formatted = format_tool_result("read_file", result)
+
+    assert formatted.startswith("[full read; file has 100 lines]")
+    assert "condition may have changed" in formatted
+    assert "\\n" not in formatted
+    assert len(formatted) > 2000
+
+
+def test_format_tool_result_read_file_truncates_with_reread_hint() -> None:
+    result = {"content": "x" * 30_000, "total_lines": 400, "is_partial": True, "headers": []}
+
+    formatted = format_tool_result("read_file", result)
+
+    assert len(formatted) < 30_000
+    assert formatted.startswith("[partial read; file has 400 lines]")
+    assert "start_line/end_line" in formatted
+
+
+def test_format_tool_result_navigation_tools_keep_tight_budget() -> None:
+    entries = [{"name": f"doc_{i:03d}.md", "type": "file", "size": 1234} for i in range(200)]
+
+    formatted = format_tool_result("list_directory", entries)
+
+    assert formatted.endswith("[truncated]")
+    assert len(formatted) <= 2000 + len("\n... [truncated]")
 
 
 def test_read_file_rejects_oversized_full_read() -> None:
