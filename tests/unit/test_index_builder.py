@@ -2,6 +2,7 @@
 
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.analyzer import (
@@ -9,6 +10,7 @@ from rag_evaluator.rag_implementations.filesystem_rag.preparation.analyzer impor
 )
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.document_processor import (
     ProcessedDocument,
+    _derive_document_id,
 )
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.index_builder import (
     DocumentInfo,
@@ -158,6 +160,36 @@ class TestIndexBuilder(unittest.TestCase):
         mock_mkdir.assert_called()
         self.assertTrue(mock_write_text.called)
 
+    def test_build_topic_map_uses_adaptive_topics(self) -> None:
+        """Domain-specific analysis topics should become topic index labels."""
+        self.mock_analysis_1.topics = ["evidence", "admissibility"]
+        self.mock_analysis_2.topics = ["offences"]
+
+        with TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir)
+            topic_docs = build_topic_map(self.doc_infos, output_path)
+
+            self.assertIn("doc_001", topic_docs["evidence"]["primary"])
+            self.assertIn("doc_001", topic_docs["admissibility"]["secondary"])
+            self.assertIn("doc_002", topic_docs["offences"]["primary"])
+            self.assertTrue((output_path / "_index" / "topics" / "evidence.md").exists())
+            self.assertTrue((output_path / "_index" / "topics" / "offences.md").exists())
+
+    def test_build_entity_registry_uses_adaptive_entity_types(self) -> None:
+        """Analyzer-provided entity types should not be dropped."""
+        self.mock_analysis_1.entities = {"statutes": ["Evidence Act 2008"]}
+        self.mock_analysis_2.entities = {"cases": ["R v Smith"]}
+
+        with TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir)
+            entity_docs = build_entity_registry(self.doc_infos, output_path)
+
+            self.assertIn("Evidence Act 2008", entity_docs["statutes"])
+            self.assertIn("doc_001", entity_docs["statutes"]["Evidence Act 2008"])
+            self.assertIn("R v Smith", entity_docs["cases"])
+            self.assertTrue((output_path / "_index" / "entities" / "statutes.md").exists())
+            self.assertTrue((output_path / "_index" / "entities" / "cases.md").exists())
+
     @patch("pathlib.Path.mkdir")
     @patch("pathlib.Path.write_text")
     def test_build_question_seeds(self, mock_write_text: MagicMock, mock_mkdir: MagicMock) -> None:
@@ -207,8 +239,12 @@ class TestIndexBuilder(unittest.TestCase):
     @patch(
         "rag_evaluator.rag_implementations.filesystem_rag.preparation.index_builder.build_timeline"
     )
+    @patch(
+        "rag_evaluator.rag_implementations.filesystem_rag.preparation.index_builder.build_bm25_passage_index"
+    )
     def test_build_all_indexes(
         self,
+        mock_bm25: MagicMock,
         mock_timeline: MagicMock,
         mock_questions: MagicMock,
         mock_entities: MagicMock,
@@ -222,6 +258,7 @@ class TestIndexBuilder(unittest.TestCase):
         mock_questions.return_value = {}
         mock_entities.return_value = {}
         mock_topics.return_value = {}
+        mock_bm25.return_value = {"passage_count": 2}
 
         result = build_all_indexes(self.doc_infos, output_path)
 
@@ -229,6 +266,7 @@ class TestIndexBuilder(unittest.TestCase):
         mock_entities.assert_called_once()
         mock_questions.assert_called_once()
         mock_timeline.assert_called_once()
+        mock_bm25.assert_called_once()
 
         self.assertIn("topics", result)
         self.assertIn("entities", result)
@@ -252,3 +290,16 @@ class TestIndexBuilder(unittest.TestCase):
         # 2 docs * 3 = 6 calls
         self.assertEqual(mock_write_text.call_count, 6)
         self.assertEqual(mock_replace.call_count, 6)
+
+    def test_derive_document_id_uses_embedded_legal_passage_id(self) -> None:
+        doc_id = _derive_document_id(
+            Path("fd237f78_passage_0035__1_5-c6-s1.txt"),
+            index=35,
+        )
+
+        self.assertEqual(doc_id, "1.5-c6-s1")
+
+    def test_derive_document_id_falls_back_to_synthetic_id(self) -> None:
+        doc_id = _derive_document_id(Path("ordinary_document.txt"), index=2)
+
+        self.assertEqual(doc_id, "doc_002")

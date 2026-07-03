@@ -7,10 +7,8 @@ for navigating the prepared filesystem and answering questions.
 from __future__ import annotations
 
 import json
-import math
 import re
 import time
-from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,8 +17,13 @@ from openai import OpenAI
 from rag_evaluator.common.llm_utils import get_safe_llm_params, is_transient_llm_error
 from rag_evaluator.config import settings
 from rag_evaluator.rag_implementations.filesystem_rag.agent.cache import SessionCache
+from rag_evaluator.rag_implementations.filesystem_rag.agent.prefetch import (
+    build_prefetch_context,
+)
 from rag_evaluator.rag_implementations.filesystem_rag.agent.prompts import (
+    TOOL_MARKUP_RETRY_PROMPT,
     format_answer_retry_prompt,
+    format_evidence_nudge_prompt,
     format_limit_reached_prompt,
     format_system_prompt,
     format_tool_result,
@@ -69,15 +72,10 @@ class ReasoningStep:
     thought: str | None = None
 
 
-_TOKEN_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9']{2,}")
-_DOC_ID_RE = re.compile(r"doc_\d+")
-_WORD_BOUNDARY_TEMPLATE = r"\b{}\b"
 _LLM_MAX_ATTEMPTS = 3
 _LLM_RETRY_BASE_DELAY_SECONDS = 1.0
-_PREFETCH_DOCUMENT_CANDIDATES = 2
-_PREFETCH_DOCUMENT_MAX_CHARS = 4500
 _CONTEXT_CHUNK_MAX_CHARS = 20_000
-_NAVIGATION_CONTEXT_PREFIXES = ("_index/questions/",)
+_NAVIGATION_CONTEXT_PREFIXES = ("_index/questions/", "_index/passages/")
 _REFUSAL_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
@@ -87,14 +85,25 @@ _REFUSAL_PATTERNS = tuple(
         r"^\s*(?:sorry,? )?(?:but )?(?:i )?can(?:not|'t) assist\b",
     )
 )
+# Raw tool-call wire formats leaked as plain content (observed: DeepSeek DSML
+# markup with fullwidth vertical bars U+FF5C). The tool-name whitelist keeps
+# the invoke check conservative so answers that merely mention a tool name are
+# not flagged.
+_TOOL_MARKUP_RE = re.compile(
+    r"(DSML|<\|?｜?tool_calls?|</?tool_call>|<\|?｜?invoke\b"
+    r'|\binvoke name="(read_file|grep_search|search_passages'
+    r'|list_directory|find_files|get_file_info)")',
+    re.IGNORECASE,
+)
 
 
 def unusable_answer_reason(answer: str) -> str | None:
     """Classify final answers that warrant a single corrective retry.
 
-    Returns "empty", "non_english", "refusal", or None for usable answers.
-    Detection is deliberately conservative: only the failure shapes observed
-    on the legal benchmark (empty answers, CJK refusals, refusal openings).
+    Returns "empty", "non_english", "tool_markup", "refusal", or None for
+    usable answers. Detection is deliberately conservative: only the failure
+    shapes observed on the legal benchmark (empty answers, CJK refusals,
+    leaked tool-call markup, refusal openings).
     """
     stripped = answer.strip()
     if not stripped:
@@ -104,74 +113,13 @@ def unusable_answer_reason(answer: str) -> str | None:
     if cjk_count > 0.2 * len(stripped):
         return "non_english"
 
+    if _TOOL_MARKUP_RE.search(stripped):
+        return "tool_markup"
+
     if any(pattern.search(stripped) for pattern in _REFUSAL_PATTERNS):
         return "refusal"
 
     return None
-
-
-_PREFETCH_STOP_WORDS = {
-    "about",
-    "according",
-    "after",
-    "again",
-    "against",
-    "also",
-    "although",
-    "before",
-    "been",
-    "being",
-    "between",
-    "called",
-    "clearly",
-    "could",
-    "court",
-    "does",
-    "doing",
-    "during",
-    "every",
-    "from",
-    "give",
-    "giving",
-    "have",
-    "however",
-    "into",
-    "itself",
-    "judge",
-    "juror",
-    "jury",
-    "must",
-    "might",
-    "needs",
-    "offence",
-    "offences",
-    "only",
-    "over",
-    "question",
-    "required",
-    "selected",
-    "serving",
-    "should",
-    "that",
-    "their",
-    "there",
-    "these",
-    "this",
-    "those",
-    "through",
-    "thus",
-    "under",
-    "trial",
-    "whether",
-    "what",
-    "when",
-    "where",
-    "which",
-    "while",
-    "with",
-    "would",
-    "years",
-}
 
 
 class FilesystemRAGAgent:
@@ -238,293 +186,58 @@ class FilesystemRAGAgent:
         # Warm the cache
         self.cache.warm()
 
-    def _extract_prefetch_terms(self, question: str) -> list[str]:
-        """Extract useful lexical terms for deterministic candidate prefetch."""
-        query_lower = question.lower()
-        terms: list[str] = []
-        seen: set[str] = set()
-
-        for token in _TOKEN_RE.findall(query_lower):
-            token = token.strip("'").lower()
-            if len(token) < 4 or token in _PREFETCH_STOP_WORDS:
-                continue
-            if token not in seen:
-                terms.append(token)
-                seen.add(token)
-
-        expansions: dict[str, list[str]] = {
-            "process": ["procedure"],
-            "procedure": ["process"],
-            "news": ["publicity"],
-            "stories": ["publicity"],
-            "media": ["publicity"],
-            "friend": ["know", "impartial", "impartially", "excuse", "excused"],
-            "friends": ["know", "impartial", "impartially", "excuse", "excused"],
-            "photos": ["inquiry", "enquiry", "outside", "irregularities"],
-            "texts": ["inquiry", "enquiry", "outside", "irregularities"],
-            "information": ["outside", "inquiry", "irregularities"],
-            "privilege": ["self-incrimination", "certificate"],
-            "testimony": ["evidence", "witness"],
-            "recording": ["audio", "audiovisual", "recorded"],
-            "recorded": ["recording", "audio", "audiovisual"],
-            "visit": ["view", "views", "inspection", "demonstration", "experiment", "site"],
-            "travels": ["view", "views", "inspection", "demonstration", "experiment"],
-            "location": ["view", "views", "inspection", "site", "place"],
-            "backyard": ["view", "views", "inspection", "site", "place"],
-            "examine": ["view", "views", "inspection", "demonstration", "experiment"],
-            "physical": ["object", "objects", "condition", "experiment", "experiments"],
-            "lock": ["object", "condition", "experiment", "experiments"],
-            "damaged": ["condition", "object", "experiment", "experiments"],
-            "lockpicking": ["experiment", "experiments", "condition"],
-            "witness": ["evidence"],
+        self._llm_usage: dict[str, int] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
         }
 
-        if any(phrase in query_lower for phrase in ("called", "known as", "name of")):
-            expansions.setdefault("called", []).extend(["procedure", "process"])
-
-        for term in list(terms) + ["called"]:
-            for expanded in expansions.get(term, []):
-                if expanded not in seen:
-                    terms.append(expanded)
-                    seen.add(expanded)
-
-        return terms
-
-    def _prefetch_term_weight(self, term: str) -> float:
-        """Return a deterministic retrieval weight for high-signal query terms."""
-        return {
-            "view": 4.0,
-            "views": 4.0,
-            "inspection": 3.0,
-            "demonstration": 2.5,
-            "experiment": 2.5,
-            "experiments": 2.5,
-            "procedure": 2.0,
-            "process": 1.6,
-            "called": 1.4,
-            "privilege": 2.0,
-            "self-incrimination": 2.5,
-            "certificate": 1.8,
-            "recording": 2.0,
-            "recorded": 2.0,
-            "audio": 2.0,
-            "audiovisual": 2.0,
-        }.get(term, 1.0)
-
-    def _read_text_if_exists(self, relative_path: str) -> str:
-        """Read a prepared file if present, returning an empty string on failure."""
-        path = self.tools.prepared_path / relative_path
-        if not path.exists() or not path.is_file():
-            return ""
-        try:
-            return path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            return ""
-
-    def _term_count(self, text: str, term: str) -> int:
-        """Count case-insensitive whole-word term matches."""
-        pattern = _WORD_BOUNDARY_TEMPLATE.format(re.escape(term.lower()))
-        return len(re.findall(pattern, text.lower()))
-
-    def _score_prefetch_candidates(
-        self,
-        terms: list[str],
-        summaries: dict[str, str],
-    ) -> list[dict[str, Any]]:
-        """Rank candidate documents using summaries and question seed matches."""
-        if not terms or not summaries:
-            return []
-
-        token_sets: dict[str, set[str]] = {
-            doc_id: set(_TOKEN_RE.findall(text.lower())) for doc_id, text in summaries.items()
+    def reset_llm_usage(self) -> None:
+        """Reset accumulated usage for the next logical operation."""
+        self._llm_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
         }
-        document_frequency: Counter[str] = Counter()
-        for token_set in token_sets.values():
-            document_frequency.update(token_set)
-        for term in terms:
-            if "-" in term:
-                document_frequency[term] = sum(
-                    1 for summary in summaries.values() if self._term_count(summary.lower(), term)
-                )
 
-        max_common_frequency = max(8, len(summaries) // 4)
-        usable_terms = [
-            term for term in terms if 0 < document_frequency[term] <= max_common_frequency
-        ]
-        if not usable_terms:
-            usable_terms = [term for term in terms if document_frequency[term] > 0]
+    def get_llm_usage(self) -> dict[str, int]:
+        """Return accumulated chat completion usage."""
+        return dict(self._llm_usage)
 
-        scores: defaultdict[str, float] = defaultdict(float)
-        matched_terms: defaultdict[str, set[str]] = defaultdict(set)
-        total_docs = len(summaries)
+    def _record_llm_usage(self, response: Any) -> None:
+        """Accumulate provider-reported token usage from a chat response."""
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
 
-        for doc_id, summary in summaries.items():
-            summary_lower = summary.lower()
-            for term in usable_terms:
-                count = self._term_count(summary_lower, term)
-                if not count:
-                    continue
-                idf = math.log((total_docs + 1) / (document_frequency[term] + 1))
-                scores[doc_id] += self._prefetch_term_weight(term) * (1 + min(count, 2)) * idf
-                matched_terms[doc_id].add(term)
+        prompt_tokens = self._usage_int(usage, "prompt_tokens", "input_tokens")
+        completion_tokens = self._usage_int(usage, "completion_tokens", "output_tokens")
+        total_tokens = self._usage_int(usage, "total_tokens")
+        if total_tokens == 0:
+            total_tokens = prompt_tokens + completion_tokens
 
-            title_text = "\n".join(summary_lower.splitlines()[:4])
-            for term in usable_terms:
-                if not self._term_count(title_text, term):
-                    continue
-                idf = math.log((total_docs + 1) / (document_frequency[term] + 1))
-                scores[doc_id] += 2.5 * self._prefetch_term_weight(term) * idf
-                matched_terms[doc_id].add(term)
+        self._llm_usage["prompt_tokens"] += prompt_tokens
+        self._llm_usage["completion_tokens"] += completion_tokens
+        self._llm_usage["total_tokens"] += total_tokens
 
-        question_seed_text = self._read_text_if_exists("_index/questions/question_seeds.md")
-        for line in question_seed_text.splitlines():
-            match = _DOC_ID_RE.search(line)
-            if not match:
-                continue
-
-            doc_id = match.group(0)
-            line_lower = line.lower()
-            for term in usable_terms:
-                if not self._term_count(line_lower, term):
-                    continue
-                idf = math.log((total_docs + 1) / (document_frequency[term] + 1))
-                scores[doc_id] += 2.0 * self._prefetch_term_weight(term) * idf
-                matched_terms[doc_id].add(term)
-
-        ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-        return [
-            {
-                "doc_id": doc_id,
-                "score": round(score, 3),
-                "matched_terms": sorted(matched_terms[doc_id]),
-            }
-            for doc_id, score in ranked
-            if doc_id in summaries and score > 0
-        ]
-
-    def _build_document_prefetch_excerpt(
-        self,
-        doc_id: str,
-        terms: list[str],
-        max_chars: int = _PREFETCH_DOCUMENT_MAX_CHARS,
-    ) -> str:
-        """Read a focused excerpt from a candidate source document."""
-        document_text = self._read_text_if_exists(f"documents/{doc_id}.md")
-        if not document_text:
-            return ""
-
-        if len(document_text) <= max_chars:
-            return document_text
-
-        weighted_terms = sorted(
-            {term for term in terms if self._prefetch_term_weight(term) >= 1.5},
-            key=self._prefetch_term_weight,
-            reverse=True,
-        )
-        search_terms = weighted_terms or terms[:8]
-        lines = document_text.splitlines()
-        hit_lines: list[int] = []
-
-        for idx, line in enumerate(lines):
-            line_lower = line.lower()
-            if any(self._term_count(line_lower, term) for term in search_terms):
-                hit_lines.append(idx)
-
-        if not hit_lines:
-            return document_text[:max_chars].rstrip() + "\n... [document excerpt truncated]"
-
-        selected_ranges: list[tuple[int, int]] = []
-        for line_idx in hit_lines[:8]:
-            start = max(0, line_idx - 4)
-            end = min(len(lines), line_idx + 9)
-            if selected_ranges and start <= selected_ranges[-1][1]:
-                selected_ranges[-1] = (selected_ranges[-1][0], max(selected_ranges[-1][1], end))
+    def _usage_int(self, usage: Any, *keys: str) -> int:
+        """Read an integer usage field from dict-like or object-like usage."""
+        for key in keys:
+            if isinstance(usage, dict):
+                value = usage.get(key)
             else:
-                selected_ranges.append((start, end))
-
-        excerpt_parts: list[str] = []
-        for start, end in selected_ranges:
-            excerpt_parts.append("\n".join(lines[start:end]))
-            excerpt = "\n\n...\n\n".join(excerpt_parts)
-            if len(excerpt) >= max_chars:
-                break
-
-        excerpt = "\n\n...\n\n".join(excerpt_parts)
-        if len(excerpt) > max_chars:
-            excerpt = excerpt[:max_chars].rstrip() + "\n... [document excerpt truncated]"
-        return excerpt
-
-    def _build_prefetch_context(self, question: str, max_candidates: int = 3) -> dict[str, Any]:
-        """Build deterministic candidate context before LLM navigation starts."""
-        terms = self._extract_prefetch_terms(question)
-        summaries_dir = self.tools.prepared_path / "_summaries"
-        if not summaries_dir.exists():
-            return {"terms": terms, "candidates": [], "chunks": [], "sources": []}
-
-        summaries: dict[str, str] = {}
-        summary_paths: dict[str, str] = {}
-        for path in sorted(summaries_dir.glob("doc_*_summary.md")):
-            match = _DOC_ID_RE.search(path.name)
-            if not match:
+                value = getattr(usage, key, None)
+            if value is None:
                 continue
-            doc_id = match.group(0)
             try:
-                summaries[doc_id] = path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
+                return int(value)
+            except (TypeError, ValueError):
                 continue
-            summary_paths[doc_id] = str(path.relative_to(self.tools.prepared_path))
+        return 0
 
-        ranked = self._score_prefetch_candidates(terms, summaries)[:max_candidates]
-        chunks: list[str] = []
-        sources: list[str] = []
-
-        for candidate_idx, candidate in enumerate(ranked):
-            doc_id = candidate["doc_id"]
-            source = summary_paths[doc_id]
-            snippet = summaries[doc_id]
-            if len(snippet) > 1800:
-                snippet = snippet[:1800].rstrip() + "\n... [prefetch snippet truncated]"
-
-            chunks.append(
-                "\n".join(
-                    [
-                        f"# Candidate Context: {doc_id}",
-                        f"Source: {source}",
-                        f"Matched terms: {', '.join(candidate['matched_terms'])}",
-                        "",
-                        snippet,
-                    ]
-                )
-            )
-            sources.append(source)
-
-            if candidate_idx >= _PREFETCH_DOCUMENT_CANDIDATES:
-                continue
-
-            excerpt = self._build_document_prefetch_excerpt(doc_id, terms)
-            if not excerpt:
-                continue
-
-            document_source = f"documents/{doc_id}.md"
-            chunks.append(
-                "\n".join(
-                    [
-                        f"# Candidate Full Text Excerpt: {doc_id}",
-                        f"Source: {document_source}",
-                        f"Matched terms: {', '.join(candidate['matched_terms'])}",
-                        "",
-                        excerpt,
-                    ]
-                )
-            )
-            sources.append(document_source)
-
-        return {
-            "terms": terms,
-            "candidates": ranked,
-            "chunks": chunks,
-            "sources": sources,
-        }
+    def _build_prefetch_context(self, question: str, max_candidates: int = 5) -> dict[str, Any]:
+        """Build deterministic BM25 candidate context before LLM navigation starts."""
+        return build_prefetch_context(self.tools, question, max_candidates=max_candidates)
 
     def _context_chunk_from_tool_result(
         self,
@@ -561,6 +274,7 @@ class FilesystemRAGAgent:
             AgentResponse containing answer, context, and metadata
         """
         start_time = time.time()
+        self.reset_llm_usage()
 
         # Route query to determine search mode
         routing_result = self.router.route(question)
@@ -574,10 +288,10 @@ class FilesystemRAGAgent:
             candidate_context = "\n\n".join(prefetch["chunks"])
             initial_context = (
                 f"{initial_context}\n\n"
-                "=== _index/lexical_candidates ===\n"
-                "These candidate snippets were selected by lexical matching against "
-                "summaries and question seeds. Use them when relevant, and verify with "
-                "filesystem tools if the answer is uncertain.\n\n"
+                "=== _index/passages/bm25_candidates ===\n"
+                "These candidate snippets were selected by BM25 passage search. Use "
+                "them when relevant, and verify with filesystem tools if the answer "
+                "is uncertain.\n\n"
                 f"{candidate_context}"
             )
         system_prompt = format_system_prompt(
@@ -600,6 +314,8 @@ class FilesystemRAGAgent:
         context_sources: list[str] = list(prefetch["sources"])
         tool_call_count = 0
         file_read_count = 0
+        markup_retry_used = False
+        evidence_nudge_used = False
 
         # ReAct loop
         for iteration in range(self.max_iterations):
@@ -614,31 +330,51 @@ class FilesystemRAGAgent:
                 messages.append(response.choices[0].message.model_dump())
 
                 # Process each tool call
-                for tool_call in tool_calls:
+                for tool_call_index, tool_call in enumerate(tool_calls):
                     tool_name = tool_call.function.name
                     tool_args = json.loads(tool_call.function.arguments)
 
                     # Check tool call limit
                     if tool_call_count >= self.max_tool_calls:
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": format_limit_reached_prompt("tool_calls"),
-                            }
+                        self._append_limit_tool_messages(
+                            messages,
+                            tool_calls[tool_call_index:],
+                            "tool_calls",
                         )
-                        continue
+                        return self._synthesize_partial_answer(
+                            messages=messages,
+                            context_chunks=context_chunks,
+                            reasoning_trace=reasoning_trace,
+                            search_mode=search_mode,
+                            files_read=files_read,
+                            context_sources=context_sources,
+                            tool_call_count=tool_call_count,
+                            start_time=start_time,
+                            prefetch=prefetch,
+                            limit_type="tool_calls",
+                            iterations=iteration + 1,
+                        )
 
                     # Check file read limit
                     if tool_name == "read_file" and file_read_count >= self.max_file_reads:
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": format_limit_reached_prompt("file_reads"),
-                            }
+                        self._append_limit_tool_messages(
+                            messages,
+                            tool_calls[tool_call_index:],
+                            "file_reads",
                         )
-                        continue
+                        return self._synthesize_partial_answer(
+                            messages=messages,
+                            context_chunks=context_chunks,
+                            reasoning_trace=reasoning_trace,
+                            search_mode=search_mode,
+                            files_read=files_read,
+                            context_sources=context_sources,
+                            tool_call_count=tool_call_count,
+                            start_time=start_time,
+                            prefetch=prefetch,
+                            limit_type="file_reads",
+                            iterations=iteration + 1,
+                        )
 
                     # Execute tool
                     result = self._execute_tool(tool_name, tool_args)
@@ -684,6 +420,46 @@ class FilesystemRAGAgent:
                 # LLM provided final answer (no tool calls)
                 answer = response.choices[0].message.content or ""
                 retry_reason = unusable_answer_reason(answer)
+
+                # Leaked tool-call markup means the model tried to act, so give
+                # it one chance to re-issue the call through the tool mechanism
+                # instead of forcing a plain-completion answer.
+                if (
+                    retry_reason == "tool_markup"
+                    and not markup_retry_used
+                    and iteration + 1 < self.max_iterations
+                    and tool_call_count < self.max_tool_calls
+                ):
+                    markup_retry_used = True
+                    messages.append({"role": "assistant", "content": answer})
+                    messages.append({"role": "user", "content": TOOL_MARKUP_RETRY_PROMPT})
+                    continue
+
+                # A usable answer built on fewer than two document reads gets a
+                # single verification nudge before it is accepted.
+                distinct_docs_read = {
+                    normalized
+                    for normalized in (f.replace("\\", "/").lstrip("./") for f in files_read)
+                    if normalized.startswith("documents/")
+                }
+                if (
+                    retry_reason is None
+                    and len(distinct_docs_read) < 2
+                    and not evidence_nudge_used
+                    and iteration + 1 < self.max_iterations
+                    and tool_call_count < self.max_tool_calls
+                    and file_read_count < self.max_file_reads
+                ):
+                    evidence_nudge_used = True
+                    messages.append({"role": "assistant", "content": answer})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": format_evidence_nudge_prompt(len(distinct_docs_read)),
+                        }
+                    )
+                    continue
+
                 answer_retries = 0
                 if retry_reason is not None:
                     answer = self._retry_unusable_answer(messages, answer, retry_reason)
@@ -699,6 +475,8 @@ class FilesystemRAGAgent:
                         "context_sources": context_sources,
                         "answer_retries": answer_retries,
                         "answer_retry_reason": retry_reason,
+                        "markup_recovery_used": markup_retry_used,
+                        "evidence_nudge_used": evidence_nudge_used,
                         "llm_request_params": self._resolved_request_params(),
                         "tool_calls": tool_call_count,
                         "reasoning_trace": [
@@ -716,6 +494,7 @@ class FilesystemRAGAgent:
                         "routing_confidence": routing_result.confidence,
                         "prefetch_terms": prefetch["terms"],
                         "prefetch_candidates": prefetch["candidates"],
+                        "token_usage": self.get_llm_usage(),
                     },
                 )
 
@@ -730,7 +509,25 @@ class FilesystemRAGAgent:
             tool_call_count=tool_call_count,
             start_time=start_time,
             prefetch=prefetch,
+            limit_type="iterations",
+            iterations=self.max_iterations,
         )
+
+    def _append_limit_tool_messages(
+        self,
+        messages: list[dict[str, Any]],
+        tool_calls: list[Any],
+        limit_type: str,
+    ) -> None:
+        """Add tool responses for pending tool calls after a limit is hit."""
+        for pending_call in tool_calls:
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": pending_call.id,
+                    "content": format_limit_reached_prompt(limit_type),
+                }
+            )
 
     def _resolved_request_params(self) -> dict[str, Any]:
         """Snapshot the generation parameters actually sent to the provider.
@@ -796,7 +593,9 @@ class FilesystemRAGAgent:
         """Call the chat completion API, retrying transient provider failures."""
         for attempt in range(_LLM_MAX_ATTEMPTS):
             try:
-                return self.client.chat.completions.create(**kwargs)
+                response = self.client.chat.completions.create(**kwargs)
+                self._record_llm_usage(response)
+                return response
             except Exception as exc:
                 if attempt < _LLM_MAX_ATTEMPTS - 1 and is_transient_llm_error(exc):
                     delay = _LLM_RETRY_BASE_DELAY_SECONDS * (2**attempt)
@@ -824,6 +623,8 @@ class FilesystemRAGAgent:
                 return self.tools.read_file(**args)
             elif tool_name == "grep_search":
                 return self.tools.grep_search(**args)
+            elif tool_name == "search_passages":
+                return self.tools.search_passages(**args)
             elif tool_name == "find_files":
                 return self.tools.find_files(**args)
             elif tool_name == "get_file_info":
@@ -844,6 +645,8 @@ class FilesystemRAGAgent:
         tool_call_count: int,
         start_time: float,
         prefetch: dict[str, Any],
+        limit_type: str,
+        iterations: int,
     ) -> AgentResponse:
         """Synthesize an answer when max iterations reached.
 
@@ -863,7 +666,7 @@ class FilesystemRAGAgent:
         messages.append(
             {
                 "role": "user",
-                "content": format_limit_reached_prompt("iterations"),
+                "content": format_limit_reached_prompt(limit_type),
             }
         )
 
@@ -906,11 +709,13 @@ class FilesystemRAGAgent:
                     for s in reasoning_trace
                 ],
                 "search_mode": search_mode.value,
-                "iterations": self.max_iterations,
-                "max_iterations_reached": True,
+                "iterations": iterations,
+                "limit_reached": limit_type,
+                "max_iterations_reached": limit_type == "iterations",
                 "query_time": query_time,
                 "prefetch_terms": prefetch["terms"],
                 "prefetch_candidates": prefetch["candidates"],
+                "token_usage": self.get_llm_usage(),
             },
         )
 

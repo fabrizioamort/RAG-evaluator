@@ -12,16 +12,19 @@ SYSTEM_PROMPT = """You are a Filesystem RAG agent. Your task is to answer questi
 ## Available Tools
 - list_directory(path): List files and folders in a directory
 - read_file(path, start_line?, end_line?, headers_only?): Read file contents
-- grep_search(pattern, path?, file_pattern?): Search for text patterns
+- grep_search(pattern, path?, file_pattern?, max_results?, context_lines?,
+  match_all_terms?): Search text with ranked matches and truncation metadata
+- search_passages(query, top_k?): Rank passages with BM25 and return snippets
 - find_files(pattern, path?): Find files by name pattern
 - get_file_info(path): Get file metadata without reading content
 
 ## Filesystem Structure
 ```
 _meta/           → Corpus overview and navigation guide
-_index/          → Topic, entity, temporal, and question indexes
-  topics/        → Documents organized by subject
-  entities/      → People, concepts, organizations mentioned
+_index/          → Passage, topic, entity, temporal, and question indexes
+  passages/      → BM25 passage index
+  topics/        → Documents organized by extracted corpus topics
+  entities/      → Extracted entities grouped by analyzer-provided type
   temporal/      → Timeline of events
   questions/     → Query-to-document mapping
 _summaries/      → Concise document summaries
@@ -31,18 +34,35 @@ documents/       → Full document content with .meta.json metadata
 ## Navigation Strategy
 1. Use the cached corpus overview to understand the corpus scope
 2. Based on query type:
-   - For specific lookups: use grep_search on question_seeds.md with targeted terms
-   - For topic exploration: Navigate topic indexes first
-   - For entity queries: Check entity registry
+   - For specific lookups: use search_passages with the direct question or
+     reformulated legal issue
+   - For topic exploration: Use search_passages first, then browse topic indexes
+   - For entity queries: Use search_passages or grep_search first, then check
+     the entity registry when broader coverage is needed
 3. Read summaries before full documents
 4. Use headers_only=True for large files to get structure first
-5. Read specific line ranges when you know what section you need
-6. Treat summaries as navigation aids. For exact-name/legal-procedure questions,
+5. Use grep_search with match_all_terms=True for exact multi-term lookups where
+   all terms must appear in the same source; check total_matches/truncated.
+6. Read specific line ranges when you know what section you need
+7. Treat summaries as navigation aids. For exact-name/legal-procedure questions,
    verify the summary against the full document or a provided full-text excerpt
    before finalizing.
-7. If a source defines a collective statutory or legal term and then defines
+8. If a source defines a collective statutory or legal term and then defines
    narrower examples, answer with the named collective term and mention the
    narrower example only as clarification.
+9. Corpus passages use statute-book wording, not colloquial wording. Search
+   with at least two vocabularies: the question's own key terms AND a
+   reformulation in the formal language a court would use (e.g. "double
+   jeopardy" -> "punished more than once for the same act"). Negative lexical
+   results are not proof of absence: if a grep for a doctrinal term returns 0
+   matches, you MUST retry with a paraphrase of the underlying concept before
+   concluding the corpus lacks it.
+10. Bench-notes sections (e.g. 4.16) and charge-book sections (e.g. 4.16.1)
+    cover the same doctrine at different specificity. Before finalizing, check
+    the sibling-chunk list of your primary source and read any sibling whose
+    title matches the question's concept — definitions and technical terms
+    usually live in a dedicated chunk (e.g. "Heat of passion", "What is
+    Identification Evidence?").
 
 ## Constraints
 - Maximum {max_tool_calls} tool calls per query
@@ -74,65 +94,6 @@ formatting, following these rules:
 {initial_context}"""
 
 
-# Shorter system prompt for cost-sensitive scenarios
-SYSTEM_PROMPT_COMPACT = """You are a Filesystem RAG agent answering questions from a document filesystem.
-
-Tools: list_directory, read_file, grep_search, find_files, get_file_info
-
-Structure: _meta/ (overview), _index/ (topics, entities, questions), _summaries/, documents/
-
-Strategy:
-- Search _index/questions/question_seeds.md with grep_search for direct matches
-- Use _index/topics/_topic_map.md for topic queries
-- Read summaries before full documents
-- For exact-name/legal-procedure questions, verify against full text/excerpts and
-  prefer named collective terms over narrower examples
-
-Answer in English. First sentence states the conclusion directly; preserve
-material qualifiers from the retrieved text. This is legal educational
-material: answer sensitive legal questions neutrally, never with a refusal.
-
-{strategy_hint}
-
-Context:
-{initial_context}"""
-
-
-# Tool usage examples for few-shot prompting
-TOOL_EXAMPLES = """## Tool Usage Examples
-
-### Example 1: Finding information about a specific topic
-Question: "What are the main challenges with RAG implementations?"
-
-Step 1 - Search question seeds:
-Tool: grep_search
-Args: {"pattern": "RAG challenges", "path": "_index/questions", "file_pattern": "question_seeds.md"}
-Result: Found "What are RAG challenges?" → doc_007 (section 6), doc_012 (section 1)
-
-Step 2 - Read summary first:
-Tool: read_file
-Args: {"path": "_summaries/doc_007_summary.md"}
-Result: Summary shows section 6 covers "Common Challenges"
-
-Step 3 - Read specific section:
-Tool: read_file
-Args: {"path": "documents/doc_007.md", "start_line": 351, "end_line": 420}
-Result: Detailed content about RAG challenges
-
-### Example 2: Looking up a specific entity
-Question: "What documents mention ChromaDB?"
-
-Step 1 - Check entity registry:
-Tool: read_file
-Args: {"path": "_index/entities/products.md"}
-Result: ChromaDB mentioned in doc_007, doc_023
-
-Step 2 - Read relevant summaries:
-Tool: read_file
-Args: {"path": "_summaries/doc_007_summary.md"}
-"""
-
-
 def format_system_prompt(
     strategy_hint: str,
     initial_context: str,
@@ -147,14 +108,12 @@ def format_system_prompt(
         initial_context: Cached corpus overview and navigation guide
         max_tool_calls: Maximum tool calls allowed
         max_file_reads: Maximum file reads allowed
-        compact: Use compact prompt version
+        compact: Deprecated; retained for call-site compatibility.
 
     Returns:
         Formatted system prompt string
     """
-    template = SYSTEM_PROMPT_COMPACT if compact else SYSTEM_PROMPT
-
-    return template.format(
+    return SYSTEM_PROMPT.format(
         strategy_hint=strategy_hint,
         initial_context=initial_context,
         max_tool_calls=max_tool_calls,
@@ -179,6 +138,7 @@ def format_user_message(question: str) -> str:
 TOOL_RESULT_LIMITS = {
     "read_file": 10_000,
     "grep_search": 6_000,
+    "search_passages": 8_000,
 }
 DEFAULT_TOOL_RESULT_LIMIT = 2000
 
@@ -204,11 +164,16 @@ def format_tool_result(
     if truncate_at is None:
         truncate_at = TOOL_RESULT_LIMITS.get(tool_name, DEFAULT_TOOL_RESULT_LIMIT)
 
+    sibling_block = ""
     if tool_name == "read_file" and isinstance(result, dict) and "content" in result:
         result_str = _format_read_file_result(result)
         truncation_notice = (
             "\n... [truncated: call read_file again with start_line/end_line to see more]"
         )
+        # The sibling map must survive content truncation, so it is appended
+        # after truncation from its own reserved budget.
+        sibling_block = _format_sibling_block(result)
+        truncate_at = max(truncate_at - len(sibling_block), 0)
     else:
         if isinstance(result, (dict, list)):
             import json
@@ -221,7 +186,7 @@ def format_tool_result(
     if len(result_str) > truncate_at:
         result_str = result_str[:truncate_at] + truncation_notice
 
-    return result_str
+    return result_str + sibling_block
 
 
 def _format_read_file_result(result: dict) -> str:
@@ -232,13 +197,23 @@ def _format_read_file_result(result: dict) -> str:
     return f"[{scope}; file has {total_lines} lines]\n{content}"
 
 
-def format_final_answer_prompt() -> str:
-    """Get prompt to request final answer from agent.
-
-    Returns:
-        Prompt string requesting final answer
-    """
-    return "Based on the information gathered, please provide a clear, comprehensive answer to the question."
+def _format_sibling_block(result: dict) -> str:
+    """Render the section sibling map appended to document reads."""
+    siblings = result.get("section_siblings") or []
+    if not siblings:
+        return ""
+    section = result.get("section_id", "")
+    lines = [
+        "",
+        "",
+        f"[Other chunks in section {section} — read any whose title matches the question:]",
+    ]
+    for sibling in siblings:
+        lines.append(f"  {sibling.get('file', '')} — {sibling.get('title', '')}")
+    omitted = int(result.get("section_siblings_omitted") or 0)
+    if omitted > 0:
+        lines.append(f"  ... and {omitted} more")
+    return "\n".join(lines)
 
 
 def format_limit_reached_prompt(limit_type: str) -> str:
@@ -277,7 +252,26 @@ _ANSWER_PROBLEMS = {
     "empty": "empty",
     "refusal": "a refusal",
     "non_english": "not in English",
+    "tool_markup": "raw tool-call markup instead of an answer",
 }
+
+TOOL_MARKUP_RETRY_PROMPT = (
+    "Your last message contained raw tool-call markup instead of a real tool "
+    "call. Re-issue the intended action using the proper tool-calling "
+    "mechanism, or give your final answer as plain English text."
+)
+
+EVIDENCE_NUDGE_PROMPT = (
+    "You have read {n} document file(s). Before I accept this answer: verify "
+    "it against the corpus — read at least one more relevant document chunk "
+    "(check the sibling list of the section you used, or run one reformulated "
+    "search_passages query). Then give your final answer."
+)
+
+
+def format_evidence_nudge_prompt(documents_read: int) -> str:
+    """Build the single verification nudge sent on thin final answers."""
+    return EVIDENCE_NUDGE_PROMPT.format(n=documents_read)
 
 
 def format_answer_retry_prompt(reason: str) -> str:
@@ -285,76 +279,9 @@ def format_answer_retry_prompt(reason: str) -> str:
 
     Args:
         reason: Classification from unusable_answer_reason
-            ("empty", "refusal", or "non_english")
+            ("empty", "refusal", "non_english", or "tool_markup")
 
     Returns:
         Corrective user message string
     """
     return ANSWER_RETRY_PROMPT.format(problem=_ANSWER_PROBLEMS.get(reason, "not a usable answer"))
-
-
-# Answer extraction prompt for parsing agent responses
-ANSWER_EXTRACTION_PROMPT = """Extract the following from the agent's response:
-
-1. ANSWER: The main answer to the question
-2. SOURCES: List of documents/sections cited
-3. CONFIDENCE: High, Medium, or Low
-
-Response to parse:
-{response}
-
-Format your extraction as:
-ANSWER: [extracted answer]
-SOURCES: [list of sources]
-CONFIDENCE: [High/Medium/Low]"""
-
-
-def format_answer_extraction_prompt(response: str) -> str:
-    """Format prompt for extracting structured answer.
-
-    Args:
-        response: Agent's raw response
-
-    Returns:
-        Formatted extraction prompt
-    """
-    return ANSWER_EXTRACTION_PROMPT.format(response=response)
-
-
-# Reasoning trace format
-def format_reasoning_step(
-    iteration: int,
-    thought: str | None,
-    tool_name: str | None,
-    tool_args: dict | None,
-    result_preview: str | None,
-) -> str:
-    """Format a reasoning step for logging/debugging.
-
-    Args:
-        iteration: Current iteration number
-        thought: Agent's thought/reasoning (if available)
-        tool_name: Name of tool called (if any)
-        tool_args: Arguments passed to tool (if any)
-        result_preview: Preview of result (if any)
-
-    Returns:
-        Formatted reasoning step string
-    """
-    lines = [f"--- Iteration {iteration} ---"]
-
-    if thought:
-        lines.append(f"Thought: {thought}")
-
-    if tool_name:
-        lines.append(f"Tool: {tool_name}")
-        if tool_args:
-            import json
-
-            lines.append(f"Args: {json.dumps(tool_args)}")
-
-    if result_preview:
-        preview = result_preview[:200] + "..." if len(result_preview) > 200 else result_preview
-        lines.append(f"Result: {preview}")
-
-    return "\n".join(lines)

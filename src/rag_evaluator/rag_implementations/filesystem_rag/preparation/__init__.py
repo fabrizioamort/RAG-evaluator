@@ -1,5 +1,8 @@
 """Filesystem RAG preparation pipeline components."""
 
+from rag_evaluator.rag_implementations.filesystem_rag.passage_index import (
+    build_bm25_passage_index,
+)
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.analyzer import (
     DocumentAnalysis,
     analyze_document,
@@ -54,6 +57,7 @@ __all__ = [
     "build_question_seeds",
     "build_timeline",
     "build_all_indexes",
+    "build_bm25_passage_index",
     "write_document_files",
     # synthesizer
     "generate_corpus_overview",

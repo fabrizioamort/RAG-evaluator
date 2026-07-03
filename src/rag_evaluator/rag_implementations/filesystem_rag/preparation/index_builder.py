@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from rag_evaluator.rag_implementations.filesystem_rag.passage_index import (
+    build_bm25_passage_index,
+)
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.analyzer import (
     DocumentAnalysis,
 )
@@ -35,6 +39,54 @@ class DocumentInfo:
 
     doc: ProcessedDocument
     analysis: DocumentAnalysis
+
+
+def _normalize_label(value: str) -> str:
+    """Normalize an analysis label while keeping it readable."""
+    normalized = re.sub(r"\s+", " ", value.strip()).lower()
+    return normalized or "general"
+
+
+def _slugify_label(value: str) -> str:
+    """Return a stable, filesystem-safe slug for an index label."""
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", value.strip().lower()).strip("_")
+    return slug or "general"
+
+
+def _topic_labels_for_document(analysis: DocumentAnalysis, max_topics: int = 5) -> list[str]:
+    """Return corpus-adaptive topic labels for a document.
+
+    LLM analysis can emit domain-specific topics such as "evidence" or
+    "burden of proof"; heuristic analysis emits distinctive keywords. Use
+    those first, falling back to scored categories only when no labels exist.
+    """
+    labels: list[str] = []
+    seen: set[str] = set()
+    for topic in analysis.topics:
+        label = _normalize_label(str(topic))
+        if label not in seen:
+            labels.append(label)
+            seen.add(label)
+        if len(labels) >= max_topics:
+            return labels
+
+    scored_topics = sorted(
+        (
+            (_normalize_label(str(topic)), float(score))
+            for topic, score in analysis.topic_scores.items()
+            if isinstance(score, int | float) and score > 0
+        ),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    for topic, _score in scored_topics:
+        if topic not in seen:
+            labels.append(topic)
+            seen.add(topic)
+        if len(labels) >= max_topics:
+            break
+
+    return labels or ["general"]
 
 
 def _get_primary_topic(topic_scores: dict[str, float]) -> str:
@@ -106,24 +158,22 @@ def build_topic_map(
     topics_dir = output_path / "_index" / "topics"
     topics_dir.mkdir(parents=True, exist_ok=True)
 
-    # Classify documents by topic
-    topic_docs: dict[str, dict[str, list[str]]] = {
-        "technical": {"primary": [], "secondary": []},
-        "business": {"primary": [], "secondary": []},
-        "science": {"primary": [], "secondary": []},
-        "general": {"primary": [], "secondary": []},
-    }
+    # Classify documents by corpus-adaptive topics from the analysis payload.
+    topic_docs: dict[str, dict[str, list[str]]] = {}
 
     doc_by_id: dict[str, DocumentInfo] = {d.doc.id: d for d in documents}
 
     for doc_info in documents:
-        primary, secondary = _classify_document_topics(doc_info.analysis.topic_scores)
+        topics = _topic_labels_for_document(doc_info.analysis)
+        primary, secondary = topics[:1], topics[1:]
         for topic in primary:
-            if topic in topic_docs:
-                topic_docs[topic]["primary"].append(doc_info.doc.id)
+            topic_docs.setdefault(topic, {"primary": [], "secondary": []})[
+                "primary"
+            ].append(doc_info.doc.id)
         for topic in secondary:
-            if topic in topic_docs:
-                topic_docs[topic]["secondary"].append(doc_info.doc.id)
+            topic_docs.setdefault(topic, {"primary": [], "secondary": []})[
+                "secondary"
+            ].append(doc_info.doc.id)
 
     # Generate _topic_map.md
     topic_map_content = _generate_topic_map_content(topic_docs)
@@ -131,12 +181,13 @@ def build_topic_map(
     print("  Created: _index/topics/_topic_map.md")
 
     # Generate individual topic files
-    for topic, doc_ids in topic_docs.items():
+    for topic, doc_ids in sorted(topic_docs.items()):
         all_ids = doc_ids["primary"] + doc_ids["secondary"]
         if all_ids:
             topic_content = _generate_topic_index_content(topic, doc_ids, doc_by_id, topic_docs)
-            (topics_dir / f"{topic}.md").write_text(topic_content, encoding="utf-8")
-            print(f"  Created: _index/topics/{topic}.md")
+            topic_file = f"{_slugify_label(topic)}.md"
+            (topics_dir / topic_file).write_text(topic_content, encoding="utf-8")
+            print(f"  Created: _index/topics/{topic_file}")
 
     return topic_docs
 
@@ -147,7 +198,11 @@ def _generate_topic_map_content(
     """Generate content for _topic_map.md."""
     lines = ["# Topic Map", ""]
 
-    for topic, doc_ids in topic_docs.items():
+    if not topic_docs:
+        lines.append("No topics extracted.")
+        return "\n".join(lines)
+
+    for topic, doc_ids in sorted(topic_docs.items()):
         all_docs = doc_ids["primary"] + doc_ids["secondary"]
         count = len(all_docs)
 
@@ -158,7 +213,8 @@ def _generate_topic_map_content(
         if doc_ids["secondary"]:
             lines.append(f"Secondary: {', '.join(doc_ids['secondary'])}")
 
-        lines.append(f"→ Details: [{topic}.md](topics/{topic}.md)")
+        topic_file = f"{_slugify_label(topic)}.md"
+        lines.append(f"-> Details: [{topic_file}]({topic_file})")
         lines.append("")
 
     return "\n".join(lines)
@@ -227,7 +283,8 @@ def _generate_topic_index_content(
     related_topics = [t for t in all_topic_docs.keys() if t != topic]
     for related in related_topics:
         if all_topic_docs[related]["primary"] or all_topic_docs[related]["secondary"]:
-            lines.append(f"- Related topics: [{related}.md]({related}.md)")
+            related_file = f"{_slugify_label(related)}.md"
+            lines.append(f"- Related topics: [{related_file}]({related_file})")
 
     return "\n".join(lines)
 
@@ -252,19 +309,18 @@ def build_entity_registry(
     entities_dir = output_path / "_index" / "entities"
     entities_dir.mkdir(parents=True, exist_ok=True)
 
-    # Aggregate entities across documents
-    entity_docs: dict[str, dict[str, list[str]]] = {
-        "people": defaultdict(list),
-        "concepts": defaultdict(list),
-        "organizations": defaultdict(list),
-        "products": defaultdict(list),
-    }
+    # Aggregate whatever entity types the analyzer produced. This preserves
+    # domain-specific types from LLM analysis instead of forcing tech buckets.
+    entity_docs: dict[str, dict[str, list[str]]] = {}
 
     for doc_info in documents:
         for entity_type, entity_list in doc_info.analysis.entities.items():
-            if entity_type in entity_docs:
-                for entity in entity_list:
-                    entity_docs[entity_type][entity].append(doc_info.doc.id)
+            normalized_type = _normalize_label(str(entity_type))
+            entity_docs.setdefault(normalized_type, defaultdict(list))
+            for entity in entity_list:
+                entity_text = str(entity).strip()
+                if entity_text:
+                    entity_docs[normalized_type][entity_text].append(doc_info.doc.id)
 
     # Generate _entity_registry.md
     registry_content = _generate_entity_registry_content(entity_docs)
@@ -272,13 +328,14 @@ def build_entity_registry(
     print("  Created: _index/entities/_entity_registry.md")
 
     # Generate individual entity type files
-    for entity_type, entity_map in entity_docs.items():
+    for entity_type, entity_map in sorted(entity_docs.items()):
         if entity_map:
             type_content = _generate_entity_type_content(entity_type, entity_map)
-            (entities_dir / f"{entity_type}.md").write_text(type_content, encoding="utf-8")
-            print(f"  Created: _index/entities/{entity_type}.md")
+            entity_file = f"{_slugify_label(entity_type)}.md"
+            (entities_dir / entity_file).write_text(type_content, encoding="utf-8")
+            print(f"  Created: _index/entities/{entity_file}")
 
-    return dict(entity_docs)
+    return {entity_type: dict(entity_map) for entity_type, entity_map in entity_docs.items()}
 
 
 def _generate_entity_registry_content(
@@ -287,7 +344,11 @@ def _generate_entity_registry_content(
     """Generate content for _entity_registry.md."""
     lines = ["# Entity Registry", ""]
 
-    for entity_type, entities in entity_docs.items():
+    if not entity_docs:
+        lines.append("No entities extracted.")
+        return "\n".join(lines)
+
+    for entity_type, entities in sorted(entity_docs.items()):
         count = len(entities)
         lines.append(f"## {entity_type.title()} ({count} unique)")
 
@@ -299,7 +360,8 @@ def _generate_entity_registry_content(
         if count > 5:
             lines.append(f"- ... and {count - 5} more")
 
-        lines.append(f"→ Full list: [{entity_type}.md](entities/{entity_type}.md)")
+        entity_file = f"{_slugify_label(entity_type)}.md"
+        lines.append(f"-> Full list: [{entity_file}]({entity_file})")
         lines.append("")
 
     return "\n".join(lines)
@@ -505,12 +567,20 @@ def build_all_indexes(
     entity_data = build_entity_registry(documents, output_path)
     question_data = build_question_seeds(documents, output_path)
     timeline_data = build_timeline(documents, output_path)
+    bm25_data = build_bm25_passage_index(
+        [(doc_info.doc, doc_info.analysis) for doc_info in documents],
+        output_path,
+    )
 
     return {
         "topics": topic_data,
         "entities": entity_data,
         "questions": question_data,
         "timeline": timeline_data,
+        "bm25_passages": {
+            "passage_count": bm25_data.get("passage_count", 0),
+            "path": "_index/passages/bm25.json",
+        },
     }
 
 
