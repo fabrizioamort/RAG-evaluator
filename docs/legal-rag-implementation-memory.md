@@ -1,6 +1,6 @@
 # Legal RAG UI Implementation Memory
 
-Last updated: 2026-07-02
+Last updated: 2026-07-03
 
 ## Goal
 
@@ -661,35 +661,124 @@ and backend development checks.
   - Verification in the `main` worktree passed:
     py_compile, ruff, and `tests/unit/test_filesystem_rag_agent.py` (6 passed).
 
+- Analyzed the failed-28 report and wrote the Filesystem RAG improvement plan
+  (2026-07-03):
+  - Input: `reports/filesystem_rag_failed_28_analysis.md` (28 binary-incorrect
+    cases from `4d5e5ad0...`; 20 gold-missed, 8 gold-accessed-but-failed;
+    failed-only rerun recovered 10/27 purely from run-to-run variance).
+  - Output: `reports/filesystem_rag_improvement_plan.md` (local, `reports/` is
+    gitignored). 20 findings across agent, preparation pipeline, and platform,
+    each with code references, plus a prioritized roadmap.
+  - Top code findings from the review:
+    - `format_tool_result` truncated EVERY tool result at 2,000 chars and
+      JSON-encoded `read_file` output, so the agent saw ~1.5k chars of any
+      document it read while judge-facing context kept 20k chars per chunk.
+      Likely explains most gold-accessed-but-failed cases.
+    - The lexical prefetch expansions/weights in `agent/agent.py` are hand-tuned
+      to specific benchmark questions (overfitting); plan replaces them with a
+      BM25 passage index built at preparation time.
+    - `is_reasoning_model()` hardcoded `deepseek-v4-flash`, so temperature was
+      silently dropped in the agent loop AND the LiteLLM judge path; provider
+      default temperature applied -> the observed rerun variance.
+    - Preparation heuristics are tech-corpus-hardcoded (topics
+      technical/business/science/general, entities ChromaDB/Google), question
+      seeds are templates, token usage is fabricated estimates, `generate()`
+      re-runs the whole agent.
+
+- Committed the outstanding WIP as a clean baseline (2026-07-03):
+  - 5 commits split by area: core FS evidence bounds (`c7c2453`), backend judge
+    hardening + partial-failure metrics (`4050d68`), frontend judge-error/
+    partial-results UI (`2f4b0bd`), article docs (`5f521ba`), permission
+    allowlist chore (`e08aea6`). `prompt-example.txt` left untracked (scratch).
+
+- Roadmap step 1: raised the tool-result budget so the agent sees the evidence
+  it reads (2026-07-03, commit `fea4212`):
+  - `agent/prompts.py`: `read_file` results are now rendered as plain text with
+    a one-line scope header (`[partial read; file has N lines]`) instead of
+    JSON, with a 10,000-char budget; `grep_search` gets 6,000; navigation tools
+    (`list_directory`, `find_files`, `get_file_info`) keep 2,000. Truncated
+    read_file results tell the agent to re-read with `start_line`/`end_line`.
+  - No call-site changes; per-tool defaults live in `TOOL_RESULT_LIMITS`.
+  - Verified: 3 new unit tests (plain-text rendering, re-read hint, navigation
+    cap); all tests in `tests/unit/test_filesystem_rag_agent.py` pass; ruff and
+    mypy clean.
+
+- Roadmap step 2: final-answer contract and refusal retry (2026-07-03, commit
+  `36c0fa5`):
+  - `agent/prompts.py`: replaced the one-line Response Format with a Corpus
+    Context section (legal educational material; answer sensitive sexual-offence
+    questions neutrally; name the missing legal element instead of refusing) and
+    an Answer Contract (English; first sentence states the conclusion; preserve
+    material qualifiers; no uncited statutes/cases; proportional length).
+    Compact prompt got a condensed version. Added `format_answer_retry_prompt`.
+  - `agent/agent.py`: `unusable_answer_reason()` classifies final answers as
+    `empty`, `non_english` (CJK-dominant), or `refusal` (conservative opening
+    patterns only). Flagged answers get ONE corrective retry reusing the
+    gathered conversation without tools (`_retry_unusable_answer`). Applied in
+    both the normal finish and the max-iterations synthesis path. Metadata
+    records `answer_retries`/`answer_retry_reason`.
+  - Targets the 4 sexual-offence refusal/empty cases and the qualifier-dropping
+    essay answers from the failed-28 report.
+  - Verified: classifier + end-to-end fake-client retry test + prompt content
+    test; 13 tests pass; ruff and mypy clean.
+
+- Roadmap step 3: determinism - stop dropping temperature for deepseek and
+  record request params (2026-07-03, commit `1caf39d`):
+  - `src/rag_evaluator/common/llm_utils.py`: split `rejects_temperature()`
+    (o-series and gpt-5 only) out of `is_reasoning_model()` (which keeps
+    deepseek-v4-flash for reasoning_effort forwarding, catalog capability flags,
+    and RLM token budgets). `get_safe_llm_params` drops temperature only for
+    models that reject it, so `deepseek-v4-flash` now gets `temperature=0.0` by
+    default instead of the provider default (~0.7-1.0) that caused 10/27 rerun
+    flips. Also fixed a pre-existing mypy arg-type in
+    `is_transient_llm_error`.
+  - `platform/backend/app/services/llm_provider.py`: same split applied to the
+    LiteLLM path - this is also the JUDGE path, so the judge was running at
+    provider-default temperature for deepseek despite passing `temperature=0`.
+    The existing runtime fallback (retry without temperature on provider error)
+    keeps this safe for unknown models.
+  - `agent/agent.py` + `filesystem_rag.py`: query metadata now carries
+    `llm_request_params` (model, temperature, reasoning_effort; None =
+    omitted/provider default) plus the step-2 retry fields through both
+    `query()` and `query_with_trace()`, so stored runs document what was
+    actually sent.
+  - Verified: 18 core unit tests pass (new `rejects_temperature` +
+    deepseek-keeps-temperature coverage, agent metadata assertion); 12 backend
+    tests pass including a new one asserting deepseek sends `temperature=0` to
+    litellm while gpt-5 sends None; ruff and mypy clean.
+
 ## Current Step
 
-- Backend + UI for Legal RAG Bench comparison/export, Filesystem RAG retrieval
-  improvements, FS gold-accessed mapping, retry UI, judge-error surfacing,
-  repair/rejudge tooling, and oversized-context safeguards are complete on the
-  legal-RAG branch.
-- The affected full Filesystem Legal RAG evaluation
-  `4d5e5ad0-66bb-461d-8a4d-f65f548b5058` has been fully rejudged with sanitized
-  context and now has 100/100 scored Legal RAG judge rows with zero judge
-  errors.
-- The general Filesystem RAG oversized-context fixes have also been ported to
-  the `main` worktree at `C:\tmp\RAG-evaluator-main-fix`.
+- Filesystem RAG improvement roadmap steps 1-3 are complete on `legal-rag-bench`
+  (2026-07-03): tool-result budget fix (`fea4212`), answer contract + refusal
+  retry (`36c0fa5`), deepseek temperature determinism + `llm_request_params`
+  manifest (`1caf39d`). All prior WIP is committed as a clean 5-commit baseline.
+- Full improvement plan with remaining findings and roadmap:
+  `reports/filesystem_rag_improvement_plan.md` (local, gitignored).
+- Branch strategy decided: no permanent legal branch. `main` has zero commits
+  the branch lacks, so once article work stabilizes, merge `legal-rag-bench`
+  into `main`, delete the branch, and work main-first from then on. The
+  benchmark services are product code (a benchmark profile), not customization.
 
 ## Pending
 
+- Rerun the failed-28 subset (same settings) to measure what roadmap steps 1-3
+  bought before starting step 4; ideally 3 identical runs to quantify the
+  remaining variance now that temperature is pinned.
+- Roadmap step 4 (retrieval fix, requires index re-preparation): BM25 passage
+  index built at preparation time + LLM summaries/question seeds; delete the
+  hand-tuned prefetch expansions/weights in `agent/agent.py`.
+- Roadmap steps 5-8: grep_search ranking + truncation signaling, limit
+  short-circuit, real token accounting (replace fabricated estimates with
+  `response.usage`), single-call `generate()`, reporting split
+  (g_eval/correct/grounded/taxonomy/gold_accessed columns), alternate-evidence
+  credit, corpus-adaptive or removed topic/entity indexes, passage-id filenames,
+  lazy imports so full pytest collection stops hanging.
 - Manual UI refresh/check for `Legal RAG clean - filesystem - 28 giu, 22:35` to
   confirm the results page shows 100 classified Legal RAG rows and no judge
   errors after the DB rejudge.
 - Decide whether to rejudge other historical Filesystem Legal RAG evaluations
   whose stored `retrieved_context` artifacts contain `# Question Seeds` or
   oversized context.
-- Rerun future Filesystem RAG evaluations after the general oversized-context
-  fix so newly generated artifacts no longer store large navigation indexes as
-  evidence context.
-- Plan the next Filesystem RAG indexing pass:
-  - proper full-text/BM25-style index over documents,
-  - cleaner question-seed generation with stopword/generic-term filtering,
-  - corpus-aware topic maps,
-  - stronger passage-id/title/source metadata,
-  - exact definition/alias index for "what is this called?" questions.
 - Verify UI can import Legal RAG Bench passages as a Knowledge Base (manual UI).
 - Perform Phase 0 UI smoke once product support is ready (manual UI).
