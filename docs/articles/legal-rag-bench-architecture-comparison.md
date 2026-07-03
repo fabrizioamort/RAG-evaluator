@@ -2,7 +2,7 @@
 
 *Three RAG architectures, one legal benchmark, and an evaluation platform built to tell them apart.*
 
-Last month Isaacus published [Legal RAG Bench](https://isaacus.com/blog/legal-rag-bench) with a claim that is easy to nod along to and easy to underestimate: for legal question answering, retrieval quality is the ceiling. Put the right passage in front of the model and it usually answers well. Miss it, and no amount of model intelligence digs you out. Their numbers back it up — the best embedding model in their table tops out at 52% retrieval accuracy at k=5, and correctness rises and falls with it.
+In February, Isaacus published [Legal RAG Bench](https://isaacus.com/blog/legal-rag-bench) with a claim that is easy to nod along to and easy to underestimate: for legal question answering, retrieval quality is the ceiling. Put the right passage in front of the model and it usually answers well. Miss it, and no amount of model intelligence digs you out. Their numbers back it up — the best general-purpose embedder in their table, OpenAI's `text-embedding-3-large`, tops out at 52% retrieval accuracy at k=5, and correctness rises and falls with it. (Their own domain-tuned Kanon 2 embedder reaches roughly 86%, a +34-point jump — a domain embedder is the biggest single lever in the paper. But you cannot always fine-tune an embedder for your corpus, and you can always change the architecture. That is the axis this piece is about.)
 
 I wanted to ask something the paper doesn't. The paper varies the embedding model and holds the retrieval *architecture* fixed: FAISS over the passages, one passage per document, top-5. Sensible for an embedding study. But that is not the choice you actually make in production. You don't get to pick "the embedding model" in isolation. You pick an architecture — plain dense vector search, a hybrid dense-plus-sparse setup, or, increasingly, an agent that reads files the way a junior associate reads a binder. Same data, same embeddings, same generator, same judge. Does the *architecture* move the ceiling?
 
@@ -12,11 +12,16 @@ Here is the headline, holding everything fixed except the architecture:
 
 | System | Retrieval mode | Retrieval | Correct | Grounded | Abstained | Avg latency |
 |---|---|---|---|---|---|---|
-| vector-search (Chroma) | dense | **52.0%** hit@5 | 49.0% | 65.0% | 18 | 6.2s |
-| hybrid (Qdrant + SPLADE) | dense + sparse | 41.0% hit@5 | 46.4% | 52.6% | 32 | 9.1s |
-| filesystem (agent) | agentic file reads | 59.0% gold | **75.0%** | 77.3% | 2 | 198.7s |
+| vector-search (Chroma) | dense | **52.0%** hit@5 | 49.0% | 65.0% | 18.0% | 6.2s |
+| hybrid (Qdrant + SPLADE) | dense + sparse | 41.0% hit@5 | 46.4% | 52.6% | 33.0% | 9.1s |
+| filesystem (agent) | agentic file reads | 59.0% gold | **75.0%** | 77.3% | 2.3% | 198.7s |
 
-*Retrieval metrics cover all 100 questions. Correctness and groundedness cover the cases that completed generation and judging: 100/100 for dense, 97/100 for hybrid, 88/100 for the agent (which is slow enough that a handful timed out). Phase 1 numbers; caveats are at the bottom and they matter.*
+*Retrieval metrics cover all 100 questions. Correctness, groundedness, and abstention cover the cases that completed generation and judging: 100/100 for dense, 97/100 for hybrid, 88/100 for the agent (which is slow enough that 12 timed out). Phase 1 numbers; caveats are at the bottom and they matter.*
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/legal-rag-retrieval-vs-correctness-dark.png">
+  <img alt="Grouped bar chart of retrieval vs judged correctness for the three architectures. Dense: 52% retrieval, 49% correct. Hybrid: 41% retrieval, 46.4% correct. Agent: 59% gold access, 75% correct — 16 points above its own retrieval rate." src="../images/legal-rag-retrieval-vs-correctness.png">
+</picture>
 
 The rest of this piece is how I got those numbers, why I trust them, and the one finding that genuinely surprised me. But first I want to talk about the thing that made the experiment cheap to run and hard to fool: the platform.
 
@@ -99,9 +104,9 @@ Now the filesystem RAG, and the reason this article has the title it does.
 
 The agentic retriever does not get a top-5 budget. It treats the corpus as a filesystem — passages regrouped into documents, each with a generated summary — and it reads. It does a lexical prefetch, pulls the most promising documents, reads their full text, and decides whether it has enough. Its retrieval metric isn't `hit@5` (there is no fixed-length ranked list to score), so I report `gold_accessed`: did it actually read the gold passage. That was 59% — already better than either vector system's hit rate.
 
-But here is the part that breaks the paper's framing. The agent's **correctness was 75%, sixteen points above its 59% gold-access rate.** A passive retriever cannot do that; its correctness is bounded by what landed in the top 5. The agent can, for two reasons. It reads *full documents*, not the lossy summaries or single chunks the vector systems live on, so when the corpus states the answer in a passage adjacent to the official gold one, it still gets there. And it almost never abstains (2 times out of 88) because it can keep digging until it finds something to stand on. Retrieval stopped being a fixed ceiling and became a budget the agent could spend.
+But here is the part that breaks the paper's framing. The agent's **correctness was 75%, sixteen points above its 59% gold-access rate.** And that is not an artifact of the 12 timeouts: score every timeout as a failure and the agent still answers 66 of 100 correctly — seventeen points above dense's 49%, and still above its own gold-access rate. A passive retriever cannot do that; its correctness is bounded by what landed in the top 5. The agent can, for two reasons. It reads *full documents*, not the lossy summaries or single chunks the vector systems live on, so when the corpus states the answer in a passage adjacent to the official gold one, it still gets there. And it almost never abstains (2 times out of 88) because it can keep digging until it finds something to stand on. Retrieval stopped being a fixed ceiling and became a budget the agent could spend.
 
-The same property is a liability worth naming. An agent that almost never says "I don't know" is one confident-wrong answer away from a problem. Here it mostly converted abstentions into successes — 64 clean successes versus dense's 49 — but its 18 ungrounded answers are the number I would watch in production, not its accuracy.
+The same property is a liability worth naming. An agent that almost never says "I don't know" is one confident-wrong answer away from a problem. Here it mostly converted abstentions into successes — 64 answers both correct *and* grounded, versus dense's 49 — but its 18 ungrounded answers are the number I would watch in production, not its accuracy.
 
 ## The cost of thinking
 
@@ -125,7 +130,7 @@ The second is why correctness reads the way it does. Early on, the vector system
 - **Closed-book policy.** It caps correctness near the retrieval rate by design and makes the vector numbers strict. The paper is effectively open-book; it recovers retrieval misses from the model's parametric legal knowledge. That gap is policy, not pipeline.
 - **Phase 1 model.** `deepseek-v4-flash`, chosen for cost, is not the paper's GPT-5.2. The retrieval numbers are model-independent and calibrate cleanly; the generation numbers are directional.
 - **Not a replication.** This is Legal RAG Bench used as a controlled harness to compare architectures on one stack, with the paper as a calibration reference. The one number I will stand behind against the paper is dense `hit@5` = 52.0%, which matches.
-- **Incomplete agent run.** 88 of 100 agent cases completed; the rest timed out. The proportions are stable, but it is a real artifact of the latency, not a footnote I want to hide.
+- **Incomplete agent run.** 88 of 100 agent cases completed; the rest timed out. Scored conservatively — every timeout counted as a failure — the agent still leads at 66% correct, but the incompleteness is a real artifact of the latency, not a footnote I want to hide.
 
 ## What I'd change next
 

@@ -2,10 +2,10 @@
 
 The Isaacus Legal RAG Bench paper makes a claim worth testing: for legal QA, retrieval quality is the ceiling. Get the right passage in front of the model and it answers; miss it and nothing saves you.
 
-The paper varies the embedding model and holds the retrieval architecture fixed. I wanted the other axis. Same 4,876 passages, same embeddings (text-embedding-3-large), same generator, same judge, top-5 — and three different retrieval architectures:
+The paper varies the embedding model and holds the retrieval architecture fixed. I wanted the other axis. Same 4,876 passages, same embeddings (text-embedding-3-large), same generator, same judge — and three different retrieval architectures:
 
-- Dense vector search (Chroma)
-- Hybrid dense + sparse / SPLADE (Qdrant)
+- Dense vector search (Chroma, top-5)
+- Hybrid dense + sparse / SPLADE (Qdrant, top-5)
 - An agent that reads the corpus like a filesystem
 
 Three things I did not fully expect:
@@ -14,7 +14,7 @@ Three things I did not fully expect:
 
 2) The passive retrievers are pinned to their ceiling exactly like the paper says. Dense: 52% retrieval → 49% correct. Hybrid: 41% → 46%. Correctness tracks retrieval almost one-to-one, and abstention is the mirror image — the worse the retrieval, the more an honest closed-book model says "I can't answer this from the context."
 
-3) The agent climbed over the ceiling. 75% correct — sixteen points above its own gold-passage access rate. A top-5 retriever can't beat what's in its five chunks. An agent that reads full documents and keeps digging can. Retrieval stopped being a fixed ceiling and became a budget it could spend.
+3) The agent climbed over the ceiling. 75% correct — sixteen points above its own gold-passage access rate (and still 66/100 counting every timeout as a failure). A top-5 retriever can't beat what's in its five chunks. An agent that reads full documents and keeps digging can. Retrieval stopped being a fixed ceiling and became a budget it could spend.
 
 The catch: ~30x the latency (199s vs 6-9s per question), and it almost never abstains, which is great until it's confidently wrong. Fast search box → dense. A memo a lawyer will rely on → the agent earns its three minutes.
 

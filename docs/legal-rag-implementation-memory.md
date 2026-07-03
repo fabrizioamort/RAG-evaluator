@@ -1,6 +1,6 @@
 # Legal RAG UI Implementation Memory
 
-Last updated: 2026-06-28
+Last updated: 2026-07-02
 
 ## Goal
 
@@ -537,18 +537,154 @@ and backend development checks.
     `rtk uv run pytest tests/test_api/test_evaluations.py::TestEvaluationControl::test_retry_incomplete_completed_evaluation -q`,
     and `rtk uv run ruff check app/api/evaluations.py app/services/job_event_log.py`.
 
+- Diagnosed and fixed missing/hidden Legal RAG judge results in
+  `Legal RAG clean - filesystem - 28 giu, 22:35` (2026-07-02):
+  - Evaluation id: `4d5e5ad0-66bb-461d-8a4d-f65f548b5058`.
+  - Initial user-visible symptom: the UI appeared to show only 88 Legal RAG
+    classified results out of 100, no failed tests, and no retry option.
+  - DB check showed the evaluation itself was complete: 100
+    `evaluation_results`, 100 test cases, job status `completed`, and
+    `summary_metrics.legal_rag_bench.judge.count=100`.
+  - The apparent "88" came from taxonomy buckets summing only classified rows:
+    12 judge outputs had `correct=None`, `grounded=None`, and
+    `parse_error="judge_response_not_json"` with no taxonomy. One additional
+    raw parse error had been deterministically classified as `abstention`, so
+    there were 13 raw judge parse failures total.
+  - Retry was unavailable by design: the evaluation was complete and had all
+    100 result rows, so the normal evaluation retry endpoint correctly saw no
+    missing test cases.
+  - Fixed stale success/error state: `job_checkpoint_service.complete_job()` now
+    clears `Evaluation.error_message` and `EvaluationJob.error_message` on
+    successful completion.
+  - Fixed silent judge drops:
+    - `legal_rag_bench_metrics.py`: judge parse errors and null
+      `correct`/`grounded` now map to taxonomy `judge_error`.
+    - Legal summary now reports `judge.scored_count`,
+      `judge.parse_error_count`, `classified_count`, and
+      `unclassified_count` when relevant.
+    - Exporter/UI/comparison components now display `judge_error` explicitly.
+  - Improved judge robustness:
+    - `LegalRAGBenchJudge.judge()` retries unparsable/empty judge responses up
+      to 3 times and accumulates token/cost usage across attempts.
+    - Added optional per-call timeout support for repair scripts.
+  - Added repair script
+    `platform/backend/scripts/repair_legal_rag_judge_errors.py`:
+    reuses stored question, expected answer, generated answer, and retrieved
+    context artifacts to rerun only the Legal RAG binary judge for failed rows.
+    On per-row provider exception it stores a transparent `judge_exception`
+    payload classified as `judge_error` and continues.
+  - Verification passed:
+    backend py_compile, ruff, targeted judge/metrics tests; frontend lint/build.
+
+- Diagnosed and fixed oversized Filesystem RAG context leaking into judge calls
+  (2026-07-02):
+  - User provided an OpenRouter prompt example showing requests with more than
+    1M input tokens.
+  - Root cause: Filesystem RAG could read the full
+    `_index/questions/question_seeds.md` file. In the affected index
+    (`idx_844272ee548a4fe19c05ad52`) that file was 3,299,374 bytes; the saved
+    OpenRouter prompt was 3,462,116 bytes.
+  - Leak path:
+    - Agent prompt encouraged checking `_index/questions/question_seeds.md`.
+    - `read_file()` returned full file content when no range/header option was
+      supplied.
+    - `agent.py` stored every `read_file` result into `context_chunks`
+      unchanged.
+    - `evaluation_runner.py` passed the full `retrieved_context` list into the
+      Legal RAG judge.
+    - `legal_rag_bench_judge.py` joined that full context into the judge prompt
+      with no cap.
+  - Real artifact audit on the evaluation:
+    - 41/100 stored contexts were over 100 KB.
+    - 18/100 contained `# Question Seeds`.
+    - The remaining 10 judge-error rows all had ~3.2-3.3M char contexts.
+  - General Filesystem RAG fixes:
+    - `FilesystemRAGTools.read_file()` now refuses full reads over 100 KB and
+      tells the agent to use `grep_search`, `headers_only=True`, or line ranges.
+    - Filesystem prompt now tells the agent to search `question_seeds.md` with
+      `grep_search` rather than read it wholesale.
+    - Agent evidence context now excludes `_index/questions/*` and caps stored
+      context chunks at 20k chars. Navigation indexes can still guide the agent,
+      but they are not stored as evidence context for downstream evaluators.
+  - Legal RAG judge safety fix:
+    - `_format_judge_context()` filters navigation/question-seed chunks,
+      truncates each evidence chunk to 8k chars, and caps total judge context at
+      40k chars.
+    - Verified against the 10 contaminated rows: each ~3.3M char retrieved
+      context became <=40k chars, and `# Question Seeds` was absent.
+  - Regression tests added for oversized full-read rejection, question-seed
+    evidence exclusion, and judge prompt context filtering/capping.
+  - Verification passed:
+    py_compile, ruff, backend judge tests, and filesystem agent tests. Root
+    pytest emitted a cache permission warning but no test failure.
+
+- Rejudged the full affected Filesystem Legal RAG evaluation with sanitized
+  context (2026-07-02):
+  - Extended `repair_legal_rag_judge_errors.py` with `--all`, which rejudges
+    every Legal RAG row instead of only parse errors / missing taxonomy.
+  - Added script helper tests in
+    `platform/backend/tests/test_scripts/test_repair_legal_rag_judge_errors.py`.
+  - Dry-run behavior:
+    - default mode selected the remaining 10 `judge_error` rows,
+    - `--all` selected all 100 Legal RAG rows.
+  - Ran:
+    `uv run python scripts/repair_legal_rag_judge_errors.py 4d5e5ad0-66bb-461d-8a4d-f65f548b5058 --all --timeout-seconds 300`.
+  - The run completed and committed. Final DB state:
+    - `count=100`
+    - `judge.count=100`
+    - `judge.scored_count=100`
+    - `judge.parse_error_count=0`
+    - `classified_count=100`
+    - `correct_rate=0.72`
+    - `grounded_rate=0.72`
+    - `retrieval.gold_accessed_rate=0.59`
+  - Final taxonomy:
+    - `success=62`
+    - `hallucination_or_ungrounded=26`
+    - `retrieval_error=8`
+    - `reasoning_error=2`
+    - `abstention=2`
+  - Final repair dry-run returned 0 rows.
+
+- Ported the general Filesystem RAG safety fixes to `main` (2026-07-02):
+  - Main worktree: `C:\tmp\RAG-evaluator-main-fix`, branch `main`.
+  - `main` already had unrelated dirty changes; only the general files were
+    patched, preserving the existing transient-provider retry changes there.
+  - Ported:
+    - `agent/tools.py`: 100 KB full-read guard.
+    - `agent/prompts.py`: search `question_seeds.md` via `grep_search`.
+    - `agent/agent.py`: exclude `_index/questions/*` from evidence context and
+      cap context chunks at 20k chars.
+    - `tests/unit/test_filesystem_rag_agent.py`: regression coverage.
+  - Not ported to `main`: `legal_rag_bench_judge.py` sanitizer, because that
+    Legal RAG backend service does not exist on `main`.
+  - Verification in the `main` worktree passed:
+    py_compile, ruff, and `tests/unit/test_filesystem_rag_agent.py` (6 passed).
+
 ## Current Step
 
-- Backend + UI for Legal RAG Bench comparison/export, the first Filesystem RAG
-  retrieval optimization, the FS gold-accessed mapping fix, and evaluation retry
-  UI are complete. Remaining work is rerunning the affected FS evaluation,
-  manual UI verification, and the experiment phases.
+- Backend + UI for Legal RAG Bench comparison/export, Filesystem RAG retrieval
+  improvements, FS gold-accessed mapping, retry UI, judge-error surfacing,
+  repair/rejudge tooling, and oversized-context safeguards are complete on the
+  legal-RAG branch.
+- The affected full Filesystem Legal RAG evaluation
+  `4d5e5ad0-66bb-461d-8a4d-f65f548b5058` has been fully rejudged with sanitized
+  context and now has 100/100 scored Legal RAG judge rows with zero judge
+  errors.
+- The general Filesystem RAG oversized-context fixes have also been ported to
+  the `main` worktree at `C:\tmp\RAG-evaluator-main-fix`.
 
 ## Pending
 
-- Rerun `Somke KB - legal fs` after the FS retrieval optimization to confirm the
-  Sally case changes from `Inspection` to `view` and to re-check summary-heavy
-  contexts across all 10 subset questions.
+- Manual UI refresh/check for `Legal RAG clean - filesystem - 28 giu, 22:35` to
+  confirm the results page shows 100 classified Legal RAG rows and no judge
+  errors after the DB rejudge.
+- Decide whether to rejudge other historical Filesystem Legal RAG evaluations
+  whose stored `retrieved_context` artifacts contain `# Question Seeds` or
+  oversized context.
+- Rerun future Filesystem RAG evaluations after the general oversized-context
+  fix so newly generated artifacts no longer store large navigation indexes as
+  evidence context.
 - Plan the next Filesystem RAG indexing pass:
   - proper full-text/BM25-style index over documents,
   - cleaner question-seed generation with stopword/generic-term filtering,
