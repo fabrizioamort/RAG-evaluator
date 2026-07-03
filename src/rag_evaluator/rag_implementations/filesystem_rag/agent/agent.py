@@ -699,6 +699,7 @@ class FilesystemRAGAgent:
                         "context_sources": context_sources,
                         "answer_retries": answer_retries,
                         "answer_retry_reason": retry_reason,
+                        "llm_request_params": self._resolved_request_params(),
                         "tool_calls": tool_call_count,
                         "reasoning_trace": [
                             {
@@ -730,6 +731,19 @@ class FilesystemRAGAgent:
             start_time=start_time,
             prefetch=prefetch,
         )
+
+    def _resolved_request_params(self) -> dict[str, Any]:
+        """Snapshot the generation parameters actually sent to the provider.
+
+        temperature None means the parameter was omitted, so the provider
+        default applied.
+        """
+        kwargs = get_safe_llm_params(self.llm_model, reasoning_effort=self.reasoning_effort)
+        return {
+            "model": self.llm_model,
+            "temperature": kwargs.get("temperature"),
+            "reasoning_effort": kwargs.get("reasoning_effort"),
+        }
 
     def _call_llm(self, messages: list[dict[str, Any]]) -> Any:
         """Call the LLM with tool definitions.
@@ -880,6 +894,7 @@ class FilesystemRAGAgent:
                 "context_sources": context_sources,
                 "answer_retries": answer_retries,
                 "answer_retry_reason": retry_reason,
+                "llm_request_params": self._resolved_request_params(),
                 "tool_calls": tool_call_count,
                 "reasoning_trace": [
                     {

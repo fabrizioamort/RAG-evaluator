@@ -498,6 +498,9 @@ Answer:"""
                     response.metadata.get("context_sources", [])
                 ),
                 "prefetch_candidates": response.metadata.get("prefetch_candidates", []),
+                "answer_retries": response.metadata.get("answer_retries", 0),
+                "answer_retry_reason": response.metadata.get("answer_retry_reason"),
+                "llm_request_params": response.metadata.get("llm_request_params"),
                 "token_usage": self._token_usage.to_dict(),
             },
         }
@@ -536,6 +539,9 @@ Answer:"""
                     response.metadata.get("context_sources", [])
                 ),
                 "prefetch_candidates": response.metadata.get("prefetch_candidates", []),
+                "answer_retries": response.metadata.get("answer_retries", 0),
+                "answer_retry_reason": response.metadata.get("answer_retry_reason"),
+                "llm_request_params": response.metadata.get("llm_request_params"),
             },
             "retrieval_trace": context.trace.to_dict(),
         }

@@ -6,7 +6,11 @@ from typing import Any
 
 import litellm
 from pydantic import BaseModel
-from rag_evaluator.common.llm_utils import is_reasoning_model, is_transient_llm_error
+from rag_evaluator.common.llm_utils import (
+    is_reasoning_model,
+    is_transient_llm_error,
+    rejects_temperature,
+)
 
 from app.config import settings
 from app.services.provider_resolver import normalize_model_for_provider
@@ -139,14 +143,13 @@ class LLMProviderService:
 
         start_time = time.time()
 
-        # Avoid temperature for reasoning models
-        is_reasoning = is_reasoning_model(model)
-
+        # Omit temperature only for models whose API rejects it; other
+        # reasoning-capable models accept it and need it for determinism.
         actual_temp: float | None = temperature
-        if is_reasoning:
+        if rejects_temperature(model):
             actual_temp = None
 
-        if reasoning_effort is not None and is_reasoning:
+        if reasoning_effort is not None and is_reasoning_model(model):
             kwargs["reasoning_effort"] = reasoning_effort
 
         # Passing an explicit api_key uses litellm's well-tested credential path
