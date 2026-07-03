@@ -15,9 +15,10 @@ interface LegalRagRetrieval {
 }
 
 interface LegalRagJudge {
-    correct: boolean
-    grounded: boolean
+    correct: boolean | null
+    grounded: boolean | null
     reasoning: string
+    parse_error?: string | null
 }
 
 interface LegalRagResult {
@@ -36,8 +37,10 @@ export interface LegalRagBenchSummaryData {
     }
     judge?: {
         count?: number
+        scored_count?: number
         correct_rate?: number | null
         grounded_rate?: number | null
+        parse_error_count?: number
     }
     taxonomy?: Record<string, number>
 }
@@ -48,6 +51,7 @@ const TAXONOMY_STYLES: Record<string, { label: string; color: string; bg: string
     retrieval_error: { label: 'Retrieval Error', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
     hallucination_or_ungrounded: { label: 'Hallucination / Ungrounded', color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/20' },
     abstention: { label: 'Abstention', color: 'text-sky-500', bg: 'bg-sky-500/10', border: 'border-sky-500/20' },
+    judge_error: { label: 'Judge Error', color: 'text-zinc-500', bg: 'bg-zinc-500/10', border: 'border-zinc-500/20' },
 }
 
 const formatRate = (val: number | null | undefined) =>
@@ -118,6 +122,12 @@ export function LegalRagBenchSummary({ data }: { data: LegalRagBenchSummaryData 
                     <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Grounded</p>
                     <p className="text-xl sm:text-2xl font-black mt-1 text-emerald-500">{formatRate(data.judge?.grounded_rate)}</p>
                 </div>
+                {(data.judge?.parse_error_count ?? 0) > 0 && (
+                    <div className="rounded-xl border border-zinc-500/20 bg-card p-4">
+                        <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Judge Errors</p>
+                        <p className="text-xl sm:text-2xl font-black mt-1 text-zinc-500">{data.judge?.parse_error_count}</p>
+                    </div>
+                )}
             </div>
 
             {taxonomyEntries.length > 0 && (
@@ -182,7 +192,10 @@ export function LegalRagResultMetrics({
                     <BoolBadge value={retrieval.gold_accessed} label="Gold Accessed" />
                 )}
                 {judge && legal.taxonomy === 'abstention' && <AbstainedBadge />}
-                {judge && legal.taxonomy !== 'abstention' && (
+                {judge && legal.taxonomy === 'judge_error' && (
+                    <BoolBadge value={null} label="Judge Error" />
+                )}
+                {judge && legal.taxonomy !== 'abstention' && legal.taxonomy !== 'judge_error' && (
                     <>
                         <BoolBadge value={judge.correct} label="Correct" />
                         <BoolBadge value={judge.grounded} label="Grounded" />
@@ -215,6 +228,12 @@ export function LegalRagResultMetrics({
                 <div className="text-xs">
                     <p className="font-semibold uppercase tracking-wider text-muted-foreground">Judge Reasoning</p>
                     <p className="mt-0.5 text-muted-foreground">{judge.reasoning}</p>
+                </div>
+            )}
+            {judge?.parse_error && (
+                <div className="text-xs">
+                    <p className="font-semibold uppercase tracking-wider text-muted-foreground">Judge Error</p>
+                    <p className="mt-0.5 text-muted-foreground">{judge.parse_error}</p>
                 </div>
             )}
         </div>

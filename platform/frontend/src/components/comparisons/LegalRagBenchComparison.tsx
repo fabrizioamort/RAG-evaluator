@@ -23,6 +23,7 @@ const TAXONOMY_ROWS: { key: string; label: string; color: string }[] = [
     { key: 'retrieval_error', label: 'Retrieval Error', color: 'text-orange-500' },
     { key: 'hallucination_or_ungrounded', label: 'Hallucination / Ungrounded', color: 'text-rose-500' },
     { key: 'abstention', label: 'Abstention', color: 'text-sky-500' },
+    { key: 'judge_error', label: 'Judge Error', color: 'text-zinc-500' },
 ]
 
 /** Index of the member with the highest value for a rate row (null if none comparable). */
