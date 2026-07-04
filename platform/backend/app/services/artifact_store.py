@@ -228,6 +228,24 @@ class ArtifactStore:
 
         return json.loads(content.decode("utf-8"))
 
+    async def retrieve_json_by_ids(
+        self, db: AsyncSession, artifact_ids: list[UUID]
+    ) -> dict[UUID, Any]:
+        """Retrieve and parse JSON artifacts with a single query, keyed by ID.
+
+        Missing artifacts and unreadable payloads are omitted from the result.
+        """
+        if not artifact_ids:
+            return {}
+        query = select(Artifact).where(Artifact.id.in_(artifact_ids))
+        result = await db.execute(query)
+        payloads: dict[UUID, Any] = {}
+        for artifact in result.scalars():
+            content = await self.retrieve(artifact.storage_key)
+            if content is not None:
+                payloads[artifact.id] = json.loads(content.decode("utf-8"))
+        return payloads
+
     async def delete(self, db: AsyncSession, artifact_id: UUID) -> bool:
         """Delete an artifact from storage and database.
 

@@ -143,6 +143,7 @@ def setup_common_mocks(
     mock_artifact_store = mock_get_artifact_store.return_value
     mock_artifact_store.store_json = AsyncMock()
     mock_artifact_store.retrieve_json_by_id = AsyncMock(return_value=None)
+    mock_artifact_store.retrieve_json_by_ids = AsyncMock(return_value={})
     # Cycle through our real artifact IDs
     mock_artifact_store.store_json.side_effect = [
         MagicMock(id=artifact_ids[0]),  # trace

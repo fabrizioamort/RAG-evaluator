@@ -26,6 +26,7 @@ TAXONOMY_ORDER = [
     ("hallucination_or_ungrounded", "Hallucination / ungrounded"),
     ("retrieval_error", "Retrieval error"),
     ("reasoning_error", "Reasoning error"),
+    ("grounded_but_incorrect", "Grounded but incorrect"),
     ("abstention", "Abstention"),
     ("judge_error", "Judge error"),
 ]

@@ -334,12 +334,17 @@ class FilesystemRAGAgent:
                     tool_name = tool_call.function.name
                     tool_args = json.loads(tool_call.function.arguments)
 
-                    # Check tool call limit
+                    # Check tool call and file read limits
+                    limit_type = None
                     if tool_call_count >= self.max_tool_calls:
+                        limit_type = "tool_calls"
+                    elif tool_name == "read_file" and file_read_count >= self.max_file_reads:
+                        limit_type = "file_reads"
+                    if limit_type is not None:
                         self._append_limit_tool_messages(
                             messages,
                             tool_calls[tool_call_index:],
-                            "tool_calls",
+                            limit_type,
                         )
                         return self._synthesize_partial_answer(
                             messages=messages,
@@ -351,29 +356,10 @@ class FilesystemRAGAgent:
                             tool_call_count=tool_call_count,
                             start_time=start_time,
                             prefetch=prefetch,
-                            limit_type="tool_calls",
+                            limit_type=limit_type,
                             iterations=iteration + 1,
-                        )
-
-                    # Check file read limit
-                    if tool_name == "read_file" and file_read_count >= self.max_file_reads:
-                        self._append_limit_tool_messages(
-                            messages,
-                            tool_calls[tool_call_index:],
-                            "file_reads",
-                        )
-                        return self._synthesize_partial_answer(
-                            messages=messages,
-                            context_chunks=context_chunks,
-                            reasoning_trace=reasoning_trace,
-                            search_mode=search_mode,
-                            files_read=files_read,
-                            context_sources=context_sources,
-                            tool_call_count=tool_call_count,
-                            start_time=start_time,
-                            prefetch=prefetch,
-                            limit_type="file_reads",
-                            iterations=iteration + 1,
+                            markup_recovery_used=markup_retry_used,
+                            evidence_nudge_used=evidence_nudge_used,
                         )
 
                     # Execute tool
@@ -511,6 +497,8 @@ class FilesystemRAGAgent:
             prefetch=prefetch,
             limit_type="iterations",
             iterations=self.max_iterations,
+            markup_recovery_used=markup_retry_used,
+            evidence_nudge_used=evidence_nudge_used,
         )
 
     def _append_limit_tool_messages(
@@ -647,6 +635,8 @@ class FilesystemRAGAgent:
         prefetch: dict[str, Any],
         limit_type: str,
         iterations: int,
+        markup_recovery_used: bool = False,
+        evidence_nudge_used: bool = False,
     ) -> AgentResponse:
         """Synthesize an answer when max iterations reached.
 
@@ -697,6 +687,8 @@ class FilesystemRAGAgent:
                 "context_sources": context_sources,
                 "answer_retries": answer_retries,
                 "answer_retry_reason": retry_reason,
+                "markup_recovery_used": markup_recovery_used,
+                "evidence_nudge_used": evidence_nudge_used,
                 "llm_request_params": self._resolved_request_params(),
                 "tool_calls": tool_call_count,
                 "reasoning_trace": [

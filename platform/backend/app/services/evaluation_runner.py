@@ -929,9 +929,9 @@ class EvaluationRunner:
             )
         )
         artifact_ids = [row[0] for row in result.all() if row[0]]
+        payloads = await self.artifact_store.retrieve_json_by_ids(self.db, artifact_ids)
         legal_results: list[dict[str, Any]] = []
-        for artifact_id in artifact_ids:
-            raw_metrics = await self.artifact_store.retrieve_json_by_id(self.db, artifact_id)
+        for raw_metrics in payloads.values():
             if isinstance(raw_metrics, dict) and isinstance(
                 raw_metrics.get("legal_rag_bench"), dict
             ):

@@ -185,8 +185,8 @@ class FilesystemRAG(BaseRAG):
         artifacts_by_source = self._prepared_artifacts_by_source()
         for idx, source in enumerate(sources, start=1):
             source_key = str(Path(source.source_path).resolve())
-            required = artifacts_by_source.get(source_key, [])
-            if all(path.exists() for path in required):
+            required = artifacts_by_source.get(source_key)
+            if required and all(path.exists() for path in required):
                 checkpoint_store.complete_document(source.doc_key, 1)
             else:
                 checkpoint_store.fail_document(

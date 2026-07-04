@@ -51,6 +51,7 @@ const RATE_ROWS: {
 const TAXONOMY_ROWS: { key: string; label: string; color: string }[] = [
     { key: 'success', label: 'Success', color: 'text-emerald-500' },
     { key: 'reasoning_error', label: 'Reasoning Error', color: 'text-amber-500' },
+    { key: 'grounded_but_incorrect', label: 'Grounded but Incorrect', color: 'text-amber-500' },
     { key: 'retrieval_error', label: 'Retrieval Error', color: 'text-orange-500' },
     { key: 'hallucination_or_ungrounded', label: 'Hallucination / Ungrounded', color: 'text-rose-500' },
     { key: 'abstention', label: 'Abstention', color: 'text-sky-500' },

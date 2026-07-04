@@ -20,13 +20,18 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.database import get_db_context
 from app.models.evaluation import Evaluation
 from app.models.evaluation_result import EvaluationResult
 from app.models.test_case import TestCase
 from app.services.artifact_store import ArtifactStore, get_artifact_store
 from app.services.legal_rag_bench_judge import LegalRAGBenchJudge
-from app.services.legal_rag_bench_metrics import derive_taxonomy, summarize_legal_rag_metrics
+from app.services.legal_rag_bench_metrics import (
+    derive_success_signals,
+    derive_taxonomy,
+    summarize_legal_rag_metrics,
+)
 from app.services.provider_resolver import resolve_provider_endpoint
 
 
@@ -203,12 +208,25 @@ async def _repair_evaluation(
             legal = raw_metrics.get("legal_rag_bench")
             if not isinstance(legal, dict):
                 legal = {}
+            retrieval = (
+                legal.get("retrieval") if isinstance(legal.get("retrieval"), dict) else None
+            )
             legal["judge"] = judge_result
             legal["taxonomy"] = derive_taxonomy(
-                retrieval_metrics=legal.get("retrieval")
-                if isinstance(legal.get("retrieval"), dict)
-                else None,
+                retrieval_metrics=retrieval,
                 judge_result=judge_result,
+            )
+            old_signals = (
+                legal.get("success_signals")
+                if isinstance(legal.get("success_signals"), dict)
+                else {}
+            )
+            legal["success_signals"] = derive_success_signals(
+                retrieval_metrics=retrieval,
+                judge_result=judge_result,
+                taxonomy=legal["taxonomy"],
+                g_eval_score=old_signals.get("g_eval_score"),
+                g_eval_threshold=settings.EVAL_G_EVAL_THRESHOLD,
             )
             raw_metrics["legal_rag_bench"] = legal
 

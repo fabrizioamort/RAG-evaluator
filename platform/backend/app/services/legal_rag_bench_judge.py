@@ -168,6 +168,14 @@ def _parse_judge_json(content: str) -> dict[str, Any]:
                 "parse_error": "judge_response_not_json",
             }
 
+    if not isinstance(data, dict):
+        return {
+            "correct": None,
+            "grounded": None,
+            "reasoning": content.strip(),
+            "parse_error": "judge_response_not_json",
+        }
+
     return {
         "correct": _coerce_bool(data.get("correct")),
         "grounded": _coerce_bool(data.get("grounded")),

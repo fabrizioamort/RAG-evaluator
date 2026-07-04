@@ -167,7 +167,9 @@ class LLMProviderService:
         timeout = kwargs.pop("timeout", settings.LLM_COMPLETION_TIMEOUT_SECONDS)
         timeout_seconds = float(timeout) if timeout is not None else None
 
-        for attempt in range(max(1, retry_attempts)):
+        max_attempts = max(1, retry_attempts)
+        attempt = 0
+        while attempt < max_attempts:
             try:
                 completion_kwargs = {
                     "model": full_model,
@@ -216,15 +218,17 @@ class LLMProviderService:
                         error=str(e),
                     )
                     actual_temp = None
+                    # Retry without temperature; does not consume a retry attempt.
                     continue
 
-                if attempt < retry_attempts - 1 and is_transient_llm_error(e):
-                    delay = retry_base_delay * (2**attempt)
+                attempt += 1
+                if attempt < max_attempts and is_transient_llm_error(e):
+                    delay = retry_base_delay * (2 ** (attempt - 1))
                     logger.warning(
                         "Transient LLM completion error, retrying",
                         model=full_model,
-                        attempt=attempt + 1,
-                        max_attempts=retry_attempts,
+                        attempt=attempt,
+                        max_attempts=max_attempts,
                         delay_seconds=delay,
                         timeout_seconds=timeout_seconds,
                         error=str(e),

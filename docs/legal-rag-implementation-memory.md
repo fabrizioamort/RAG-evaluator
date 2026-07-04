@@ -1,6 +1,6 @@
 # Legal RAG UI Implementation Memory
 
-Last updated: 2026-07-03
+Last updated: 2026-07-04
 
 ## Goal
 
@@ -862,6 +862,42 @@ and backend development checks.
     scripts across offences, benchmark-hard), `4.23-c2-s1` (correct via
     duplicate passage; `alternate_evidence_supported` already credits it),
     `3.6-c1-s1` (misleading alibi framing; expect improvement, not certainty).
+
+## Branch code review and fixes (2026-07-04)
+
+Ran a full code review of the `legal-rag-bench` branch diff vs `main` (8 finder
+angles + verification). 8 findings, all fixed and verified (72 backend tests
+pass, frontend `tsc` clean, ruff clean):
+
+1. `llm_provider.py` - the strip-temperature retry consumed a loop attempt; on
+   the last attempt the real error was masked by a generic RuntimeError. Now an
+   explicit counter; temperature retry no longer consumes an attempt.
+2. `repair_legal_rag_judge_errors.py` - rejudging updated `judge`/`taxonomy`
+   but left `success_signals` stale, and the recomputed summary aggregated the
+   stale signals. Now recomputes via `derive_success_signals` (preserves stored
+   `g_eval_score`, uses `settings.EVAL_G_EVAL_THRESHOLD`).
+3. Exporter `TAXONOMY_ORDER` and `LegalRagBenchComparison.tsx` taxonomy rows
+   omitted the `grounded_but_incorrect` bucket - those cases silently vanished
+   from taxonomy tables. Bucket added to both.
+4. `filesystem_rag.py` resumable prepare - `all([])` was vacuously true, so a
+   source with no prepared artifacts was checkpointed complete. Unmapped
+   sources now hit `fail_document`.
+5. `legal_rag_bench_judge.py` - `_parse_judge_json` crashed with
+   AttributeError when the judge returned valid non-object JSON (array/string),
+   bypassing the parse-error path. Added an isinstance guard.
+6. + 7. N+1 artifact fetches in comparison JSONL export and in
+   `_collect_legal_rag_summary` - added `ArtifactStore.retrieve_json_by_ids`
+   (single `IN()` query) and used it at both sites.
+8. `agent.py` - merged the two copy-paste limit blocks into one parameterized
+   guard and threaded `markup_recovery_used`/`evidence_nudge_used` into the
+   partial-answer metadata (they were silently dropped on limit-hit answers).
+
+Deliberately skipped (design debt, needs its own change): parallelizing the
+per-case judge + DeepEval metric calls; judge's byte-identical parse retry;
+BM25 snippet file re-reads per query; passage-id extraction heuristics (should
+become a structured `passage_id` trace contract); `filesystem_rag` string
+special-casing in metrics (should be a registry capability flag); model-name
+substring lists in `llm_utils`.
 
 ## Current Step
 

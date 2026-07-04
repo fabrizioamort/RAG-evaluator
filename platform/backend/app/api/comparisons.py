@@ -192,12 +192,14 @@ async def _build_question_records(
             .order_by(EvaluationResult.created_at.asc())
         )
         result = await db.execute(query)
-        for r in result.scalars().all():
+        rows = result.scalars().all()
+        artifact_ids = [r.raw_metrics_artifact_id for r in rows if r.raw_metrics_artifact_id]
+        payloads = await store.retrieve_json_by_ids(db, artifact_ids)
+        for r in rows:
             legal = None
-            if r.raw_metrics_artifact_id:
-                raw = await store.retrieve_json_by_id(db, r.raw_metrics_artifact_id)
-                if raw:
-                    legal = raw.get("legal_rag_bench")
+            raw = payloads.get(r.raw_metrics_artifact_id) if r.raw_metrics_artifact_id else None
+            if raw:
+                legal = raw.get("legal_rag_bench")
             test_case = r.test_case
             records.append(
                 build_question_record(
