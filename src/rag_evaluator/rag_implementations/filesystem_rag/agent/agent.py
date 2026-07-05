@@ -72,9 +72,32 @@ class ReasoningStep:
     thought: str | None = None
 
 
+@dataclass
+class ToolMessageRecord:
+    """Metadata needed to compact old tool-result messages safely."""
+
+    message_index: int
+    iteration: int
+    tool_name: str
+    args: dict[str, Any]
+    compacted: bool = False
+
+
+@dataclass
+class CachedToolResult:
+    """Reference to a previously emitted tool result."""
+
+    tool_name: str
+    args: dict[str, Any]
+    iteration: int
+    message_index: int
+
+
 _LLM_MAX_ATTEMPTS = 3
 _LLM_RETRY_BASE_DELAY_SECONDS = 1.0
 _CONTEXT_CHUNK_MAX_CHARS = 20_000
+_TOOL_RESULT_COMPACTION_KEEP_ITERATIONS = 2
+_BUDGET_NUDGE_FRACTION = 0.6
 _NAVIGATION_CONTEXT_PREFIXES = ("_index/questions/", "_index/passages/")
 _REFUSAL_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
@@ -94,6 +117,12 @@ _TOOL_MARKUP_RE = re.compile(
     r'|\binvoke name="(read_file|grep_search|search_passages'
     r'|list_directory|find_files|get_file_info)")',
     re.IGNORECASE,
+)
+
+_BUDGET_NUDGE_PROMPT = (
+    "You have used most of your iteration/tool budget. Synthesize the "
+    "best-supported answer from evidence already gathered unless one specific "
+    "missing fact blocks you; if blocked, make only that specific tool call."
 )
 
 
@@ -235,7 +264,7 @@ class FilesystemRAGAgent:
                 continue
         return 0
 
-    def _build_prefetch_context(self, question: str, max_candidates: int = 5) -> dict[str, Any]:
+    def _build_prefetch_context(self, question: str, max_candidates: int = 8) -> dict[str, Any]:
         """Build deterministic BM25 candidate context before LLM navigation starts."""
         return build_prefetch_context(self.tools, question, max_candidates=max_candidates)
 
@@ -289,9 +318,9 @@ class FilesystemRAGAgent:
             initial_context = (
                 f"{initial_context}\n\n"
                 "=== _index/passages/bm25_candidates ===\n"
-                "These candidate snippets were selected by BM25 passage search. Use "
-                "them when relevant, and verify with filesystem tools if the answer "
-                "is uncertain.\n\n"
+                "These are keyword-match candidates and question-seed navigation "
+                "hints, not verified answers. Treat them as hypotheses; check the "
+                "topic index and read the source document before relying on one.\n\n"
                 f"{candidate_context}"
             )
         system_prompt = format_system_prompt(
@@ -310,15 +339,26 @@ class FilesystemRAGAgent:
         # Tracking
         reasoning_trace: list[ReasoningStep] = []
         files_read: list[str] = []
-        context_chunks: list[str] = list(prefetch["chunks"])
-        context_sources: list[str] = list(prefetch["sources"])
+        context_chunks: list[str] = []
+        context_sources: list[str] = []
         tool_call_count = 0
         file_read_count = 0
         markup_retry_used = False
         evidence_nudge_used = False
+        budget_nudge_used = False
+        tool_message_records: list[ToolMessageRecord] = []
+        tool_result_cache: dict[tuple[str, str], CachedToolResult] = {}
 
         # ReAct loop
         for iteration in range(self.max_iterations):
+            self._compact_old_tool_messages(messages, tool_message_records, iteration)
+            if not budget_nudge_used and self._should_add_budget_nudge(
+                iteration,
+                tool_call_count,
+            ):
+                budget_nudge_used = True
+                messages.append({"role": "system", "content": _BUDGET_NUDGE_PROMPT})
+
             # Call LLM
             response = self._call_llm(messages)
 
@@ -333,12 +373,18 @@ class FilesystemRAGAgent:
                 for tool_call_index, tool_call in enumerate(tool_calls):
                     tool_name = tool_call.function.name
                     tool_args = json.loads(tool_call.function.arguments)
+                    cache_key = self._tool_cache_key(tool_name, tool_args)
+                    cached_result = tool_result_cache.get(cache_key)
 
                     # Check tool call and file read limits
                     limit_type = None
                     if tool_call_count >= self.max_tool_calls:
                         limit_type = "tool_calls"
-                    elif tool_name == "read_file" and file_read_count >= self.max_file_reads:
+                    elif (
+                        tool_name == "read_file"
+                        and cached_result is None
+                        and file_read_count >= self.max_file_reads
+                    ):
                         limit_type = "file_reads"
                     if limit_type is not None:
                         self._append_limit_tool_messages(
@@ -360,14 +406,18 @@ class FilesystemRAGAgent:
                             iterations=iteration + 1,
                             markup_recovery_used=markup_retry_used,
                             evidence_nudge_used=evidence_nudge_used,
+                            budget_nudge_used=budget_nudge_used,
                         )
 
                     # Execute tool
-                    result = self._execute_tool(tool_name, tool_args)
+                    if cached_result is None:
+                        result = self._execute_tool(tool_name, tool_args)
+                    else:
+                        result = self._cached_tool_reference(cached_result)
                     tool_call_count += 1
 
                     # Track file reads
-                    if tool_name == "read_file":
+                    if tool_name == "read_file" and cached_result is None:
                         file_read_count += 1
                         file_path = tool_args.get("path", "")
                         files_read.append(file_path)
@@ -401,6 +451,22 @@ class FilesystemRAGAgent:
                             "content": result_str,
                         }
                     )
+                    tool_message_index = len(messages) - 1
+                    tool_message_records.append(
+                        ToolMessageRecord(
+                            message_index=tool_message_index,
+                            iteration=iteration,
+                            tool_name=tool_name,
+                            args=tool_args,
+                        )
+                    )
+                    if cached_result is None:
+                        tool_result_cache[cache_key] = CachedToolResult(
+                            tool_name=tool_name,
+                            args=tool_args,
+                            iteration=iteration,
+                            message_index=tool_message_index,
+                        )
 
             else:
                 # LLM provided final answer (no tool calls)
@@ -463,6 +529,7 @@ class FilesystemRAGAgent:
                         "answer_retry_reason": retry_reason,
                         "markup_recovery_used": markup_retry_used,
                         "evidence_nudge_used": evidence_nudge_used,
+                        "budget_nudge_used": budget_nudge_used,
                         "llm_request_params": self._resolved_request_params(),
                         "tool_calls": tool_call_count,
                         "reasoning_trace": [
@@ -499,7 +566,109 @@ class FilesystemRAGAgent:
             iterations=self.max_iterations,
             markup_recovery_used=markup_retry_used,
             evidence_nudge_used=evidence_nudge_used,
+            budget_nudge_used=budget_nudge_used,
         )
+
+    def _should_add_budget_nudge(self, iteration: int, tool_call_count: int) -> bool:
+        """Return whether the one-time budget nudge should be injected."""
+        iteration_threshold = self.max_iterations * _BUDGET_NUDGE_FRACTION
+        tool_call_threshold = self.max_tool_calls * _BUDGET_NUDGE_FRACTION
+        return iteration >= iteration_threshold or tool_call_count >= tool_call_threshold
+
+    def _compact_old_tool_messages(
+        self,
+        messages: list[dict[str, Any]],
+        tool_message_records: list[ToolMessageRecord],
+        current_iteration: int,
+    ) -> None:
+        """Replace old tool result contents with compact stubs.
+
+        The assistant tool_calls messages and tool message positions remain
+        intact, preserving provider-required pairing.
+        """
+        oldest_full_iteration = current_iteration - _TOOL_RESULT_COMPACTION_KEEP_ITERATIONS
+        for record in tool_message_records:
+            if record.compacted or record.iteration >= oldest_full_iteration:
+                continue
+            if record.message_index >= len(messages):
+                continue
+            message = messages[record.message_index]
+            if message.get("role") != "tool":
+                continue
+            message["content"] = self._elided_tool_result_stub(record.tool_name, record.args)
+            record.compacted = True
+
+    def _elided_tool_result_stub(self, tool_name: str, args: dict[str, Any]) -> str:
+        """Build the compact replacement for old tool results."""
+        return (
+            f"[result elided - {tool_name}({self._summarize_tool_args(args)}); "
+            "re-call the tool if needed]"
+        )
+
+    def _cached_tool_reference(self, cached_result: CachedToolResult) -> str:
+        """Build a short result for duplicate identical tool calls."""
+        return (
+            "[cached result elided - identical "
+            f"{cached_result.tool_name}({self._summarize_tool_args(cached_result.args)}) "
+            f"was already returned in iteration {cached_result.iteration + 1}; "
+            "use the earlier result or call with different args if needed]"
+        )
+
+    def _tool_cache_key(self, tool_name: str, args: dict[str, Any]) -> tuple[str, str]:
+        """Return a stable key for detecting repeated identical tool calls."""
+        try:
+            canonical_args = json.dumps(args, sort_keys=True, separators=(",", ":"))
+        except TypeError:
+            canonical_args = json.dumps(
+                self._json_safe(args),
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        return (tool_name, canonical_args)
+
+    def _json_safe(self, value: Any) -> Any:
+        """Convert non-JSON values to strings for deterministic cache keys."""
+        if isinstance(value, dict):
+            return {str(key): self._json_safe(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._json_safe(item) for item in value]
+        if isinstance(value, tuple):
+            return [self._json_safe(item) for item in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        return str(value)
+
+    def _summarize_tool_args(self, args: dict[str, Any]) -> str:
+        """Render compact key arguments for elision/reference messages."""
+        if not args:
+            return ""
+
+        preferred_keys = (
+            "path",
+            "query",
+            "pattern",
+            "file_pattern",
+            "top_k",
+            "start_line",
+            "end_line",
+            "headers_only",
+            "max_results",
+        )
+        selected_keys = [key for key in preferred_keys if key in args]
+        selected_keys.extend(sorted(key for key in args if key not in selected_keys))
+        parts: list[str] = []
+        for key in selected_keys[:4]:
+            value = args[key]
+            if isinstance(value, str):
+                rendered = json.dumps(value[:80])
+                if len(value) > 80:
+                    rendered = rendered[:-1] + '..."'
+            else:
+                rendered = json.dumps(self._json_safe(value), sort_keys=True)
+            parts.append(f"{key}={rendered}")
+        if len(selected_keys) > 4:
+            parts.append("...")
+        return ", ".join(parts)
 
     def _append_limit_tool_messages(
         self,
@@ -637,6 +806,7 @@ class FilesystemRAGAgent:
         iterations: int,
         markup_recovery_used: bool = False,
         evidence_nudge_used: bool = False,
+        budget_nudge_used: bool = False,
     ) -> AgentResponse:
         """Synthesize an answer when max iterations reached.
 
@@ -689,6 +859,7 @@ class FilesystemRAGAgent:
                 "answer_retry_reason": retry_reason,
                 "markup_recovery_used": markup_recovery_used,
                 "evidence_nudge_used": evidence_nudge_used,
+                "budget_nudge_used": budget_nudge_used,
                 "llm_request_params": self._resolved_request_params(),
                 "tool_calls": tool_call_count,
                 "reasoning_trace": [

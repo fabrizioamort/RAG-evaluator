@@ -12,6 +12,9 @@ from rag_evaluator.rag_implementations.filesystem_rag.agent.agent import (
     AgentResponse,
     FilesystemRAGAgent,
 )
+from rag_evaluator.rag_implementations.filesystem_rag.agent.prefetch import (
+    build_prefetch_context,
+)
 from rag_evaluator.rag_implementations.filesystem_rag.agent.prompts import (
     format_tool_result,
 )
@@ -237,6 +240,64 @@ def test_prefetch_includes_full_document_excerpt_for_view_question() -> None:
             "Candidate BM25 Passage: doc_045" in chunk and 'collectively, a "view"' in chunk
             for chunk in prefetch["chunks"]
         )
+
+
+def test_prefetch_merges_question_seed_navigation_hints() -> None:
+    with TemporaryDirectory() as tmp_dir:
+        prepared_path = Path(tmp_dir)
+        _write_prepared_fixture(prepared_path)
+        agent = FilesystemRAGAgent(str(prepared_path), client=object())  # type: ignore[arg-type]
+
+        prefetch = agent._build_prefetch_context(LEGAL_VARE_QUESTION)
+
+        vare_candidate = next(
+            candidate for candidate in prefetch["candidates"] if candidate["doc_id"] == "doc_029"
+        )
+        assert "question_seed" in vare_candidate["prefetch_sources"]
+        assert prefetch["question_seed_hints"][0]["doc_id"] == "doc_029"
+
+
+def test_prefetch_caps_candidates_per_section_family() -> None:
+    class FakeTools:
+        prepared_path = Path("__missing__")
+
+        def search_passages(self, _query: str, top_k: int = 5) -> dict[str, Any]:
+            results = [
+                _prefetch_candidate("1.5-c1-s1", 90),
+                _prefetch_candidate("1.5-c2-s1", 80),
+                _prefetch_candidate("1.5-c3-s1", 70),
+                _prefetch_candidate("2.3-c1-s1", 60),
+            ]
+            return {"query_terms": ["juror"], "results": results[:top_k]}
+
+    prefetch = build_prefetch_context(  # type: ignore[arg-type]
+        FakeTools(),
+        "Should a juror exposed to news stories be excused?",
+        max_candidates=4,
+    )
+
+    selected_ids = [candidate["doc_id"] for candidate in prefetch["candidates"]]
+    assert selected_ids.count("1.5-c1-s1") == 1
+    assert "1.5-c2-s1" in selected_ids
+    assert "1.5-c3-s1" not in selected_ids
+    assert "2.3-c1-s1" in selected_ids
+
+
+def _prefetch_candidate(doc_id: str, score: float) -> dict[str, Any]:
+    return {
+        "passage_id": f"{doc_id}#L1-L3",
+        "doc_id": doc_id,
+        "score": score,
+        "matched_terms": ["juror"],
+        "title": doc_id,
+        "section_title": doc_id,
+        "source": f"documents/{doc_id}.md",
+        "summary_source": f"_summaries/{doc_id}_summary.md",
+        "start_line": 1,
+        "end_line": 3,
+        "snippet": "snippet",
+        "read_hint": {"path": f"documents/{doc_id}.md", "start_line": 1, "end_line": 3},
+    }
 
 
 def test_search_passages_tool_returns_ranked_snippet_and_read_hint() -> None:
@@ -952,6 +1013,273 @@ def test_agent_short_circuits_when_file_read_limit_reached() -> None:
         assert response.metadata["max_iterations_reached"] is False
         assert response.metadata["iterations"] == 1
         assert completions.calls == 2
+
+
+def test_agent_compacts_old_tool_messages_but_preserves_pairing() -> None:
+    class FakeCompletions:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def create(self, **kwargs: Any) -> FakeResponse:
+            self.calls += 1
+            if self.calls == 1:
+                return FakeResponse(
+                    FakeToolMessage(
+                        [FakeToolCall("call_1", "read_file", {"path": "documents/doc_029.md"})]
+                    )
+                )
+            if self.calls == 2:
+                return FakeResponse(
+                    FakeToolMessage(
+                        [FakeToolCall("call_2", "read_file", {"path": "documents/doc_013.md"})]
+                    )
+                )
+            if self.calls == 3:
+                return FakeResponse(
+                    FakeToolMessage(
+                        [FakeToolCall("call_3", "search_passages", {"query": "circumstantial"})]
+                    )
+                )
+
+            assistant_tool_messages = [
+                message
+                for message in kwargs["messages"]
+                if message.get("role") == "assistant" and message.get("tool_calls")
+            ]
+            tool_messages = [
+                message for message in kwargs["messages"] if message.get("role") == "tool"
+            ]
+            assert len(assistant_tool_messages) == 3
+            assert len(tool_messages) == 3
+            assert tool_messages[0]["tool_call_id"] == "call_1"
+            assert "result elided - read_file(path=\"documents/doc_029.md\")" in tool_messages[
+                0
+            ]["content"]
+            assert "Use of Circumstantial Evidence" in tool_messages[1]["content"]
+            assert "circumstantial" in tool_messages[2]["content"]
+            return FakeResponse(FakeFinalMessage("Answer from compacted history."))
+
+    class FakeClient:
+        def __init__(self, completions: FakeCompletions) -> None:
+            self.chat = type("FakeChat", (), {"completions": completions})()
+
+    with TemporaryDirectory() as tmp_dir:
+        prepared_path = Path(tmp_dir)
+        _write_prepared_fixture(prepared_path)
+        completions = FakeCompletions()
+        agent = FilesystemRAGAgent(str(prepared_path), client=FakeClient(completions))  # type: ignore[arg-type]
+        agent._build_prefetch_context = lambda _question: {  # type: ignore[method-assign]
+            "chunks": [],
+            "sources": [],
+            "terms": [],
+            "candidates": [],
+        }
+
+        response = agent.query(LEGAL_VARE_QUESTION)
+
+        assert response.answer == "Answer from compacted history."
+        assert completions.calls == 4
+
+
+def test_agent_keeps_recent_tool_messages_uncompacted() -> None:
+    class FakeCompletions:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def create(self, **kwargs: Any) -> FakeResponse:
+            self.calls += 1
+            if self.calls == 1:
+                return FakeResponse(
+                    FakeToolMessage(
+                        [FakeToolCall("call_1", "read_file", {"path": "documents/doc_029.md"})]
+                    )
+                )
+            if self.calls == 2:
+                return FakeResponse(
+                    FakeToolMessage(
+                        [FakeToolCall("call_2", "read_file", {"path": "documents/doc_013.md"})]
+                    )
+                )
+
+            tool_messages = [
+                message for message in kwargs["messages"] if message.get("role") == "tool"
+            ]
+            assert len(tool_messages) == 2
+            assert "result elided" not in tool_messages[0]["content"]
+            assert "The VARE Procedure" in tool_messages[0]["content"]
+            assert "Use of Circumstantial Evidence" in tool_messages[1]["content"]
+            return FakeResponse(FakeFinalMessage("Answer from recent history."))
+
+    class FakeClient:
+        def __init__(self, completions: FakeCompletions) -> None:
+            self.chat = type("FakeChat", (), {"completions": completions})()
+
+    with TemporaryDirectory() as tmp_dir:
+        prepared_path = Path(tmp_dir)
+        _write_prepared_fixture(prepared_path)
+        completions = FakeCompletions()
+        agent = FilesystemRAGAgent(str(prepared_path), client=FakeClient(completions))  # type: ignore[arg-type]
+        agent._build_prefetch_context = lambda _question: {  # type: ignore[method-assign]
+            "chunks": [],
+            "sources": [],
+            "terms": [],
+            "candidates": [],
+        }
+
+        response = agent.query(LEGAL_VARE_QUESTION)
+
+        assert response.answer == "Answer from recent history."
+        assert completions.calls == 3
+
+
+def test_agent_returns_cached_reference_for_repeated_identical_tool_call() -> None:
+    class FakeCompletions:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def create(self, **kwargs: Any) -> FakeResponse:
+            self.calls += 1
+            if self.calls == 1:
+                return FakeResponse(
+                    FakeToolMessage(
+                        [
+                            FakeToolCall(
+                                "call_1",
+                                "read_file",
+                                {"path": "documents/doc_029.md"},
+                            ),
+                            FakeToolCall(
+                                "call_2",
+                                "read_file",
+                                {"path": "documents/doc_013.md"},
+                            ),
+                        ]
+                    )
+                )
+            if self.calls == 2:
+                return FakeResponse(
+                    FakeToolMessage(
+                        [FakeToolCall("call_3", "read_file", {"path": "documents/doc_029.md"})]
+                    )
+                )
+
+            tool_messages = [
+                message for message in kwargs["messages"] if message.get("role") == "tool"
+            ]
+            assert "cached result elided" in tool_messages[-1]["content"]
+            assert "documents/doc_029.md" in tool_messages[-1]["content"]
+            assert "The VARE Procedure" not in tool_messages[-1]["content"]
+            return FakeResponse(FakeFinalMessage("Answer with cached repeat."))
+
+    class FakeClient:
+        def __init__(self, completions: FakeCompletions) -> None:
+            self.chat = type("FakeChat", (), {"completions": completions})()
+
+    with TemporaryDirectory() as tmp_dir:
+        prepared_path = Path(tmp_dir)
+        _write_prepared_fixture(prepared_path)
+        completions = FakeCompletions()
+        agent = FilesystemRAGAgent(
+            str(prepared_path),
+            max_file_reads=2,
+            client=FakeClient(completions),  # type: ignore[arg-type]
+        )
+        agent._build_prefetch_context = lambda _question: {  # type: ignore[method-assign]
+            "chunks": [],
+            "sources": [],
+            "terms": [],
+            "candidates": [],
+        }
+
+        response = agent.query(LEGAL_VARE_QUESTION)
+
+        assert response.answer == "Answer with cached repeat."
+        assert response.metadata["tool_calls"] == 3
+        assert response.metadata["files_read"].count("documents/doc_029.md") == 1
+        assert response.metadata["context_sources"].count("documents/doc_029.md") == 1
+        assert completions.calls == 3
+
+
+def test_agent_budget_nudge_fires_once_at_sixty_percent_budget() -> None:
+    class FakeCompletions:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def create(self, **kwargs: Any) -> FakeResponse:
+            self.calls += 1
+            if self.calls <= 3:
+                return FakeResponse(
+                    FakeToolMessage(
+                        [
+                            FakeToolCall(
+                                f"call_{self.calls}",
+                                "search_passages",
+                                {"query": f"query {self.calls}"},
+                            )
+                        ]
+                    )
+                )
+
+            nudges = [
+                message
+                for message in kwargs["messages"]
+                if message.get("role") == "system"
+                and "used most of your iteration/tool budget" in message.get("content", "")
+            ]
+            assert len(nudges) == 1
+            return FakeResponse(FakeFinalMessage("Budget-aware answer."))
+
+    class FakeClient:
+        def __init__(self, completions: FakeCompletions) -> None:
+            self.chat = type("FakeChat", (), {"completions": completions})()
+
+    with TemporaryDirectory() as tmp_dir:
+        prepared_path = Path(tmp_dir)
+        _write_prepared_fixture(prepared_path)
+        completions = FakeCompletions()
+        agent = FilesystemRAGAgent(
+            str(prepared_path),
+            max_iterations=5,
+            max_file_reads=0,
+            client=FakeClient(completions),  # type: ignore[arg-type]
+        )
+        agent._build_prefetch_context = lambda _question: {  # type: ignore[method-assign]
+            "chunks": [],
+            "sources": [],
+            "terms": [],
+            "candidates": [],
+        }
+
+        response = agent.query(LEGAL_VARE_QUESTION)
+
+        assert response.answer == "Budget-aware answer."
+        assert response.metadata["budget_nudge_used"] is True
+        assert completions.calls == 4
+
+
+def test_agent_does_not_report_prefetch_candidates_as_evidence_context() -> None:
+    class FakeCompletions:
+        def create(self, **_kwargs: Any) -> FakeResponse:
+            return FakeResponse(FakeFinalMessage("The answer comes after prefetch only."))
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.chat = type("FakeChat", (), {"completions": FakeCompletions()})()
+
+    with TemporaryDirectory() as tmp_dir:
+        prepared_path = Path(tmp_dir)
+        _write_prepared_fixture(prepared_path)
+        agent = FilesystemRAGAgent(
+            str(prepared_path),
+            max_iterations=1,
+            client=FakeClient(),  # type: ignore[arg-type]
+        )
+
+        response = agent.query(LEGAL_VARE_QUESTION)
+
+        assert response.context == []
+        assert response.metadata["context_sources"] == []
+        assert response.metadata["prefetch_candidates"]
 
 
 def test_agent_records_provider_token_usage() -> None:

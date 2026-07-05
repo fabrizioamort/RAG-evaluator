@@ -1,6 +1,6 @@
 # Legal RAG UI Implementation Memory
 
-Last updated: 2026-07-04
+Last updated: 2026-07-05
 
 ## Goal
 
@@ -862,6 +862,47 @@ and backend development checks.
     scripts across offences, benchmark-hard), `4.23-c2-s1` (correct via
     duplicate passage; `alternate_evidence_supported` already credits it),
     `3.6-c1-s1` (misleading alibi framing; expect improvement, not certainty).
+
+## Filesystem RAG regression plan Phase 2 (2026-07-05)
+
+Implemented Phase 2 of
+`docs/plans/2026-07-04-filesystem-rag-regression-fix.md` after Phase 0/1 were
+already present in the worktree:
+
+- `agent/prefetch.py`: prefetch now unions raw BM25, deterministic
+  legal-doctrine reformulation, and `_index/questions/question_seeds.md`
+  navigation hints. Candidates are deduped/merged by source, retain
+  `prefetch_sources`/`prefetch_queries`, default top candidates increased to 8,
+  and merge-time section-family diversity caps any one family at 2 candidates.
+  Question-seed hints require at least two non-stopword overlaps to avoid
+  promoting generic matches like "procedure".
+- `agent/agent.py`: prefetch snippets are no longer seeded into
+  `context_chunks`/`context_sources`; they remain in the system prompt only.
+  The BM25 candidate block is explicitly framed as keyword-match hypotheses and
+  question-seed navigation hints, not verified evidence.
+- `agent/prompts.py`: navigation strategy now treats `search_passages` and the
+  topic index as co-equal entry paths, adds the chapter-mismatch rule for
+  model-charge/bench-notes crowd-out, and requires one contrary search before
+  finalizing a yes/no answer when a nearby contrary candidate exists.
+- `scripts/legal_rag_retrieval_check.py`: harness now supports
+  `--mode bm25|prefetch`, so Phase 2 candidate ranking can be measured without
+  LLM calls while preserving the raw BM25 Phase 0 baseline.
+- Tests added/updated in `tests/unit/test_filesystem_rag_agent.py` and
+  `tests/unit/test_legal_rag_retrieval_check.py` for question-seed prefetch
+  merging, section-family caps, prefetch-not-evidence behavior, and harness
+  prefetch evaluation.
+
+Verification completed locally:
+
+- `rtk uv run pytest tests/unit/test_filesystem_rag_agent.py tests/unit/test_legal_rag_retrieval_check.py -q`
+  passed: 49 tests.
+- `rtk uv run ruff check src/rag_evaluator/rag_implementations/filesystem_rag/agent/prefetch.py src/rag_evaluator/rag_implementations/filesystem_rag/agent/agent.py src/rag_evaluator/rag_implementations/filesystem_rag/agent/prompts.py scripts/legal_rag_retrieval_check.py tests/unit/test_filesystem_rag_agent.py tests/unit/test_legal_rag_retrieval_check.py`
+  passed.
+- The retrieval harness gate could not be run in this workspace because the
+  default `data/prepared/filesystem_rag` is the generic AI demo corpus and lacks
+  `_index/passages/bm25.json`; no local copy of
+  `idx_46d32975669e4340bc6d031f` was present. Run the gate with:
+  `rtk uv run python scripts/legal_rag_retrieval_check.py --mode prefetch --top-k 8 --prepared-path <locked-legal-rag-prepared-path>`.
 
 ## Branch code review and fixes (2026-07-04)
 
