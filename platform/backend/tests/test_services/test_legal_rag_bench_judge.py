@@ -165,3 +165,32 @@ async def test_judge_filters_navigation_context_and_caps_prompt() -> None:
     assert "Evidence A." in prompt
     assert "... [retrieved context chunk truncated]" in prompt
     assert len(prompt) < 45_000
+
+
+@pytest.mark.asyncio
+async def test_judge_context_caps_are_configurable() -> None:
+    provider = FakeProviderService(
+        content='{"correct": true, "grounded": true, "reasoning": "Supported."}'
+    )
+    judge = LegalRAGBenchJudge(
+        provider_service=provider,  # type: ignore[arg-type]
+        context_max_chars=400,
+        context_chunk_max_chars=100,
+    )
+
+    await judge.judge(
+        question="Question?",
+        reference_answer="Reference.",
+        generated_answer="Generated.",
+        retrieved_context=["Evidence A. " + ("x" * 200), "Evidence B. " + ("y" * 200)],
+        model="judge-model",
+        provider="test-provider",
+        base_url=None,
+        api_key=None,
+    )
+
+    assert provider.messages is not None
+    prompt = provider.messages[1]["content"]
+    assert "Evidence A." in prompt
+    assert "Evidence B." in prompt
+    assert "... [retrieved context chunk truncated]" in prompt

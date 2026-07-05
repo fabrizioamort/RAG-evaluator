@@ -40,8 +40,16 @@ _NON_ANSWER_PATTERNS = tuple(
 class LegalRAGBenchJudge:
     """Run a paper-style binary correctness/groundedness judge."""
 
-    def __init__(self, provider_service: LLMProviderService | None = None) -> None:
+    def __init__(
+        self,
+        provider_service: LLMProviderService | None = None,
+        *,
+        context_max_chars: int = JUDGE_CONTEXT_MAX_CHARS,
+        context_chunk_max_chars: int = JUDGE_CONTEXT_CHUNK_MAX_CHARS,
+    ) -> None:
         self.provider_service = provider_service or LLMProviderService()
+        self.context_max_chars = context_max_chars
+        self.context_chunk_max_chars = context_chunk_max_chars
 
     async def judge(
         self,
@@ -56,7 +64,11 @@ class LegalRAGBenchJudge:
         api_key: str | None,
         timeout_seconds: float | None = None,
     ) -> dict[str, Any]:
-        context = _format_judge_context(retrieved_context)
+        context = _format_judge_context(
+            retrieved_context,
+            context_max_chars=self.context_max_chars,
+            context_chunk_max_chars=self.context_chunk_max_chars,
+        )
         messages = [
             {
                 "role": "system",
@@ -184,7 +196,12 @@ def _parse_judge_json(content: str) -> dict[str, Any]:
     }
 
 
-def _format_judge_context(retrieved_context: list[str]) -> str:
+def _format_judge_context(
+    retrieved_context: list[str],
+    *,
+    context_max_chars: int = JUDGE_CONTEXT_MAX_CHARS,
+    context_chunk_max_chars: int = JUDGE_CONTEXT_CHUNK_MAX_CHARS,
+) -> str:
     """Build a bounded evidence context for the judge prompt."""
     chunks: list[str] = []
     total_chars = 0
@@ -194,14 +211,14 @@ def _format_judge_context(retrieved_context: list[str]) -> str:
         if not chunk or _is_navigation_context(chunk):
             continue
 
-        if len(chunk) > JUDGE_CONTEXT_CHUNK_MAX_CHARS:
+        if len(chunk) > context_chunk_max_chars:
             chunk = (
-                chunk[:JUDGE_CONTEXT_CHUNK_MAX_CHARS].rstrip()
+                chunk[:context_chunk_max_chars].rstrip()
                 + "\n... [retrieved context chunk truncated]"
             )
 
         separator_chars = 2 if chunks else 0
-        remaining = JUDGE_CONTEXT_MAX_CHARS - total_chars - separator_chars
+        remaining = context_max_chars - total_chars - separator_chars
         if remaining <= 0:
             break
 

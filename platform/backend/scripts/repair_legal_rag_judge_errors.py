@@ -103,6 +103,9 @@ async def repair_evaluation(evaluation_id: uuid.UUID, dry_run: bool) -> int:
         judge_model_override=None,
         judge_provider_override=None,
         timeout_seconds=None,
+        judge_context_max_chars=None,
+        judge_context_chunk_max_chars=None,
+        source_qa_ids=None,
         rejudge_all=False,
     )
 
@@ -114,6 +117,9 @@ async def _repair_evaluation(
     judge_model_override: str | None,
     judge_provider_override: str | None,
     timeout_seconds: float | None,
+    judge_context_max_chars: int | None,
+    judge_context_chunk_max_chars: int | None,
+    source_qa_ids: set[int] | None,
     rejudge_all: bool,
 ) -> int:
     async with get_db_context() as db:
@@ -145,7 +151,12 @@ async def _repair_evaluation(
 
         base_override = generation_base_url if judge_provider == generation_provider else None
         endpoint = resolve_provider_endpoint(judge_provider, base_override)
-        judge = LegalRAGBenchJudge()
+        judge_kwargs: dict[str, int] = {}
+        if judge_context_max_chars is not None:
+            judge_kwargs["context_max_chars"] = judge_context_max_chars
+        if judge_context_chunk_max_chars is not None:
+            judge_kwargs["context_chunk_max_chars"] = judge_context_chunk_max_chars
+        judge = LegalRAGBenchJudge(**judge_kwargs)
 
         rows_result = await db.execute(
             select(EvaluationResult)
@@ -162,6 +173,8 @@ async def _repair_evaluation(
                 continue
             if not row.test_case:
                 print(f"Skipping {row.id}: missing test case")
+                continue
+            if not _matches_source_qa_filter(row.test_case, source_qa_ids):
                 continue
             repair_rows.append((row, row.test_case, raw_metrics or {}))
 
@@ -244,6 +257,17 @@ async def _repair_evaluation(
         return len(repair_rows)
 
 
+def _matches_source_qa_filter(test_case: TestCase, source_qa_ids: set[int] | None) -> bool:
+    if not source_qa_ids:
+        return True
+    raw_source_qa_id = (test_case.metadata_ or {}).get("source_qa_id")
+    try:
+        source_qa_id = int(raw_source_qa_id)
+    except (TypeError, ValueError):
+        return False
+    return source_qa_id in source_qa_ids
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("evaluation_id", type=uuid.UUID)
@@ -269,6 +293,25 @@ def main() -> None:
         help="Override per-call judge timeout.",
     )
     parser.add_argument(
+        "--judge-context-max-chars",
+        type=int,
+        default=None,
+        help="Override total retrieved-context characters visible to the judge.",
+    )
+    parser.add_argument(
+        "--judge-context-chunk-max-chars",
+        type=int,
+        default=None,
+        help="Override per-context-chunk characters visible to the judge.",
+    )
+    parser.add_argument(
+        "--source-qa-id",
+        type=int,
+        action="append",
+        default=None,
+        help="Only rejudge rows whose test case metadata.source_qa_id matches. Repeatable.",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="Rejudge every Legal RAG row, not only judge errors/missing taxonomy.",
@@ -281,6 +324,9 @@ def main() -> None:
             judge_model_override=args.judge_model,
             judge_provider_override=args.judge_provider,
             timeout_seconds=args.timeout_seconds,
+            judge_context_max_chars=args.judge_context_max_chars,
+            judge_context_chunk_max_chars=args.judge_context_chunk_max_chars,
+            source_qa_ids=set(args.source_qa_id) if args.source_qa_id else None,
             rejudge_all=args.all,
         )
     )
