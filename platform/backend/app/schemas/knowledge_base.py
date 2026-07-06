@@ -115,6 +115,12 @@ class KnowledgeBaseList(PaginatedResponse):
     items: list[KnowledgeBaseResponse]
 
 
+class DocumentList(PaginatedResponse):
+    """Paginated list of knowledge base documents."""
+
+    items: list[DocumentResponse]
+
+
 class KnowledgeBaseIndexRequest(BaseSchema):
     """Schema for indexing request."""
 

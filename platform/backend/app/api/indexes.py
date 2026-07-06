@@ -65,6 +65,9 @@ def _index_to_response(index: KnowledgeBaseIndex) -> KnowledgeBaseIndexResponse:
         knowledge_base_name=index.knowledge_base.name if index.knowledge_base else None,
         rag_config_name=index.rag_config.name if index.rag_config else None,
         project_id=index.knowledge_base.project_id if index.knowledge_base else None,
+        project_name=index.knowledge_base.project.name
+        if index.knowledge_base and index.knowledge_base.project
+        else None,
     )
 
 
@@ -83,7 +86,7 @@ async def list_indexes(
 ) -> KnowledgeBaseIndexList:
     """List all indexes."""
     query = select(KnowledgeBaseIndex).options(
-        selectinload(KnowledgeBaseIndex.knowledge_base),
+        selectinload(KnowledgeBaseIndex.knowledge_base).selectinload(KnowledgeBase.project),
         selectinload(KnowledgeBaseIndex.rag_config),
     )
 
@@ -161,7 +164,7 @@ async def create_index(
         select(KnowledgeBaseIndex)
         .where(KnowledgeBaseIndex.id == index.id)
         .options(
-            selectinload(KnowledgeBaseIndex.knowledge_base),
+            selectinload(KnowledgeBaseIndex.knowledge_base).selectinload(KnowledgeBase.project),
             selectinload(KnowledgeBaseIndex.rag_config),
         )
     )
@@ -186,7 +189,7 @@ async def get_index(
         select(KnowledgeBaseIndex)
         .where(KnowledgeBaseIndex.id == index_id)
         .options(
-            selectinload(KnowledgeBaseIndex.knowledge_base),
+            selectinload(KnowledgeBaseIndex.knowledge_base).selectinload(KnowledgeBase.project),
             selectinload(KnowledgeBaseIndex.rag_config),
         )
     )
@@ -311,7 +314,7 @@ async def archive_index(
         select(KnowledgeBaseIndex)
         .where(KnowledgeBaseIndex.id == index_id)
         .options(
-            selectinload(KnowledgeBaseIndex.knowledge_base),
+            selectinload(KnowledgeBaseIndex.knowledge_base).selectinload(KnowledgeBase.project),
             selectinload(KnowledgeBaseIndex.rag_config),
         )
     )

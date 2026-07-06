@@ -19,6 +19,7 @@ import { RetrievalTraceViewer } from './RetrievalTraceViewer'
 import { ManifestViewer } from './ManifestViewer'
 import { BaselineComparison } from './BaselineComparison'
 import { DifficultyChart } from './DifficultyChart'
+import { PaginationFooter } from '@/components/ui/PaginationFooter'
 
 interface EvaluationResultsProps {
     evaluationId: string
@@ -53,7 +54,7 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
 ];
 
 export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsProps) {
-    const [page] = useState(1)
+    const [page, setPage] = useState(1)
     const [search, setSearch] = useState('')
     const [expandedResultId, setExpandedResultId] = useState<string | null>(null)
     const [activeDetailTab, setActiveDetailTab] = useState<'overview' | 'trace'>('overview')
@@ -61,6 +62,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
     const [isSettingBaseline, setIsSettingBaseline] = useState(false)
     const [baselineReason, setBaselineReason] = useState('')
     const [committedSearch, setCommittedSearch] = useState('')
+    const pageSize = 50
 
     const { data: evaluation } = useQuery({
         queryKey: ['evaluation', evaluationId],
@@ -68,8 +70,12 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
     })
 
     const { data: results, isLoading } = useQuery({
-        queryKey: ['evaluation-results', evaluationId, page],
-        queryFn: () => api.evaluations.getResults(evaluationId, { limit: 50, offset: (page - 1) * 50 }),
+        queryKey: ['evaluation-results', evaluationId, page, committedSearch],
+        queryFn: () => api.evaluations.getResults(evaluationId, {
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+            search: committedSearch || undefined,
+        }),
     })
 
     const { data: baseline, refetch: refetchBaseline } = useQuery({
@@ -93,20 +99,8 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
 
     const filteredItems = useMemo(() => {
         const items = results?.data?.items || []
-        const term = committedSearch.trim().toLowerCase()
-        if (!term) return items
-        return items.filter((result) => {
-            const haystack = [
-                result.question,
-                result.expected_answer,
-                result.generated_answer,
-            ]
-                .filter(Boolean)
-                .join(' ')
-                .toLowerCase()
-            return haystack.includes(term)
-        })
-    }, [results?.data?.items, committedSearch])
+        return items
+    }, [results?.data?.items])
     const selectedMetricIds = evaluation?.data?.metric_config?.metrics || ['faithfulness', 'relevancy', 'precision', 'recall', 'g_eval'];
     const activeMetrics = METRIC_DEFINITIONS.filter(m => selectedMetricIds.includes(m.id));
     const correctnessMetric = activeMetrics.find(m => m.id === 'g_eval');
@@ -315,6 +309,7 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         setCommittedSearch(search)
+                                        setPage(1)
                                     }
                                 }}
                                 className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-4 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -456,10 +451,17 @@ export function EvaluationResults({ evaluationId, onBack }: EvaluationResultsPro
 
                         {filteredItems.length === 0 && (
                             <div className="py-20 text-center text-muted-foreground">
-                                No results found matching your search.
+                                {committedSearch ? 'No results found matching your search.' : 'No results have been saved yet.'}
                             </div>
                         )}
                     </div>
+                    <PaginationFooter
+                        total={results?.data.total ?? 0}
+                        offset={results?.data.offset ?? (page - 1) * pageSize}
+                        limit={results?.data.limit ?? pageSize}
+                        onPageChange={(offset) => setPage(Math.floor(offset / pageSize) + 1)}
+                        isLoading={isLoading}
+                    />
                 </>
             ) : (
                 <ManifestViewer evaluationId={evaluationId} />

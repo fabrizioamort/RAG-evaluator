@@ -33,13 +33,12 @@ import { RAGConfigDialog } from '@/components/rag-configs/RAGConfigDialog'
 import { KBList } from '@/components/knowledge-bases/KBList'
 import { CreateKBDialog } from '@/components/knowledge-bases/CreateKBDialog'
 import { StartEvaluationWizard } from '@/components/evaluations/StartEvaluationWizard'
-import { EvaluationProgress } from '@/components/evaluations/EvaluationProgress'
-import { EvaluationResults } from '@/components/evaluations/EvaluationResults'
 import { TrendChart } from '@/components/trends/TrendChart'
 import { EfficiencyMap } from '@/components/trends/EfficiencyMap'
 import { ComparisonsTab } from '@/components/comparisons/ComparisonsTab'
 import { EditProjectDialog } from '@/components/projects/EditProjectDialog'
 import { IndexCard } from '@/components/indexes/IndexCard'
+import { PaginationFooter } from '@/components/ui/PaginationFooter'
 
 function ProjectOverviewTab({
     project,
@@ -591,19 +590,76 @@ function EvaluationsTab({
     initialIndexId?: string
 }) {
     const navigate = useNavigate()
+    const [searchParams, setSearchParams] = useSearchParams()
     const [isWizardOpen, setIsWizardOpen] = useState(false)
-    const [activeEvaluationId, setActiveEvaluationId] = useState<string | null>(null)
     const [hasAutoOpened, setHasAutoOpened] = useState(false)
     const queryClient = useQueryClient()
+    const pageSize = 20
+    const offsetParam = Number(searchParams.get('evalOffset') || '0')
+    const offset = Number.isFinite(offsetParam) && offsetParam > 0 ? offsetParam : 0
+    const statusFilter = searchParams.get('evalStatus') || ''
+    const testSetFilter = searchParams.get('evalTestSet') || ''
+    const ragConfigFilter = searchParams.get('evalRagConfig') || ''
+    const indexFilter = searchParams.get('evalIndex') || ''
 
     const { data, isLoading } = useQuery({
-        queryKey: ['evaluations', projectId],
-        queryFn: () => api.evaluations.list(projectId),
+        queryKey: ['evaluations', projectId, statusFilter, testSetFilter, ragConfigFilter, indexFilter, offset],
+        queryFn: () => api.evaluations.list(projectId, {
+            limit: pageSize,
+            offset,
+            status: statusFilter || undefined,
+            test_set_id: testSetFilter || undefined,
+            rag_config_id: ragConfigFilter || undefined,
+            knowledge_base_index_id: indexFilter || undefined,
+        }),
+        enabled: !!projectId,
+    })
+
+    const { data: testSetsData } = useQuery({
+        queryKey: ['test-sets', projectId, 'eval-filter-options'],
+        queryFn: () => api.testSets.list(projectId, { limit: 100 }),
+        enabled: !!projectId,
+    })
+    const { data: ragConfigsData } = useQuery({
+        queryKey: ['rag-configs', projectId, 'eval-filter-options'],
+        queryFn: () => api.ragConfigs.list(projectId, { limit: 100 }),
+        enabled: !!projectId,
+    })
+    const { data: indexesData } = useQuery({
+        queryKey: ['indexes', projectId, 'eval-filter-options'],
+        queryFn: () => api.indexes.list({ project_id: projectId, limit: 100 }),
         enabled: !!projectId,
     })
 
     const evaluations = data?.data?.items || []
-    const activeEvaluation = evaluations.find(e => e.id === activeEvaluationId)
+    const hasFilters = Boolean(statusFilter || testSetFilter || ragConfigFilter || indexFilter)
+    const total = data?.data?.total ?? 0
+    const testSets = testSetsData?.data.items ?? []
+    const ragConfigs = ragConfigsData?.data.items ?? []
+    const indexes = indexesData?.data.items ?? []
+
+    const updateEvaluationParam = (key: string, value: string) => {
+        const next = new URLSearchParams(searchParams)
+        next.set('tab', 'evals')
+        if (value) {
+            next.set(key, value)
+        } else {
+            next.delete(key)
+        }
+        next.delete('evalOffset')
+        setSearchParams(next)
+    }
+
+    const updateEvaluationOffset = (nextOffset: number) => {
+        const next = new URLSearchParams(searchParams)
+        next.set('tab', 'evals')
+        if (nextOffset > 0) {
+            next.set('evalOffset', String(nextOffset))
+        } else {
+            next.delete('evalOffset')
+        }
+        setSearchParams(next)
+    }
 
     useEffect(() => {
         if (launchWizard && !hasAutoOpened) {
@@ -611,52 +667,6 @@ function EvaluationsTab({
             setHasAutoOpened(true)
         }
     }, [launchWizard, hasAutoOpened])
-
-    if (activeEvaluationId) {
-        const closeActiveEvaluation = () => {
-            setActiveEvaluationId(null)
-            queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
-        }
-        const hasSavedResults = (activeEvaluation?.result_count ?? 0) > 0
-        const canShowPartialResults =
-            (activeEvaluation?.status === 'failed' || activeEvaluation?.status === 'cancelled') && hasSavedResults
-
-        if (activeEvaluation?.status === 'completed') {
-            return (
-                <EvaluationResults
-                    evaluationId={activeEvaluationId}
-                    onBack={closeActiveEvaluation}
-                />
-            )
-        }
-
-        return (
-            <div className="space-y-6">
-                <button
-                    onClick={closeActiveEvaluation}
-                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to Evaluations
-                </button>
-                <EvaluationProgress
-                    evaluationId={activeEvaluationId}
-                    evaluation={activeEvaluation}
-                    onRetryStarted={() => {
-                        queryClient.invalidateQueries({ queryKey: ['evaluation', activeEvaluationId] })
-                        queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
-                    }}
-                    onClose={closeActiveEvaluation}
-                />
-                {canShowPartialResults && (
-                    <EvaluationResults
-                        evaluationId={activeEvaluationId}
-                        onBack={closeActiveEvaluation}
-                    />
-                )}
-            </div>
-        )
-    }
 
     if (isLoading) {
         return (
@@ -683,90 +693,160 @@ function EvaluationsTab({
                 </button>
             </div>
 
+            <div className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-4">
+                <select
+                    value={testSetFilter}
+                    onChange={(event) => updateEvaluationParam('evalTestSet', event.target.value)}
+                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                >
+                    <option value="">All test sets</option>
+                    {testSets.map((testSet) => (
+                        <option key={testSet.id} value={testSet.id}>{testSet.name}</option>
+                    ))}
+                </select>
+                <select
+                    value={ragConfigFilter}
+                    onChange={(event) => updateEvaluationParam('evalRagConfig', event.target.value)}
+                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                >
+                    <option value="">All RAG configs</option>
+                    {ragConfigs.map((config) => (
+                        <option key={config.id} value={config.id}>{config.name}</option>
+                    ))}
+                </select>
+                <select
+                    value={indexFilter}
+                    onChange={(event) => updateEvaluationParam('evalIndex', event.target.value)}
+                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                >
+                    <option value="">All indexes</option>
+                    {indexes.map((index) => (
+                        <option key={index.id} value={index.id}>{index.name}</option>
+                    ))}
+                </select>
+                <select
+                    value={statusFilter}
+                    onChange={(event) => updateEvaluationParam('evalStatus', event.target.value)}
+                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                >
+                    <option value="">All statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="running">Running</option>
+                    <option value="completed">Completed</option>
+                    <option value="failed">Failed</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="paused">Paused</option>
+                </select>
+            </div>
+
             {evaluations.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 bg-card/50">
                     <div className="rounded-full bg-primary/10 p-5 text-primary">
                         <FlaskConical className="h-10 w-10" />
                     </div>
-                    <h3 className="mt-5 text-xl font-semibold">No evaluations yet</h3>
+                    <h3 className="mt-5 text-xl font-semibold">{hasFilters ? 'No matching evaluations' : 'No evaluations yet'}</h3>
                     <p className="mt-2 text-center text-muted-foreground max-w-sm">
-                        Start your first RAG evaluation to measure performance across different metrics.
+                        {hasFilters
+                            ? 'Clear filters or adjust the selected context to see more evaluations.'
+                            : 'Start your first RAG evaluation to measure performance across different metrics.'}
                     </p>
-                    <button
-                        onClick={() => setIsWizardOpen(true)}
-                        className="mt-6 flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md"
-                    >
-                        <Play className="h-4 w-4" />
-                        Start First Evaluation
-                    </button>
+                    {!hasFilters && (
+                        <button
+                            onClick={() => setIsWizardOpen(true)}
+                            className="mt-6 flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-md"
+                        >
+                            <Play className="h-4 w-4" />
+                            Start First Evaluation
+                        </button>
+                    )}
                 </div>
             ) : (
-                <div className="grid gap-4">
-                    {evaluations.map((evalItem: Evaluation) => (
-                        <div
-                            key={evalItem.id}
-                            className="group relative flex items-center justify-between rounded-xl border border-border bg-card p-4 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer"
-                            onClick={() => navigate(`/projects/${projectId}/evaluations/${evalItem.id}`)}
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className={cn(
-                                    "flex h-10 w-10 items-center justify-center rounded-lg",
-                                    evalItem.status === 'completed' ? "bg-green-500/10 text-green-600" :
-                                        evalItem.status === 'failed' ? "bg-red-500/10 text-red-600" :
-                                            evalItem.status === 'running' ? "bg-blue-500/10 text-blue-600 animate-pulse" :
-                                                "bg-muted text-muted-foreground"
-                                )}>
-                                    <FlaskConical className="h-5 w-5" />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <p className="font-bold">{evalItem.name || `Evaluation #${evalItem.id.slice(0, 8)}`}</p>
-                                        <span className={cn(
-                                            "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                                            evalItem.status === 'completed' ? "bg-green-500/10 text-green-600" :
-                                                evalItem.status === 'failed' ? "bg-red-500/10 text-red-600" :
-                                                    evalItem.status === 'running' ? "bg-blue-500/10 text-blue-600" :
-                                                        "bg-muted text-muted-foreground"
-                                        )}>
-                                            {evalItem.status}
-                                        </span>
+                <div className="overflow-hidden rounded-xl border border-border bg-card">
+                    <div className="divide-y divide-border">
+                        {evaluations.map((evalItem: Evaluation) => (
+                            <div
+                                key={evalItem.id}
+                                className="group relative flex cursor-pointer flex-col gap-4 p-4 transition-all hover:bg-accent/40 lg:flex-row lg:items-center lg:justify-between"
+                                onClick={() => navigate(`/projects/${projectId}/evaluations/${evalItem.id}`)}
+                            >
+                                <div className="flex items-start gap-4">
+                                    <div className={cn(
+                                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                                        evalItem.status === 'completed' ? "bg-green-500/10 text-green-600" :
+                                            evalItem.status === 'failed' ? "bg-red-500/10 text-red-600" :
+                                                evalItem.status === 'running' ? "bg-blue-500/10 text-blue-600 animate-pulse" :
+                                                    "bg-muted text-muted-foreground"
+                                    )}>
+                                        <FlaskConical className="h-5 w-5" />
                                     </div>
-                                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground font-medium">
-                                        <div className="flex items-center gap-1">
-                                            <Calendar className="h-3 w-3" />
-                                            {new Date(evalItem.created_at).toLocaleString()}
+                                    <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <p className="font-bold">{evalItem.name || `Evaluation #${evalItem.id.slice(0, 8)}`}</p>
+                                            <span className={cn(
+                                                "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                                evalItem.status === 'completed' ? "bg-green-500/10 text-green-600" :
+                                                    evalItem.status === 'failed' ? "bg-red-500/10 text-red-600" :
+                                                        evalItem.status === 'running' ? "bg-blue-500/10 text-blue-600" :
+                                                            "bg-muted text-muted-foreground"
+                                            )}>
+                                                {evalItem.status}
+                                            </span>
+                                            {evalItem.is_baseline && (
+                                                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+                                                    Baseline
+                                                </span>
+                                            )}
                                         </div>
-                                        <div>{evalItem.result_count} results</div>
+                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                            <span className="flex items-center gap-1">
+                                                <Calendar className="h-3 w-3" />
+                                                {new Date(evalItem.created_at).toLocaleString()}
+                                            </span>
+                                            <span>{evalItem.result_count} results</span>
+                                            {evalItem.test_set_name && <span>Test: {evalItem.test_set_name}</span>}
+                                            {evalItem.index_name && <span>Index: {evalItem.index_name}</span>}
+                                            {evalItem.rag_type && <span>RAG: {evalItem.rag_type}</span>}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="flex items-center gap-6">
-                                {evalItem.pass_rate !== null && (
-                                    <div className="text-right">
-                                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Pass Rate</p>
-                                        <p className={cn(
-                                            "text-lg font-black",
-                                            evalItem.pass_rate >= 0.7 ? "text-green-500" : "text-amber-500"
-                                        )}>
-                                            {(evalItem.pass_rate * 100).toFixed(0)}%
-                                        </p>
+                                <div className="flex items-center justify-between gap-6 lg:justify-end">
+                                    <div className="flex items-center gap-6">
+                                        {evalItem.pass_rate !== null && (
+                                            <div className="text-right">
+                                                <p className="text-[10px] font-bold uppercase text-muted-foreground">Pass Rate</p>
+                                                <p className={cn(
+                                                    "text-lg font-black",
+                                                    evalItem.pass_rate >= 0.7 ? "text-green-500" :
+                                                        evalItem.pass_rate >= 0.4 ? "text-amber-500" : "text-red-500"
+                                                )}>
+                                                    {(evalItem.pass_rate * 100).toFixed(0)}%
+                                                </p>
+                                            </div>
+                                        )}
+                                        {evalItem.summary_metrics?.overall_avg !== undefined && (
+                                            <div className="text-right">
+                                                <p className="text-[10px] font-bold uppercase text-muted-foreground">Avg Score</p>
+                                                <p className="text-lg font-black text-primary">
+                                                    {evalItem.summary_metrics.overall_avg.toFixed(2)}
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                                {evalItem.summary_metrics?.overall_avg !== undefined && (
-                                    <div className="text-right">
-                                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Avg Score</p>
-                                        <p className="text-lg font-black text-primary">
-                                            {evalItem.summary_metrics.overall_avg.toFixed(2)}
-                                        </p>
+                                    <div className="rounded-full bg-muted/50 p-2 transition-all group-hover:bg-primary group-hover:text-primary-foreground">
+                                        <ChevronRight className="h-4 w-4" />
                                     </div>
-                                )}
-                                <div className="rounded-full p-2 bg-muted/50 group-hover:bg-primary group-hover:text-primary-foreground transition-all">
-                                    <ChevronRight className="h-4 w-4" />
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
+                    <PaginationFooter
+                        total={total}
+                        offset={data?.data?.offset ?? offset}
+                        limit={data?.data?.limit ?? pageSize}
+                        onPageChange={updateEvaluationOffset}
+                        isLoading={isLoading}
+                    />
                 </div>
             )}
 
