@@ -67,6 +67,42 @@ class TestLLMProviderService:
 
     @pytest.mark.asyncio
     @patch("litellm.acompletion")
+    async def test_completion_temperature_kept_for_deepseek_dropped_for_gpt5(
+        self, mock_acompletion: AsyncMock, llm_service: LLMProviderService
+    ) -> None:
+        """deepseek-v4-flash accepts temperature; only o-series/gpt-5 drop it."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Test answer"
+        mock_response.__getitem__.side_effect = {
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            "_total_cost": 0.001,
+        }.__getitem__
+        mock_response.get.side_effect = {
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            "_total_cost": 0.001,
+        }.get
+        mock_acompletion.return_value = mock_response
+
+        messages = [{"role": "user", "content": "Hello"}]
+
+        await llm_service.completion(
+            model="deepseek/deepseek-v4-flash",
+            messages=messages,
+            provider="openrouter",
+            temperature=0,
+        )
+        _args, kwargs = mock_acompletion.call_args
+        assert kwargs["temperature"] == 0
+
+        await llm_service.completion(
+            model="gpt-5-nano", messages=messages, provider="openai", temperature=0
+        )
+        _args, kwargs = mock_acompletion.call_args
+        assert kwargs["temperature"] is None
+
+    @pytest.mark.asyncio
+    @patch("litellm.acompletion")
     async def test_completion_retries_transient_gateway_error(
         self, mock_acompletion: AsyncMock, llm_service: LLMProviderService
     ) -> None:

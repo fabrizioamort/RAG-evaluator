@@ -12,14 +12,24 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from rag_evaluator.rag_implementations.filesystem_rag.passage_index import BM25PassageIndex
+
+_MAX_FULL_READ_BYTES = 100_000
+_MAX_SECTION_SIBLINGS = 40
+_REGEX_METACHARACTERS = set("\\.^$*+?{}[]|()")
+_PASSAGE_STEM_RE = re.compile(r"^(?P<section>\d+(?:\.\d+)*)-c\d+-s\d+$")
+_NOISE_HEADER_RE = re.compile(r"^#\s+[0-9A-Fa-f]{8}\s+Passage\s+\d+")
+_HEADER_RE = re.compile(r"^#{1,6}\s+(.+)")
+
 
 class FilesystemRAGTools:
     """Tools for navigating the prepared filesystem.
 
-    Provides five core navigation operations:
+    Provides navigation and search operations:
     - list_directory: List files and folders
     - read_file: Read file contents with progressive disclosure
     - grep_search: Search for patterns in files
+    - search_passages: Rank indexed passages with BM25
     - find_files: Find files by glob pattern
     - get_file_info: Get file metadata without reading content
     """
@@ -33,6 +43,8 @@ class FilesystemRAGTools:
         self.prepared_path = Path(prepared_path)
         if not self.prepared_path.exists():
             raise ValueError(f"Prepared path does not exist: {prepared_path}")
+        self._passage_index: BM25PassageIndex | None = None
+        self._sibling_cache: dict[str, list[dict[str, Any]]] = {}
 
     def _resolve_path(self, relative_path: str) -> Path:
         """Resolve a relative path to absolute, ensuring it's within prepared_path.
@@ -145,6 +157,27 @@ class FilesystemRAGTools:
                 "headers": [],
             }
 
+        full_read_requested = start_line is None and end_line is None and not headers_only
+        if full_read_requested:
+            try:
+                stat = full_path.stat()
+            except OSError:
+                stat = None
+            if stat is not None and stat.st_size > _MAX_FULL_READ_BYTES:
+                total_lines = self._count_lines(full_path)
+                return {
+                    "content": (
+                        f"File '{path}' is too large for a full read "
+                        f"({stat.st_size} bytes, {total_lines} lines). Use grep_search "
+                        "with targeted terms, headers_only=True, or start_line/end_line."
+                    ),
+                    "total_lines": total_lines,
+                    "is_partial": True,
+                    "headers": [],
+                    "truncated": True,
+                    "size_bytes": stat.st_size,
+                }
+
         # Read file content
         try:
             # First check if it looks like binary by reading first block
@@ -165,6 +198,7 @@ class FilesystemRAGTools:
 
         lines = content.split("\n")
         total_lines = len(lines)
+        sibling_extra = self._section_sibling_info(full_path)
 
         # Headers only mode for large files
         if headers_only and total_lines > 500:
@@ -175,6 +209,7 @@ class FilesystemRAGTools:
                 "total_lines": total_lines,
                 "is_partial": True,
                 "headers": headers,
+                **sibling_extra,
             }
 
         # Line range mode
@@ -192,6 +227,7 @@ class FilesystemRAGTools:
                 "total_lines": total_lines,
                 "is_partial": True,
                 "headers": [],
+                **sibling_extra,
             }
 
         # Full file mode
@@ -200,7 +236,92 @@ class FilesystemRAGTools:
             "total_lines": total_lines,
             "is_partial": False,
             "headers": [],
+            **sibling_extra,
         }
+
+    def _count_lines(self, path: Path) -> int:
+        try:
+            with open(path, encoding="utf-8") as f:
+                return sum(1 for _ in f)
+        except UnicodeDecodeError:
+            with open(path, encoding="latin-1") as f:
+                return sum(1 for _ in f)
+        except OSError:
+            return 0
+
+    def _section_sibling_info(self, full_path: Path) -> dict[str, Any]:
+        """Return sibling-chunk map keys for a documents/ passage file.
+
+        Passage files are named ``<section>-c<chunk>-s<sentence>.md``. The map
+        lists the other chunks of the same section with their first informative
+        header so the agent can sweep siblings instead of satisficing on one.
+        """
+        try:
+            rel_path = full_path.relative_to(self.prepared_path.resolve())
+        except ValueError:
+            return {}
+        if rel_path.parts[0] != "documents" or full_path.suffix != ".md":
+            return {}
+        match = _PASSAGE_STEM_RE.match(full_path.stem)
+        if not match:
+            return {}
+
+        section = match.group("section")
+        entries = self._sibling_cache.get(section)
+        if entries is None:
+            entries = self._build_section_sibling_entries(section, full_path.parent)
+            self._sibling_cache[section] = entries
+
+        rel_posix = rel_path.as_posix()
+        siblings = [entry for entry in entries if entry["file"] != rel_posix]
+        if not siblings:
+            return {}
+
+        info: dict[str, Any] = {
+            "section_id": section,
+            "section_siblings": siblings[:_MAX_SECTION_SIBLINGS],
+        }
+        omitted = len(siblings) - _MAX_SECTION_SIBLINGS
+        if omitted > 0:
+            info["section_siblings_omitted"] = omitted
+        return info
+
+    def _build_section_sibling_entries(
+        self, section: str, directory: Path
+    ) -> list[dict[str, Any]]:
+        """List all passage files of a section with their informative titles."""
+        section_stem_re = re.compile(rf"^{re.escape(section)}-c\d+-s\d+$")
+        entries: list[dict[str, Any]] = []
+        for path in sorted(directory.glob(f"{section}-c*.md")):
+            if not section_stem_re.match(path.stem):
+                continue
+            try:
+                rel = path.relative_to(self.prepared_path.resolve()).as_posix()
+            except ValueError:
+                continue
+            entries.append({"file": rel, "title": self._sibling_title(path)})
+        return entries
+
+    def _sibling_title(self, path: Path) -> str:
+        """First informative markdown header, skipping one noise header."""
+        header_lines: list[str] = []
+        try:
+            with open(path, encoding="utf-8") as f:
+                for index, line in enumerate(f):
+                    if index >= 15 or len(header_lines) >= 2:
+                        break
+                    if _HEADER_RE.match(line):
+                        header_lines.append(line.rstrip())
+        except (OSError, UnicodeDecodeError):
+            return path.stem
+
+        if not header_lines:
+            return path.stem
+        chosen = header_lines[0]
+        if _NOISE_HEADER_RE.match(chosen) and len(header_lines) > 1:
+            chosen = header_lines[1]
+        header_match = _HEADER_RE.match(chosen)
+        return header_match.group(1).strip() if header_match else path.stem
 
     def _extract_headers(self, lines: list[str]) -> list[dict[str, Any]]:
         """Extract markdown headers from lines.
@@ -232,46 +353,91 @@ class FilesystemRAGTools:
         path: str = ".",
         file_pattern: str = "*.md",
         max_results: int = 20,
-    ) -> list[dict[str, Any]]:
-        """Search for pattern in files.
+        context_lines: int = 3,
+        match_all_terms: bool = False,
+    ) -> dict[str, Any]:
+        """Search for a pattern in files with ranking and truncation metadata.
+
+        A plain multi-word pattern with zero hits is transparently re-run in
+        AND-mode (match_all_terms=True), since the words are usually not
+        adjacent on one line; the result is marked with "fallback".
 
         Args:
-            pattern: Regex pattern to search (case-insensitive)
+            pattern: Regex pattern, or whitespace/comma-separated terms when
+                match_all_terms is True
             path: Directory to search in
             file_pattern: Glob pattern for files to search
             max_results: Maximum number of results to return
+            context_lines: Number of lines before/after each match
+            match_all_terms: If True, only return files containing every term
 
         Returns:
-            List of matches, each with:
-            - file: str (relative path)
-            - line_number: int
-            - content: str (matching line)
-            - context: str (surrounding lines)
+            Dictionary with search metadata and ranked matches grouped by file.
 
         Raises:
             ValueError: If path doesn't exist
         """
+        result = self._grep_once(
+            pattern, path, file_pattern, max_results, context_lines, match_all_terms
+        )
+        if (
+            not match_all_terms
+            and result["total_matches"] == 0
+            and not _REGEX_METACHARACTERS.intersection(pattern)
+            and len(re.findall(r"[a-zA-Z0-9][a-zA-Z0-9'_-]*", pattern)) >= 2
+        ):
+            result = self._grep_once(
+                pattern, path, file_pattern, max_results, context_lines, True
+            )
+            result["fallback"] = "match_all_terms"
+        return result
+
+    def _grep_once(
+        self,
+        pattern: str,
+        path: str,
+        file_pattern: str,
+        max_results: int,
+        context_lines: int,
+        match_all_terms: bool,
+    ) -> dict[str, Any]:
+        """Run one grep pass and return ranked, grouped matches."""
         full_path = self._resolve_path(path)
 
         if not full_path.exists():
             raise ValueError(f"Path does not exist: {path}")
 
-        results: list[dict[str, Any]] = []
+        context_lines = max(0, min(context_lines, 10))
+        max_results = max(1, min(max_results, 100))
 
-        try:
-            regex = re.compile(pattern, re.IGNORECASE)
-        except re.error as e:
-            raise ValueError(f"Invalid regex pattern: {e}")
+        term_patterns: list[re.Pattern[str]] = []
+        regex: re.Pattern[str] | None = None
+        terms: list[str] = []
+        if match_all_terms:
+            terms = re.findall(r"[a-zA-Z0-9][a-zA-Z0-9'_-]*", pattern)
+            if not terms:
+                raise ValueError("match_all_terms=True requires at least one search term")
+            term_patterns = [
+                re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE) for term in terms
+            ]
+        else:
+            try:
+                regex = re.compile(pattern, re.IGNORECASE)
+            except re.error as e:
+                raise ValueError(f"Invalid regex pattern: {e}")
 
         # Find matching files
         if full_path.is_file():
             files = [full_path]
         else:
-            files = list(full_path.rglob(file_pattern))
+            files = sorted(full_path.rglob(file_pattern))
 
+        files_searched = 0
+        flat_matches: list[dict[str, Any]] = []
         for file_path in files:
             if not file_path.is_file():
                 continue
+            files_searched += 1
 
             try:
                 content = file_path.read_text(encoding="utf-8")
@@ -279,33 +445,151 @@ class FilesystemRAGTools:
                 continue
 
             lines = content.split("\n")
+            line_matches: list[dict[str, Any]] = []
+            if match_all_terms:
+                term_hit_counts = {
+                    term: len(term_patterns[index].findall(content))
+                    for index, term in enumerate(terms)
+                }
+                if any(count == 0 for count in term_hit_counts.values()):
+                    continue
 
-            for i, line in enumerate(lines):
-                if regex.search(line):
-                    # Get context (1 line before and after)
-                    context_start = max(0, i - 1)
-                    context_end = min(len(lines), i + 2)
-                    context_lines = lines[context_start:context_end]
+                for i, line in enumerate(lines):
+                    line_terms = [
+                        term
+                        for index, term in enumerate(terms)
+                        if term_patterns[index].search(line)
+                    ]
+                    if not line_terms:
+                        continue
+                    line_matches.append({"line_index": i, "matched_terms": line_terms})
+            else:
+                if regex is None:
+                    continue
+                for i, line in enumerate(lines):
+                    if regex.search(line):
+                        line_matches.append({"line_index": i, "matched_terms": [pattern]})
 
-                    # Get relative path
-                    try:
-                        rel_path = file_path.relative_to(self.prepared_path)
-                    except ValueError:
-                        rel_path = file_path
+            if not line_matches:
+                continue
 
-                    results.append(
-                        {
-                            "file": str(rel_path),
-                            "line_number": i + 1,
-                            "content": line,
-                            "context": "\n".join(context_lines),
-                        }
-                    )
+            try:
+                rel_path = file_path.relative_to(self.prepared_path)
+            except ValueError:
+                rel_path = file_path
+            rel_path_str = str(rel_path)
+            file_match_count = len(line_matches)
 
-                    if len(results) >= max_results:
-                        return results
+            for match in line_matches:
+                line_index = int(match["line_index"])
+                context_start = max(0, line_index - context_lines)
+                context_end = min(len(lines), line_index + context_lines + 1)
+                context = "\n".join(lines[context_start:context_end])
+                matched_terms = list(match["matched_terms"])
+                distinct_context_terms = self._count_distinct_terms(context, term_patterns, terms)
+                exact_line_terms = len(set(matched_terms))
+                score = file_match_count + (distinct_context_terms * 20) + (exact_line_terms * 10)
+                if match_all_terms and distinct_context_terms == len(terms):
+                    score += 30
 
-        return results
+                flat_matches.append(
+                    {
+                        "file": rel_path_str,
+                        "line_number": line_index + 1,
+                        "content": lines[line_index],
+                        "context": context,
+                        "context_start_line": context_start + 1,
+                        "context_end_line": context_end,
+                        "matched_terms": matched_terms,
+                        "file_match_count": file_match_count,
+                        "score": score,
+                    }
+                )
+
+        ranked_matches = sorted(
+            flat_matches,
+            key=lambda item: (-item["file_match_count"], -item["score"], item["file"], item["line_number"]),
+        )
+        returned_matches = ranked_matches[:max_results]
+        grouped_files = self._group_grep_matches(returned_matches)
+        total_matches = len(flat_matches)
+
+        return {
+            "pattern": pattern,
+            "path": path,
+            "file_pattern": file_pattern,
+            "match_all_terms": match_all_terms,
+            "terms": terms,
+            "context_lines": context_lines,
+            "files_searched": files_searched,
+            "files_with_matches": len({match["file"] for match in flat_matches}),
+            "total_matches": total_matches,
+            "returned_matches": len(returned_matches),
+            "truncated": len(returned_matches) < total_matches,
+            "results": returned_matches,
+            "files": grouped_files,
+        }
+
+    def _count_distinct_terms(
+        self,
+        text: str,
+        term_patterns: list[re.Pattern[str]],
+        terms: list[str],
+    ) -> int:
+        """Count query terms present in a context window."""
+        if not term_patterns:
+            return 1
+        return sum(
+            1 for index, _term in enumerate(terms) if term_patterns[index].search(text)
+        )
+
+    def _group_grep_matches(self, matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Group ranked grep matches by file while preserving rank order."""
+        grouped: list[dict[str, Any]] = []
+        by_file: dict[str, dict[str, Any]] = {}
+        for match in matches:
+            file_path = str(match["file"])
+            if file_path not in by_file:
+                group = {
+                    "file": file_path,
+                    "file_match_count": match["file_match_count"],
+                    "returned_matches": 0,
+                    "matches": [],
+                }
+                by_file[file_path] = group
+                grouped.append(group)
+            compact_match = {
+                key: value
+                for key, value in match.items()
+                if key not in {"file", "file_match_count"}
+            }
+            by_file[file_path]["matches"].append(compact_match)
+            by_file[file_path]["returned_matches"] += 1
+
+        return grouped
+
+    def search_passages(self, query: str, top_k: int = 5) -> dict[str, Any]:
+        """Search the prepared BM25 passage index.
+
+        Args:
+            query: Natural-language or keyword search query
+            top_k: Maximum number of ranked passages to return
+
+        Returns:
+            Dictionary containing query_terms and ranked passage results. Each
+            result includes a snippet and a read_hint for read_file.
+        """
+        try:
+            if self._passage_index is None:
+                self._passage_index = BM25PassageIndex.load(self.prepared_path)
+            return self._passage_index.search(query, top_k=top_k)
+        except FileNotFoundError as exc:
+            return {
+                "query": query,
+                "query_terms": [],
+                "results": [],
+                "error": f"{exc}. Re-run filesystem preparation to build it.",
+            }
 
     def find_files(
         self,
@@ -466,14 +750,19 @@ class FilesystemRAGTools:
                 "function": {
                     "name": "grep_search",
                     "description": (
-                        "Search for a pattern in files. Returns matching lines with context."
+                        "Search files with ranked results, context, total match counts, "
+                        "and truncation metadata. Use match_all_terms=True when several "
+                        "terms must appear in the same file."
                     ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "pattern": {
                                 "type": "string",
-                                "description": "Regex pattern to search (case-insensitive)",
+                                "description": (
+                                    "Regex pattern, or terms separated by spaces/commas "
+                                    "when match_all_terms is true"
+                                ),
                             },
                             "path": {
                                 "type": "string",
@@ -485,8 +774,48 @@ class FilesystemRAGTools:
                                 "type": "string",
                                 "description": ("Glob pattern for files to search (default: *.md)"),
                             },
+                            "max_results": {
+                                "type": "integer",
+                                "description": "Maximum ranked matches to return",
+                            },
+                            "context_lines": {
+                                "type": "integer",
+                                "description": "Lines of context before/after each match",
+                            },
+                            "match_all_terms": {
+                                "type": "boolean",
+                                "description": (
+                                    "If true, return only files that contain every term "
+                                    "from pattern"
+                                ),
+                            },
                         },
                         "required": ["pattern"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_passages",
+                    "description": (
+                        "Rank prepared document passages with BM25. Use this for "
+                        "natural-language searches, reformulated legal issues, or "
+                        "multi-term lookups before reading the best source lines."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Search query or reformulated legal issue",
+                            },
+                            "top_k": {
+                                "type": "integer",
+                                "description": "Maximum number of passages to return",
+                            },
+                        },
+                        "required": ["query"],
                     },
                 },
             },

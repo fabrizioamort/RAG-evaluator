@@ -63,9 +63,12 @@ def _generate_corpus_overview_heuristic(documents: list[DocumentInfo]) -> str:
     # Aggregate topics
     topic_counts: Counter[str] = Counter()
     for doc_info in documents:
-        for topic, score in doc_info.analysis.topic_scores.items():
-            if score >= 0.3:
-                topic_counts[topic] += 1
+        if doc_info.analysis.topics:
+            topic_counts.update(str(topic).strip().lower() for topic in doc_info.analysis.topics[:5])
+        else:
+            for topic, score in doc_info.analysis.topic_scores.items():
+                if score >= 0.3:
+                    topic_counts[str(topic).strip().lower()] += 1
 
     # Get top topics
     top_topics = [topic for topic, _ in topic_counts.most_common(4)]
@@ -105,10 +108,10 @@ def _generate_corpus_overview_heuristic(documents: list[DocumentInfo]) -> str:
             f"- **Document types:** {', '.join(format_counts.keys())}",
             "",
             "## Quick Navigation",
-            "1. For topic-based search: Start with `_index/topics/_topic_map.md`",
-            "2. For entity lookup: Check `_index/entities/_entity_registry.md`",
-            "3. For temporal queries: See `_index/temporal/timeline.md`",
-            "4. For question matching: See `_index/questions/question_seeds.md`",
+            "1. For direct retrieval: Use `_index/passages/bm25.json` through `search_passages`",
+            "2. For question matching: See `_index/questions/question_seeds.md`",
+            "3. For topic/entity browsing: Use `_index/topics/` and `_index/entities/`",
+            "4. For temporal queries: See `_index/temporal/timeline.md`",
             "",
             "## Key Statistics",
             f"- **Total documents:** {total_docs}",
@@ -194,26 +197,29 @@ def generate_navigation_guide(
     content = """# Navigation Guide
 
 ## Index Structure
-- `_index/topics/` - Documents organized by subject matter
-- `_index/entities/` - People, concepts, organizations mentioned
+- `_index/passages/` - BM25 passage index for ranked retrieval
+- `_index/topics/` - Documents organized by extracted corpus-specific topics
+- `_index/entities/` - Extracted entities grouped by analyzer-provided type
 - `_index/temporal/` - Timeline of events and dates
 - `_index/questions/` - Questions each document can answer
 
 ## Recommended Navigation Flow
 1. Read `_meta/corpus_overview.md` to understand scope
 2. Based on query type:
-   - **Topical query** → `_index/topics/_topic_map.md`
-   - **Entity query** → `_index/entities/_entity_registry.md`
-   - **Temporal query** → `_index/temporal/timeline.md`
-   - **Direct question** → `_index/questions/question_seeds.md`
+   - **Direct question** -> `search_passages`
+   - **Known phrase** -> `grep_search` with `match_all_terms=True`
+   - **Topical query** -> `_index/topics/_topic_map.md`
+   - **Entity query** -> `_index/entities/_entity_registry.md`
+   - **Temporal query** -> `_index/temporal/timeline.md`
 3. Drill down to specific topic/entity files
 4. Read document summaries before full documents
 5. Read specific sections of full documents as needed
 
 ## File Naming Convention
-- `doc_XXX.md` - Converted document content
-- `doc_XXX.meta.json` - Structured metadata
-- `doc_XXX_summary.md` - Human-readable summary
+- `doc_XXX.md` - Converted document content for generic corpora
+- `<passage-id>.md` - Converted document content when a source filename embeds a passage id
+- `*.meta.json` - Structured metadata
+- `*_summary.md` - Human-readable summary
 
 ## Directory Structure
 ```
@@ -231,13 +237,14 @@ _original/       → Original source files (if preserved)
 ## Query Strategies
 
 ### For Specific Lookups
-1. Check `_index/questions/question_seeds.md` for direct matches
-2. Use grep/search on `_summaries/` for key terms
-3. Navigate to specific document and section
+1. Use `search_passages` with the direct question
+2. Check `_index/questions/question_seeds.md` for direct matches
+3. Use `grep_search` on `documents/` for exact multi-term lookups
+4. Navigate to specific document and section
 
 ### For Exploratory Queries
-1. Start with `_index/topics/_topic_map.md`
-2. Identify relevant topic clusters
+1. Start with `search_passages` using the issue phrased broadly
+2. Use `_index/topics/_topic_map.md` to inspect extracted topic clusters
 3. Read summaries of primary documents
 4. Dive into full documents as needed
 
@@ -249,7 +256,7 @@ _original/       → Original source files (if preserved)
 ## Tips
 - Always read summaries before full documents
 - Use metadata JSON for precise section locations
-- Topic scores indicate relevance (higher = more relevant)
+- BM25 scores rank lexical query matches; topic labels are browsing aids
 - Question seeds show what each document can answer
 """
 
@@ -294,21 +301,19 @@ def generate_statistics(
     # Documents by topic
     topic_counts: Counter[str] = Counter()
     for doc_info in documents:
-        for topic, score in doc_info.analysis.topic_scores.items():
-            if score >= 0.3:
-                topic_counts[topic] += 1
+        if doc_info.analysis.topics:
+            topic_counts.update(str(topic).strip().lower() for topic in doc_info.analysis.topics[:5])
+        else:
+            for topic, score in doc_info.analysis.topic_scores.items():
+                if score >= 0.3:
+                    topic_counts[str(topic).strip().lower()] += 1
 
     # Entity counts
-    entity_counts: dict[str, int] = {
-        "people": 0,
-        "concepts": 0,
-        "organizations": 0,
-        "products": 0,
-    }
+    entity_counts: dict[str, int] = {}
     for doc_info in documents:
         for entity_type, entities in doc_info.analysis.entities.items():
-            if entity_type in entity_counts:
-                entity_counts[entity_type] += len(entities)
+            key = str(entity_type).strip().lower()
+            entity_counts[key] = entity_counts.get(key, 0) + len(entities)
 
     # Analysis method distribution
     analysis_methods: Counter[str] = Counter()

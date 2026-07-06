@@ -1,8 +1,8 @@
 """Query router for Filesystem RAG agent.
 
 This module analyzes queries to determine the optimal search strategy:
-- Known-item: Direct grep + targeted reads for specific lookups
-- Exploratory: Navigate indexes first for broad topic exploration
+- Known-item: BM25/search + targeted reads for specific lookups
+- Exploratory: BM25 first, then topic/entity browsing for broad exploration
 """
 
 from __future__ import annotations
@@ -96,23 +96,23 @@ class QueryRouter:
     # Strategy hints for each mode
     KNOWN_ITEM_HINT = (
         "This appears to be a known-item search. "
-        "Consider using grep_search directly on the query terms, "
-        "or check the question_seeds.md index first for direct matches. "
-        "If you know a specific document is relevant, read its summary first."
+        "Start with search_passages using the direct question or a concise "
+        "legal-issue reformulation. Use grep_search with match_all_terms=True "
+        "for exact phrase discrimination. If you know a specific document is "
+        "relevant, read its summary first."
     )
 
     EXPLORATORY_HINT = (
         "This appears to be an exploratory query. "
-        "Start by consulting the topic map (_index/topics/_topic_map.md) "
-        "or entity registry (_index/entities/_entity_registry.md) "
-        "to identify relevant documents before reading. "
-        "Read document summaries before full documents."
+        "Start with search_passages using a broad issue statement, then use "
+        "_index/topics/_topic_map.md or _index/entities/_entity_registry.md "
+        "as browsing aids if the ranked passages are too narrow. Read document "
+        "summaries before full documents."
     )
 
     DEFAULT_HINT = (
-        "Query type is ambiguous. Start with the topic map to identify "
-        "potentially relevant documents, then use grep_search if needed "
-        "to find specific terms."
+        "Query type is ambiguous. Start with search_passages, then use topic "
+        "or entity indexes for broader browsing and grep_search for exact terms."
     )
 
     def __init__(self) -> None:

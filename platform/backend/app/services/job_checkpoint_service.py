@@ -173,24 +173,44 @@ class JobCheckpointService:
         )
         await self.db.commit()
 
-    async def fail_job(self, evaluation_id: uuid.UUID, error_message: str) -> None:
+    async def fail_job(
+        self,
+        evaluation_id: uuid.UUID,
+        error_message: str,
+        summary_metrics: dict[str, Any] | None = None,
+        pass_rate: float | None = None,
+        cost_metrics: dict[str, Any] | None = None,
+        performance_metrics: dict[str, Any] | None = None,
+    ) -> None:
         """Mark a job and evaluation as failed.
 
         Args:
             evaluation_id: ID of the evaluation.
             error_message: Error that caused the failure.
+            summary_metrics: Optional partial summary metrics from saved results.
+            pass_rate: Optional partial pass rate from saved results.
+            cost_metrics: Optional partial cost metrics from saved results.
+            performance_metrics: Optional partial performance metrics from saved results.
         """
         now = datetime.now(timezone.utc)
 
         # Update Evaluation
+        values: dict[str, Any] = {
+            "status": "failed",
+            "completed_at": now,
+            "error_message": error_message,
+        }
+        if summary_metrics is not None:
+            values["summary_metrics"] = summary_metrics
+        if pass_rate is not None:
+            values["pass_rate"] = pass_rate
+        if cost_metrics is not None:
+            values["cost_metrics"] = cost_metrics
+        if performance_metrics is not None:
+            values["performance_metrics"] = performance_metrics
+
         await self.db.execute(
-            update(Evaluation)
-            .where(Evaluation.id == evaluation_id)
-            .values(
-                status="failed",
-                completed_at=now,
-                error_message=error_message,
-            )
+            update(Evaluation).where(Evaluation.id == evaluation_id).values(**values)
         )
 
         # Update Job

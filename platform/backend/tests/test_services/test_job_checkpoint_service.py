@@ -113,6 +113,35 @@ async def test_fail_job(db_session: AsyncSession, sample_evaluation: Evaluation)
 
 
 @pytest.mark.asyncio
+async def test_fail_job_can_persist_partial_metrics(
+    db_session: AsyncSession, sample_evaluation: Evaluation
+) -> None:
+    """Failed evaluations can still expose aggregate metrics from saved rows."""
+    service = JobCheckpointService(db_session)
+    await service.create_job(sample_evaluation.id, 100)
+
+    summary_metrics: dict[str, Any] = {"faithfulness_avg": 0.8, "overall_avg": 0.8}
+    cost_metrics: dict[str, Any] = {"total_cost_usd": 0.002}
+    performance_metrics: dict[str, Any] = {"avg_latency_seconds": 0.3}
+    await service.fail_job(
+        sample_evaluation.id,
+        "One case failed",
+        summary_metrics=summary_metrics,
+        pass_rate=0.9,
+        cost_metrics=cost_metrics,
+        performance_metrics=performance_metrics,
+    )
+
+    await db_session.refresh(sample_evaluation)
+    assert sample_evaluation.status == "failed"
+    assert sample_evaluation.error_message == "One case failed"
+    assert sample_evaluation.summary_metrics == summary_metrics
+    assert sample_evaluation.pass_rate == 0.9
+    assert sample_evaluation.cost_metrics == cost_metrics
+    assert sample_evaluation.performance_metrics == performance_metrics
+
+
+@pytest.mark.asyncio
 async def test_reconcile_orphaned_evaluations(db_session: AsyncSession) -> None:
     """Orphaned running/pending evaluations become failed-but-recoverable."""
     project = Project(name="Test Project")

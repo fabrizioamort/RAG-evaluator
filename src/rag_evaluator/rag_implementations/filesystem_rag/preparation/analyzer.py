@@ -139,6 +139,28 @@ TOPIC_KEYWORDS: dict[str, list[str]] = {
         "example",
         "note",
     ],
+    "legal": [
+        "court",
+        "judge",
+        "jury",
+        "evidence",
+        "witness",
+        "accused",
+        "offence",
+        "statute",
+        "section",
+        "act",
+        "burden",
+        "proof",
+        "admissible",
+        "admissibility",
+        "procedure",
+        "defence",
+        "prosecution",
+        "liability",
+        "mens rea",
+        "common law",
+    ],
 }
 
 # Entity detection patterns
@@ -159,6 +181,19 @@ ENTITY_PATTERNS: dict[str, list[str]] = {
         r"\b(?:RAG|retrieval.augmented.generation|embedding|vector|semantic.search)\b",
         r"\b(?:machine.learning|deep.learning|neural.network|transformer)\b",
         r"\b(?:natural.language.processing|NLP|LLM|large.language.model)\b",
+    ],
+    "statutes": [
+        r"\b[A-Z][A-Za-z ]+ Act \d{4}\b",
+        r"\bs(?:ection)?\.?\s*\d+[A-Z]?(?:\([^)]+\))*\b",
+    ],
+    "cases": [
+        r"\b[A-Z][A-Za-z]+ v [A-Z][A-Za-z]+\b",
+        r"\bR v [A-Z][A-Za-z]+\b",
+    ],
+    "legal_concepts": [
+        r"\b(?:burden of proof|beyond reasonable doubt|mens rea|actus reus)\b",
+        r"\b(?:admissibility|evidence-in-chief|cross-examination|hearsay)\b",
+        r"\b(?:self-defence|duress|necessity|provocation|recklessness)\b",
     ],
 }
 
@@ -185,7 +220,7 @@ def _calculate_topic_scores(content: str) -> dict[str, float]:
     word_count = len(words)
 
     if word_count == 0:
-        return {"technical": 0.0, "business": 0.0, "science": 0.0, "general": 0.0}
+        return {topic: 0.0 for topic in TOPIC_KEYWORDS}
 
     scores: dict[str, float] = {}
     max_score = 0.0
@@ -209,7 +244,7 @@ def _calculate_topic_scores(content: str) -> dict[str, float]:
         scores = {k: round(v / total, 2) for k, v in scores.items()}
     else:
         # Default distribution if no keywords found
-        scores = {"technical": 0.25, "business": 0.25, "science": 0.25, "general": 0.25}
+        scores = {"general": 1.0}
 
     return scores
 
@@ -303,12 +338,7 @@ def _extract_entities_heuristic(content: str) -> dict[str, list[str]]:
     Returns:
         Dictionary of entity_type -> list of entities
     """
-    entities: dict[str, list[str]] = {
-        "people": [],
-        "organizations": [],
-        "products": [],
-        "concepts": [],
-    }
+    entities: dict[str, list[str]] = {entity_type: [] for entity_type in ENTITY_PATTERNS}
 
     for entity_type, patterns in ENTITY_PATTERNS.items():
         found: set[str] = set()
@@ -511,16 +541,14 @@ Provide a JSON response with the following structure:
   "summary": "2-3 paragraph summary of the document's key points and purpose",
   "topics": ["topic1", "topic2", "topic3"],
   "topic_scores": {{
-    "technical": 0.0,
-    "business": 0.0,
-    "science": 0.0,
-    "general": 0.0
+    "domain-specific topic": 0.0
   }},
   "entities": {{
     "people": ["Name1", "Name2"],
     "concepts": ["concept1", "concept2"],
     "organizations": ["org1", "org2"],
-    "products": ["product1", "product2"]
+    "statutes": ["Act or section reference"],
+    "cases": ["Case name"]
   }},
   "temporal_markers": [
     {{"date": "YYYY-MM", "event": "description"}}
@@ -539,10 +567,21 @@ Provide a JSON response with the following structure:
 }}
 
 Rules:
-- topic_scores should sum to approximately 1.0
-- Include 5-10 question_seeds covering different aspects
-- Be specific in entity extraction
-- Only include temporal_markers if dates are mentioned
+- The summary must capture the decisive rule, holding, definition, or factual
+  qualifier that makes this document useful for answering questions.
+- Preserve exceptions, conditions, required elements, historical terms,
+  statutory references, case names, and distinctive legal phrases when present.
+- Include 5-10 realistic question_seeds phrased like user/evaluation questions,
+  not generic "what is this document" templates.
+- Question seeds should cover the document's exact rule, named procedure,
+  classification, exceptions, and any close distinctions.
+- Use domain-specific topics. If the document is legal, prefer topics such as
+  evidence, procedure, offences, defences, admissibility, burden of proof, or
+  statutory interpretation. Do not force technical/business/science/general
+  categories unless they are actually the best labels.
+- topic_scores should sum to approximately 1.0.
+- Be specific in entity extraction.
+- Only include temporal_markers if dates are mentioned.
 
 Respond ONLY with valid JSON, no other text."""
 
@@ -606,11 +645,11 @@ def llm_analysis(
             topics=result.get("topics", []),
             topic_scores=result.get(
                 "topic_scores",
-                {"technical": 0.25, "business": 0.25, "science": 0.25, "general": 0.25},
+                {"general": 1.0},
             ),
             entities=result.get(
                 "entities",
-                {"people": [], "concepts": [], "organizations": [], "products": []},
+                {},
             ),
             temporal_markers=result.get("temporal_markers", []),
             question_seeds=result.get("question_seeds", []),
