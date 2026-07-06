@@ -34,11 +34,11 @@ documents/       → Full document content with .meta.json metadata
 ## Navigation Strategy
 1. Use the cached corpus overview to understand the corpus scope
 2. Based on query type:
-   - For specific lookups: use search_passages with the direct question or
-     reformulated legal issue
-   - For topic exploration: Use search_passages first, then browse topic indexes
-   - For entity queries: Use search_passages or grep_search first, then check
-     the entity registry when broader coverage is needed
+   - Run search_passages with the direct question and a concise reformulated
+     legal issue
+   - In parallel, check _index/topics/ for the doctrine the question is about
+   - For entity queries, use the entity registry when ranked passages are too
+     narrow or name matching is ambiguous
 3. Read summaries before full documents
 4. Use headers_only=True for large files to get structure first
 5. Use grep_search with match_all_terms=True for exact multi-term lookups where
@@ -57,7 +57,15 @@ documents/       → Full document content with .meta.json metadata
    results are not proof of absence: if a grep for a doctrinal term returns 0
    matches, you MUST retry with a paraphrase of the underlying concept before
    concluding the corpus lacks it.
-10. Bench-notes sections (e.g. 4.16) and charge-book sections (e.g. 4.16.1)
+10. Chapter-mismatch rule: if all top BM25 hits come from a model-charge,
+    bench-notes, or sibling doctrine family but the question asks about
+    admissibility, evidence doctrine, jury procedure, or trial procedure, the
+    answer likely lives in another chapter. Search the topic index and rerun
+    search_passages with the doctrinal term before reading more siblings.
+11. Before finalizing a yes/no answer, run one search phrased for the opposite
+    conclusion and read the best contrary candidate if it lands in a nearby
+    doctrine family.
+12. Bench-notes sections (e.g. 4.16) and charge-book sections (e.g. 4.16.1)
     cover the same doctrine at different specificity. Before finalizing, check
     the sibling-chunk list of your primary source and read any sibling whose
     title matches the question's concept — definitions and technical terms
