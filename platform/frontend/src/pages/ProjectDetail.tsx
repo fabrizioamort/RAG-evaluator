@@ -613,14 +613,19 @@ function EvaluationsTab({
     }, [launchWizard, hasAutoOpened])
 
     if (activeEvaluationId) {
+        const closeActiveEvaluation = () => {
+            setActiveEvaluationId(null)
+            queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
+        }
+        const hasSavedResults = (activeEvaluation?.result_count ?? 0) > 0
+        const canShowPartialResults =
+            (activeEvaluation?.status === 'failed' || activeEvaluation?.status === 'cancelled') && hasSavedResults
+
         if (activeEvaluation?.status === 'completed') {
             return (
                 <EvaluationResults
                     evaluationId={activeEvaluationId}
-                    onBack={() => {
-                        setActiveEvaluationId(null)
-                        queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
-                    }}
+                    onBack={closeActiveEvaluation}
                 />
             )
         }
@@ -628,10 +633,7 @@ function EvaluationsTab({
         return (
             <div className="space-y-6">
                 <button
-                    onClick={() => {
-                        setActiveEvaluationId(null)
-                        queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
-                    }}
+                    onClick={closeActiveEvaluation}
                     className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                     <ArrowLeft className="h-4 w-4" />
@@ -644,11 +646,14 @@ function EvaluationsTab({
                         queryClient.invalidateQueries({ queryKey: ['evaluation', activeEvaluationId] })
                         queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
                     }}
-                    onClose={() => {
-                        setActiveEvaluationId(null)
-                        queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
-                    }}
+                    onClose={closeActiveEvaluation}
                 />
+                {canShowPartialResults && (
+                    <EvaluationResults
+                        evaluationId={activeEvaluationId}
+                        onBack={closeActiveEvaluation}
+                    />
+                )}
             </div>
         )
     }

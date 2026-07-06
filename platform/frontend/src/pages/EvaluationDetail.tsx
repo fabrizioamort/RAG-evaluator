@@ -44,7 +44,12 @@ export function EvaluationDetail() {
     )
   }
 
-  if (data.data.status === 'completed') {
+  const evaluation = data.data
+  const hasSavedResults = evaluation.result_count > 0
+  const canShowPartialResults =
+    (evaluation.status === 'failed' || evaluation.status === 'cancelled') && hasSavedResults
+
+  if (evaluation.status === 'completed') {
     return (
       <EvaluationResults
         evaluationId={evaluationId}
@@ -56,10 +61,36 @@ export function EvaluationDetail() {
     )
   }
 
+  if (canShowPartialResults) {
+    return (
+      <div className="space-y-6">
+        <EvaluationProgress
+          evaluationId={evaluationId}
+          evaluation={evaluation}
+          onRetryStarted={() => {
+            queryClient.invalidateQueries({ queryKey: ['evaluation', evaluationId] })
+            queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
+          }}
+          onClose={() => {
+            queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
+            goBack()
+          }}
+        />
+        <EvaluationResults
+          evaluationId={evaluationId}
+          onBack={() => {
+            queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })
+            goBack()
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <EvaluationProgress
       evaluationId={evaluationId}
-      evaluation={data.data}
+      evaluation={evaluation}
       onRetryStarted={() => {
         queryClient.invalidateQueries({ queryKey: ['evaluation', evaluationId] })
         queryClient.invalidateQueries({ queryKey: ['evaluations', projectId] })

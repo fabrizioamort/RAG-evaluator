@@ -6,16 +6,6 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Set
 
-# Import DeepEval metrics (we'll need them for individual scoring)
-from deepeval.metrics import (
-    AnswerRelevancyMetric,
-    ContextualPrecisionMetric,
-    ContextualRecallMetric,
-    FaithfulnessMetric,
-    GEval,
-)
-from deepeval.models.base_model import DeepEvalBaseLLM
-from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -37,7 +27,116 @@ from app.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-class SafeDeepEvalLLM(DeepEvalBaseLLM):
+AnswerRelevancyMetric: Any | None = None
+ContextualPrecisionMetric: Any | None = None
+ContextualRecallMetric: Any | None = None
+FaithfulnessMetric: Any | None = None
+GEval: Any | None = None
+LLMTestCase: Any | None = None
+LLMTestCaseParams: Any | None = None
+_DEEPEVAL_REAL_LOADED = False
+_SAFE_DEEPEVAL_LLM_CLASS: Any | None = None
+
+
+class _LocalLLMTestCase:
+    """Minimal DeepEval-compatible test case used when metrics are test-patched."""
+
+    def __init__(
+        self,
+        *,
+        input: str,
+        actual_output: str,
+        expected_output: str,
+        context: list[str],
+        retrieval_context: list[str],
+    ) -> None:
+        self.input = input
+        self.actual_output = actual_output
+        self.expected_output = expected_output
+        self.context = context
+        self.retrieval_context = retrieval_context
+
+
+class _LocalLLMTestCaseParams:
+    INPUT = "input"
+    ACTUAL_OUTPUT = "actual_output"
+    EXPECTED_OUTPUT = "expected_output"
+
+
+def _ensure_deepeval_loaded() -> None:
+    """Import DeepEval symbols on demand to keep pytest collection lightweight."""
+    global AnswerRelevancyMetric
+    global ContextualPrecisionMetric
+    global ContextualRecallMetric
+    global FaithfulnessMetric
+    global GEval
+    global LLMTestCase
+    global LLMTestCaseParams
+    global _DEEPEVAL_REAL_LOADED
+
+    if all(
+        symbol is not None
+        for symbol in (
+            AnswerRelevancyMetric,
+            ContextualPrecisionMetric,
+            ContextualRecallMetric,
+            FaithfulnessMetric,
+            GEval,
+            LLMTestCase,
+            LLMTestCaseParams,
+        )
+    ):
+        return
+
+    metrics_are_patched = all(
+        symbol is not None
+        for symbol in (
+            AnswerRelevancyMetric,
+            ContextualPrecisionMetric,
+            ContextualRecallMetric,
+            FaithfulnessMetric,
+            GEval,
+        )
+    )
+    if metrics_are_patched:
+        if LLMTestCase is None:
+            LLMTestCase = _LocalLLMTestCase
+        if LLMTestCaseParams is None:
+            LLMTestCaseParams = _LocalLLMTestCaseParams
+        return
+
+    from deepeval.metrics import (
+        AnswerRelevancyMetric as DeepEvalAnswerRelevancyMetric,
+    )
+    from deepeval.metrics import (
+        ContextualPrecisionMetric as DeepEvalContextualPrecisionMetric,
+    )
+    from deepeval.metrics import (
+        ContextualRecallMetric as DeepEvalContextualRecallMetric,
+    )
+    from deepeval.metrics import FaithfulnessMetric as DeepEvalFaithfulnessMetric
+    from deepeval.metrics import GEval as DeepEvalGEVal
+    from deepeval.test_case import LLMTestCase as DeepEvalLLMTestCase
+    from deepeval.test_case import LLMTestCaseParams as DeepEvalLLMTestCaseParams
+
+    if AnswerRelevancyMetric is None:
+        AnswerRelevancyMetric = DeepEvalAnswerRelevancyMetric
+    if ContextualPrecisionMetric is None:
+        ContextualPrecisionMetric = DeepEvalContextualPrecisionMetric
+    if ContextualRecallMetric is None:
+        ContextualRecallMetric = DeepEvalContextualRecallMetric
+    if FaithfulnessMetric is None:
+        FaithfulnessMetric = DeepEvalFaithfulnessMetric
+    if GEval is None:
+        GEval = DeepEvalGEVal
+    if LLMTestCase is None:
+        LLMTestCase = DeepEvalLLMTestCase
+    if LLMTestCaseParams is None:
+        LLMTestCaseParams = DeepEvalLLMTestCaseParams
+    _DEEPEVAL_REAL_LOADED = True
+
+
+class _SafeDeepEvalLLMCore:
     """DeepEval LLM wrapper that uses our safe LLMProviderService."""
 
     def __init__(
@@ -56,7 +155,7 @@ class SafeDeepEvalLLM(DeepEvalBaseLLM):
     def get_model_name(self) -> str:
         return self.model_name
 
-    def load_model(self, *args: Any, **kwargs: Any) -> DeepEvalBaseLLM:
+    def load_model(self, *args: Any, **kwargs: Any) -> Any:
         return self
 
     def generate(self, prompt: str, schema: Any = None) -> str:
@@ -121,6 +220,28 @@ class SafeDeepEvalLLM(DeepEvalBaseLLM):
         except Exception as e:
             logger.error("SafeDeepEvalLLM.a_generate failed", error=str(e))
             raise
+
+
+def _safe_deepeval_llm_class() -> Any:
+    """Return a DeepEvalBaseLLM subclass without importing DeepEval at module load."""
+    global _SAFE_DEEPEVAL_LLM_CLASS
+    if _SAFE_DEEPEVAL_LLM_CLASS is not None:
+        return _SAFE_DEEPEVAL_LLM_CLASS
+
+    from deepeval.models.base_model import DeepEvalBaseLLM
+
+    class _SafeDeepEvalLLM(_SafeDeepEvalLLMCore, DeepEvalBaseLLM):
+        pass
+
+    _SAFE_DEEPEVAL_LLM_CLASS = _SafeDeepEvalLLM
+    return _SafeDeepEvalLLM
+
+
+def SafeDeepEvalLLM(*args: Any, **kwargs: Any) -> Any:
+    """Construct the model wrapper, subclassing DeepEval's base only when needed."""
+    if _DEEPEVAL_REAL_LOADED:
+        return _safe_deepeval_llm_class()(*args, **kwargs)
+    return _SafeDeepEvalLLMCore(*args, **kwargs)
 
 
 class EvaluationRunner:
@@ -199,17 +320,42 @@ class EvaluationRunner:
             config_value = self.evaluation.metric_config.get("include_reason")
             if config_value is not None:
                 include_reason = bool(config_value)
+
+        # Get selected metrics from config, fallback to all
+        selected_metrics = ["faithfulness", "relevancy", "precision", "recall", "g_eval"]
+        if self.evaluation and self.evaluation.metric_config:
+            selected_metrics = self.evaluation.metric_config.get("metrics", selected_metrics)
+
+        uses_deepeval = bool(
+            {
+                "faithfulness",
+                "relevancy",
+                "answer_relevancy",
+                "precision",
+                "contextual_precision",
+                "recall",
+                "contextual_recall",
+                "g_eval",
+            }
+            & set(selected_metrics)
+        )
+        if not uses_deepeval:
+            return []
+
+        _ensure_deepeval_loaded()
+        assert FaithfulnessMetric is not None
+        assert AnswerRelevancyMetric is not None
+        assert ContextualPrecisionMetric is not None
+        assert ContextualRecallMetric is not None
+        assert GEval is not None
+        assert LLMTestCaseParams is not None
+
         safe_model = SafeDeepEvalLLM(
             model_name=llm_model,
             provider_name=provider,
             base_url=base_url,
             api_key=api_key,
         )
-
-        # Get selected metrics from config, fallback to all
-        selected_metrics = ["faithfulness", "relevancy", "precision", "recall", "g_eval"]
-        if self.evaluation and self.evaluation.metric_config:
-            selected_metrics = self.evaluation.metric_config.get("metrics", selected_metrics)
 
         metrics: List[Any] = []
         if "faithfulness" in selected_metrics:
@@ -473,35 +619,21 @@ class EvaluationRunner:
                 failure_details = (
                     f" First failure: {failed_case_errors[0]}." if failed_case_errors else ""
                 )
-                raise RuntimeError(
+                error_message = (
                     f"Evaluation finished with {current_completed}/{total} test cases saved."
                     f"{failed_suffix}{failure_details} Retry will run only the missing test cases."
                 )
+                aggregate_metrics = (
+                    await self._calculate_aggregate_metrics() if current_completed > 0 else None
+                )
+                await self._fail_evaluation(error_message, aggregate_metrics)
+                return
 
             await self._finalize_evaluation()
 
         except Exception as e:
             logger.exception("Evaluation runner failed", evaluation_id=str(self.evaluation_id))
-            await self.checkpoint_service.fail_job(self.evaluation_id, str(e))
-            await self.event_log.log_event(self.evaluation_id, "error", {"error_message": str(e)})
-
-            # Trigger webhook
-            try:
-                if self.evaluation:
-                    from app.services.webhook_service import get_webhook_service
-
-                    await get_webhook_service().trigger_event(
-                        self.db,
-                        self.evaluation.project_id,
-                        "evaluation.failed",
-                        {
-                            "evaluation_id": str(self.evaluation_id),
-                            "status": "failed",
-                            "error_message": str(e),
-                        },
-                    )
-            except Exception as webhook_err:
-                logger.error("Failed to trigger failure webhook", error=str(webhook_err))
+            await self._fail_evaluation(str(e))
 
     async def _process_test_case(
         self,
@@ -535,14 +667,6 @@ class EvaluationRunner:
             )
             retrieved_context = response.get("context", [])
 
-            llm_test_case = LLMTestCase(
-                input=test_case.question,
-                actual_output=response["answer"],
-                expected_output=test_case.expected_answer,
-                context=ground_truth_context,
-                retrieval_context=retrieved_context,
-            )
-
             # Score metrics. DeepEval metric objects are mutable: a_measure()
             # writes score/reason onto the object. Create a fresh set per test
             # case so async evaluation cannot mix scores or reasons across
@@ -552,22 +676,31 @@ class EvaluationRunner:
             )
             scores: Dict[str, Any] = {}
             metric_results: list[dict[str, Any]] = []
-            for metric in metrics:
-                await metric.a_measure(llm_test_case)
-                class_name = metric.__class__.__name__
-                name = self._metric_result_field_name(class_name)
-                score = getattr(metric, "score", None)
-                reason = getattr(metric, "reason", None)
-
-                scores[f"{name}_score"] = score
-                scores[f"{name}_reason"] = reason
-                metric_results.append(
-                    {
-                        "name": class_name,
-                        "score": score,
-                        "reason": reason,
-                    }
+            if metrics:
+                llm_test_case_cls = LLMTestCase or _LocalLLMTestCase
+                llm_test_case = llm_test_case_cls(
+                    input=test_case.question,
+                    actual_output=response["answer"],
+                    expected_output=test_case.expected_answer,
+                    context=ground_truth_context,
+                    retrieval_context=retrieved_context,
                 )
+                for metric in metrics:
+                    await metric.a_measure(llm_test_case)
+                    class_name = metric.__class__.__name__
+                    name = self._metric_result_field_name(class_name)
+                    score = getattr(metric, "score", None)
+                    reason = getattr(metric, "reason", None)
+
+                    scores[f"{name}_score"] = score
+                    scores[f"{name}_reason"] = reason
+                    metric_results.append(
+                        {
+                            "name": class_name,
+                            "score": score,
+                            "reason": reason,
+                        }
+                    )
 
             # Token usage if available
             prompt_tokens = response.get("metadata", {}).get("token_usage", {}).get("prompt_tokens")
@@ -727,12 +860,9 @@ class EvaluationRunner:
         )
         return result.scalar_one_or_none() is not None
 
-    async def _finalize_evaluation(self) -> None:
-        """Calculate aggregate metrics and mark evaluation as complete."""
-        # Query all results for this evaluation
+    async def _calculate_aggregate_metrics(self) -> dict[str, Any]:
+        """Calculate aggregate metrics from saved evaluation results."""
         from sqlalchemy import func
-
-        from app.models.evaluation_result import EvaluationResult
 
         result = await self.db.execute(
             select(
@@ -822,22 +952,33 @@ class EvaluationRunner:
             "p95_latency_seconds": 0.0,  # Placeholder for now
         }
 
+        return {
+            "summary_metrics": summary_metrics,
+            "pass_rate": pass_rate,
+            "cost_metrics": cost_metrics,
+            "performance_metrics": performance_metrics,
+        }
+
+    async def _finalize_evaluation(self) -> None:
+        """Calculate aggregate metrics and mark evaluation as complete."""
+        aggregate_metrics = await self._calculate_aggregate_metrics()
+
         await self.checkpoint_service.complete_job(
             self.evaluation_id,
-            summary_metrics=summary_metrics,
-            pass_rate=pass_rate,
-            cost_metrics=cost_metrics,
-            performance_metrics=performance_metrics,
+            summary_metrics=aggregate_metrics["summary_metrics"],
+            pass_rate=aggregate_metrics["pass_rate"],
+            cost_metrics=aggregate_metrics["cost_metrics"],
+            performance_metrics=aggregate_metrics["performance_metrics"],
         )
 
         await self.event_log.log_event(
             self.evaluation_id,
             "completed",
             {
-                "summary_metrics": summary_metrics,
-                "pass_rate": pass_rate,
-                "cost_metrics": cost_metrics,
-                "performance_metrics": performance_metrics,
+                "summary_metrics": aggregate_metrics["summary_metrics"],
+                "pass_rate": aggregate_metrics["pass_rate"],
+                "cost_metrics": aggregate_metrics["cost_metrics"],
+                "performance_metrics": aggregate_metrics["performance_metrics"],
                 "duration_seconds": 0.0,  # Placeholder
             },
         )
@@ -855,12 +996,56 @@ class EvaluationRunner:
                     {
                         "evaluation_id": str(self.evaluation_id),
                         "status": "completed",
-                        "pass_rate": pass_rate,
-                        "summary_metrics": summary_metrics,
+                        "pass_rate": aggregate_metrics["pass_rate"],
+                        "summary_metrics": aggregate_metrics["summary_metrics"],
                     },
                 )
         except Exception as webhook_err:
             logger.error("Failed to trigger completion webhook", error=str(webhook_err))
+
+    async def _fail_evaluation(
+        self,
+        error_message: str,
+        aggregate_metrics: dict[str, Any] | None = None,
+    ) -> None:
+        """Mark evaluation as failed, optionally preserving aggregate partial results."""
+        fail_kwargs = aggregate_metrics or {}
+        await self.checkpoint_service.fail_job(
+            self.evaluation_id,
+            error_message,
+            **fail_kwargs,
+        )
+
+        event_payload = {"error_message": error_message}
+        if aggregate_metrics:
+            event_payload.update(aggregate_metrics)
+        await self.event_log.log_event(self.evaluation_id, "error", event_payload)
+
+        # Trigger webhook
+        try:
+            if self.evaluation:
+                from app.services.webhook_service import get_webhook_service
+
+                payload: dict[str, Any] = {
+                    "evaluation_id": str(self.evaluation_id),
+                    "status": "failed",
+                    "error_message": error_message,
+                }
+                if aggregate_metrics:
+                    payload.update(
+                        {
+                            "pass_rate": aggregate_metrics["pass_rate"],
+                            "summary_metrics": aggregate_metrics["summary_metrics"],
+                        }
+                    )
+                await get_webhook_service().trigger_event(
+                    self.db,
+                    self.evaluation.project_id,
+                    "evaluation.failed",
+                    payload,
+                )
+        except Exception as webhook_err:
+            logger.error("Failed to trigger failure webhook", error=str(webhook_err))
 
 
 def get_evaluation_runner(db_session: AsyncSession, evaluation_id: uuid.UUID) -> EvaluationRunner:

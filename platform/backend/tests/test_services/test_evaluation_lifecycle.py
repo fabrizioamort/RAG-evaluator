@@ -491,3 +491,10 @@ async def test_evaluation_failure_reports_first_test_case_error(
     assert "Failed test case indexes: 1." in error_message
     assert "First failure: Test case 1 failed: retriever timeout." in error_message
     assert "Retry will run only the missing test cases." in error_message
+    failure_metrics = mock_checkpoint.fail_job.call_args.kwargs
+    assert failure_metrics["summary_metrics"]["faithfulness_avg"] == 0.8
+    assert failure_metrics["summary_metrics"]["overall_avg"] == 0.8
+    assert failure_metrics["pass_rate"] == 1.0
+    assert failure_metrics["cost_metrics"]["total_prompt_tokens"] == 20
+    assert failure_metrics["cost_metrics"]["total_completion_tokens"] == 10
+    assert failure_metrics["performance_metrics"]["avg_latency_seconds"] >= 0
