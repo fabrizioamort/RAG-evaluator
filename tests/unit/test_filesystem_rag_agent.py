@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from rag_evaluator.rag_implementations.filesystem_rag.agent import agent as agent_module
 from rag_evaluator.rag_implementations.filesystem_rag.agent.agent import (
     AgentResponse,
     FilesystemRAGAgent,
@@ -22,6 +23,16 @@ LEGAL_VARE_QUESTION = (
     "What is this evidentiary process called?"
 )
 
+SALLY_VIEW_QUESTION = (
+    "Sally is accused of cultivating narcotic plants in her backyard. One of the "
+    "elements of this charge is that \"the accused intentionally cultivated or "
+    "attempted to cultivate a particular substance.\" To establish whether this "
+    "is the case, the judge believes it would be valuable to visit Sally's "
+    "backyard and have the jury examine it for themselves. What is the name of "
+    "the legal procedure whereby the court travels to a location relevant to the "
+    "charge?"
+)
+
 
 def _write_prepared_fixture(root: Path) -> None:
     """Create a small prepared filesystem fixture."""
@@ -30,6 +41,7 @@ def _write_prepared_fixture(root: Path) -> None:
     (root / "_index" / "entities").mkdir(parents=True)
     (root / "_index" / "questions").mkdir(parents=True)
     (root / "_summaries").mkdir(parents=True)
+    (root / "documents").mkdir(parents=True)
 
     (root / "_meta" / "corpus_overview.md").write_text("Legal bench subset", encoding="utf-8")
     (root / "_meta" / "navigation_guide.md").write_text("Use indexes", encoding="utf-8")
@@ -46,6 +58,8 @@ def _write_prepared_fixture(root: Path) -> None:
                 '# Question Seeds',
                 '- "What is Use of Circumstantial Evidence?" -> doc_013',
                 '- "What is The VARE Procedure?" -> doc_029',
+                '- "What is 2.1 Views?" -> doc_045',
+                '- "What is view?" -> doc_045',
                 (
                     '- "What does the section on a prosecution witness\'s '
                     'evidence-in-chief by way of an audio or audiovisual recording '
@@ -65,6 +79,27 @@ def _write_prepared_fixture(root: Path) -> None:
         "A prosecution witness's evidence-in-chief may be given by way of an audio "
         "or audiovisual recording in which the witness answers questions put by a "
         'prescribed person. The recording is called a "VARE".',
+        encoding="utf-8",
+    )
+    (root / "_summaries" / "doc_045_summary.md").write_text(
+        "# Summary: 2.1 Views\n"
+        'Under s 53, the court may order a "demonstration, experiment or '
+        'inspection" (collectively, a "view"). An inspection involves the court '
+        "travelling to view a location or an object that could not be brought "
+        "into the courtroom.",
+        encoding="utf-8",
+    )
+    (root / "documents" / "doc_045.md").write_text(
+        "# 2.1 Views\n\n"
+        "## What is a view?\n\n"
+        '## 1. Under s 53 of the Evidence Act 2008, the court may order a '
+        '"demonstration, experiment or inspection" (collectively, a "view").\n\n'
+        "## 2. These terms are not defined in the Evidence Act 2008. Based on "
+        "the common law and the conventional meaning of the terms:\n\n"
+        "- An inspection involves the court travelling to view a location or an "
+        "object that could not be brought into the courtroom;\n\n"
+        "- A demonstration builds on an inspection by allowing a witness to "
+        "explain the incident in question.\n",
         encoding="utf-8",
     )
 
@@ -87,6 +122,57 @@ def test_prefetch_promotes_vare_candidate_for_recorded_witness_question() -> Non
         assert prefetch["candidates"][0]["doc_id"] == "doc_029"
         assert any("VARE" in chunk for chunk in prefetch["chunks"])
         assert any("recording" in candidate["matched_terms"] for candidate in prefetch["candidates"])
+
+
+def test_prefetch_includes_full_document_excerpt_for_view_question() -> None:
+    with TemporaryDirectory() as tmp_dir:
+        prepared_path = Path(tmp_dir)
+        _write_prepared_fixture(prepared_path)
+        agent = FilesystemRAGAgent(str(prepared_path), client=object())  # type: ignore[arg-type]
+
+        prefetch = agent._build_prefetch_context(SALLY_VIEW_QUESTION)
+
+        assert prefetch["candidates"][0]["doc_id"] == "doc_045"
+        assert "documents/doc_045.md" in prefetch["sources"]
+        assert any(
+            "Candidate Full Text Excerpt: doc_045" in chunk
+            and 'collectively, a "view"' in chunk
+            for chunk in prefetch["chunks"]
+        )
+
+
+def test_agent_retries_transient_gateway_error(monkeypatch: Any) -> None:
+    monkeypatch.setattr(agent_module, "_LLM_RETRY_BASE_DELAY_SECONDS", 0)
+
+    class FakeCompletions:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def create(self, **_kwargs: Any) -> object:
+            self.calls += 1
+            if self.calls == 1:
+                raise Exception("BadGatewayError: Upstream error from Morph: undefined")
+            return recovered_response
+
+    class FakeChat:
+        def __init__(self, completions: FakeCompletions) -> None:
+            self.completions = completions
+
+    class FakeClient:
+        def __init__(self, completions: FakeCompletions) -> None:
+            self.chat = FakeChat(completions)
+
+    with TemporaryDirectory() as tmp_dir:
+        prepared_path = Path(tmp_dir)
+        _write_prepared_fixture(prepared_path)
+        recovered_response = object()
+        completions = FakeCompletions()
+        agent = FilesystemRAGAgent(str(prepared_path), client=FakeClient(completions))  # type: ignore[arg-type]
+
+        response = agent._call_llm([{"role": "user", "content": "What is VARE?"}])
+
+        assert response is recovered_response
+        assert completions.calls == 2
 
 
 def test_query_with_trace_uses_single_agent_call() -> None:

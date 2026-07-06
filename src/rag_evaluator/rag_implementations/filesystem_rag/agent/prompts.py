@@ -37,11 +37,18 @@ documents/       → Full document content with .meta.json metadata
 3. Read summaries before full documents
 4. Use headers_only=True for large files to get structure first
 5. Read specific line ranges when you know what section you need
+6. Treat summaries as navigation aids. For exact-name/legal-procedure questions,
+   verify the summary against the full document or a provided full-text excerpt
+   before finalizing.
+7. If a source defines a collective statutory or legal term and then defines
+   narrower examples, answer with the named collective term and mention the
+   narrower example only as clarification.
 
 ## Constraints
 - Maximum {max_tool_calls} tool calls per query
 - Maximum {max_file_reads} file reads per query
-- Prefer summaries over full documents when sufficient
+- Prefer summaries for navigation, but prefer full documents or full-text
+  excerpts for final wording when the exact legal term matters
 
 ## Response Format
 After gathering information, provide a clear, direct answer to the question without additional labels or formatting.
@@ -63,6 +70,8 @@ Strategy:
 - Check _index/questions/question_seeds.md for direct matches
 - Use _index/topics/_topic_map.md for topic queries
 - Read summaries before full documents
+- For exact-name/legal-procedure questions, verify against full text/excerpts and
+  prefer named collective terms over narrower examples
 
 {strategy_hint}
 

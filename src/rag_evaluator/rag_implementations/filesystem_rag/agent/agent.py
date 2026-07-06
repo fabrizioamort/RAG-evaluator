@@ -16,7 +16,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from rag_evaluator.common.llm_utils import get_safe_llm_params
+from rag_evaluator.common.llm_utils import get_safe_llm_params, is_transient_llm_error
 from rag_evaluator.config import settings
 from rag_evaluator.rag_implementations.filesystem_rag.agent.cache import SessionCache
 from rag_evaluator.rag_implementations.filesystem_rag.agent.prompts import (
@@ -71,6 +71,10 @@ class ReasoningStep:
 _TOKEN_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9']{2,}")
 _DOC_ID_RE = re.compile(r"doc_\d+")
 _WORD_BOUNDARY_TEMPLATE = r"\b{}\b"
+_LLM_MAX_ATTEMPTS = 3
+_LLM_RETRY_BASE_DELAY_SECONDS = 1.0
+_PREFETCH_DOCUMENT_CANDIDATES = 2
+_PREFETCH_DOCUMENT_MAX_CHARS = 4500
 _PREFETCH_STOP_WORDS = {
     "about",
     "according",
@@ -228,11 +232,11 @@ class FilesystemRAGAgent:
             "testimony": ["evidence", "witness"],
             "recording": ["audio", "audiovisual", "recorded"],
             "recorded": ["recording", "audio", "audiovisual"],
-            "visit": ["view", "inspection"],
-            "travels": ["view", "inspection"],
-            "location": ["view", "inspection"],
-            "backyard": ["view", "inspection"],
-            "examine": ["view", "inspection"],
+            "visit": ["view", "views", "inspection", "demonstration", "experiment", "site"],
+            "travels": ["view", "views", "inspection", "demonstration", "experiment"],
+            "location": ["view", "views", "inspection", "site", "place"],
+            "backyard": ["view", "views", "inspection", "site", "place"],
+            "examine": ["view", "views", "inspection", "demonstration", "experiment"],
             "physical": ["object", "objects", "condition", "experiment", "experiments"],
             "lock": ["object", "condition", "experiment", "experiments"],
             "damaged": ["condition", "object", "experiment", "experiments"],
@@ -250,6 +254,27 @@ class FilesystemRAGAgent:
                     seen.add(expanded)
 
         return terms
+
+    def _prefetch_term_weight(self, term: str) -> float:
+        """Return a deterministic retrieval weight for high-signal query terms."""
+        return {
+            "view": 4.0,
+            "views": 4.0,
+            "inspection": 3.0,
+            "demonstration": 2.5,
+            "experiment": 2.5,
+            "experiments": 2.5,
+            "procedure": 2.0,
+            "process": 1.6,
+            "called": 1.4,
+            "privilege": 2.0,
+            "self-incrimination": 2.5,
+            "certificate": 1.8,
+            "recording": 2.0,
+            "recorded": 2.0,
+            "audio": 2.0,
+            "audiovisual": 2.0,
+        }.get(term, 1.0)
 
     def _read_text_if_exists(self, relative_path: str) -> str:
         """Read a prepared file if present, returning an empty string on failure."""
@@ -281,6 +306,11 @@ class FilesystemRAGAgent:
         document_frequency: Counter[str] = Counter()
         for token_set in token_sets.values():
             document_frequency.update(token_set)
+        for term in terms:
+            if "-" in term:
+                document_frequency[term] = sum(
+                    1 for summary in summaries.values() if self._term_count(summary.lower(), term)
+                )
 
         max_common_frequency = max(8, len(summaries) // 4)
         usable_terms = [
@@ -300,7 +330,15 @@ class FilesystemRAGAgent:
                 if not count:
                     continue
                 idf = math.log((total_docs + 1) / (document_frequency[term] + 1))
-                scores[doc_id] += (1 + min(count, 2)) * idf
+                scores[doc_id] += self._prefetch_term_weight(term) * (1 + min(count, 2)) * idf
+                matched_terms[doc_id].add(term)
+
+            title_text = "\n".join(summary_lower.splitlines()[:4])
+            for term in usable_terms:
+                if not self._term_count(title_text, term):
+                    continue
+                idf = math.log((total_docs + 1) / (document_frequency[term] + 1))
+                scores[doc_id] += 2.5 * self._prefetch_term_weight(term) * idf
                 matched_terms[doc_id].add(term)
 
         question_seed_text = self._read_text_if_exists("_index/questions/question_seeds.md")
@@ -315,7 +353,7 @@ class FilesystemRAGAgent:
                 if not self._term_count(line_lower, term):
                     continue
                 idf = math.log((total_docs + 1) / (document_frequency[term] + 1))
-                scores[doc_id] += 2.0 * idf
+                scores[doc_id] += 2.0 * self._prefetch_term_weight(term) * idf
                 matched_terms[doc_id].add(term)
 
         ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
@@ -328,6 +366,58 @@ class FilesystemRAGAgent:
             for doc_id, score in ranked
             if doc_id in summaries and score > 0
         ]
+
+    def _build_document_prefetch_excerpt(
+        self,
+        doc_id: str,
+        terms: list[str],
+        max_chars: int = _PREFETCH_DOCUMENT_MAX_CHARS,
+    ) -> str:
+        """Read a focused excerpt from a candidate source document."""
+        document_text = self._read_text_if_exists(f"documents/{doc_id}.md")
+        if not document_text:
+            return ""
+
+        if len(document_text) <= max_chars:
+            return document_text
+
+        weighted_terms = sorted(
+            {term for term in terms if self._prefetch_term_weight(term) >= 1.5},
+            key=self._prefetch_term_weight,
+            reverse=True,
+        )
+        search_terms = weighted_terms or terms[:8]
+        lines = document_text.splitlines()
+        hit_lines: list[int] = []
+
+        for idx, line in enumerate(lines):
+            line_lower = line.lower()
+            if any(self._term_count(line_lower, term) for term in search_terms):
+                hit_lines.append(idx)
+
+        if not hit_lines:
+            return document_text[:max_chars].rstrip() + "\n... [document excerpt truncated]"
+
+        selected_ranges: list[tuple[int, int]] = []
+        for line_idx in hit_lines[:8]:
+            start = max(0, line_idx - 4)
+            end = min(len(lines), line_idx + 9)
+            if selected_ranges and start <= selected_ranges[-1][1]:
+                selected_ranges[-1] = (selected_ranges[-1][0], max(selected_ranges[-1][1], end))
+            else:
+                selected_ranges.append((start, end))
+
+        excerpt_parts: list[str] = []
+        for start, end in selected_ranges:
+            excerpt_parts.append("\n".join(lines[start:end]))
+            excerpt = "\n\n...\n\n".join(excerpt_parts)
+            if len(excerpt) >= max_chars:
+                break
+
+        excerpt = "\n\n...\n\n".join(excerpt_parts)
+        if len(excerpt) > max_chars:
+            excerpt = excerpt[:max_chars].rstrip() + "\n... [document excerpt truncated]"
+        return excerpt
 
     def _build_prefetch_context(self, question: str, max_candidates: int = 3) -> dict[str, Any]:
         """Build deterministic candidate context before LLM navigation starts."""
@@ -353,7 +443,7 @@ class FilesystemRAGAgent:
         chunks: list[str] = []
         sources: list[str] = []
 
-        for candidate in ranked:
+        for candidate_idx, candidate in enumerate(ranked):
             doc_id = candidate["doc_id"]
             source = summary_paths[doc_id]
             snippet = summaries[doc_id]
@@ -372,6 +462,27 @@ class FilesystemRAGAgent:
                 )
             )
             sources.append(source)
+
+            if candidate_idx >= _PREFETCH_DOCUMENT_CANDIDATES:
+                continue
+
+            excerpt = self._build_document_prefetch_excerpt(doc_id, terms)
+            if not excerpt:
+                continue
+
+            document_source = f"documents/{doc_id}.md"
+            chunks.append(
+                "\n".join(
+                    [
+                        f"# Candidate Full Text Excerpt: {doc_id}",
+                        f"Source: {document_source}",
+                        f"Matched terms: {', '.join(candidate['matched_terms'])}",
+                        "",
+                        excerpt,
+                    ]
+                )
+            )
+            sources.append(document_source)
 
         return {
             "terms": terms,
@@ -575,7 +686,22 @@ class FilesystemRAGAgent:
 
         kwargs = get_safe_llm_params(self.llm_model, reasoning_effort=self.reasoning_effort, **kwargs)
 
-        return self.client.chat.completions.create(**kwargs)
+        return self._create_chat_completion_with_retries(kwargs)
+
+    def _create_chat_completion_with_retries(self, kwargs: dict[str, Any]) -> Any:
+        """Call the chat completion API, retrying transient provider failures."""
+        for attempt in range(_LLM_MAX_ATTEMPTS):
+            try:
+                return self.client.chat.completions.create(**kwargs)
+            except Exception as exc:
+                if attempt < _LLM_MAX_ATTEMPTS - 1 and is_transient_llm_error(exc):
+                    delay = _LLM_RETRY_BASE_DELAY_SECONDS * (2**attempt)
+                    if delay > 0:
+                        time.sleep(delay)
+                    continue
+                raise
+
+        raise RuntimeError("LLM completion failed without raising an exception")
 
     def _execute_tool(self, tool_name: str, args: dict[str, Any]) -> Any:
         """Execute a tool and return the result.
@@ -644,7 +770,7 @@ class FilesystemRAGAgent:
         }
         kwargs = get_safe_llm_params(self.llm_model, temperature=0.0, reasoning_effort=self.reasoning_effort, **kwargs)
 
-        response = self.client.chat.completions.create(**kwargs)
+        response = self._create_chat_completion_with_retries(kwargs)
 
         answer = response.choices[0].message.content or ""
         query_time = time.time() - start_time

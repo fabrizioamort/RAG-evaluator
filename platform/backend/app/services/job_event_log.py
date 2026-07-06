@@ -77,6 +77,19 @@ class JobEventLog:
             for queue in self._queues[eval_id_str]:
                 await queue.put(event)
 
+    def reset_cache(self, evaluation_id: UUID) -> None:
+        """Clear replayed in-memory events for a job before starting a retry."""
+        self._cache.pop(str(evaluation_id), None)
+        log_path = self._get_log_path(evaluation_id)
+        try:
+            log_path.unlink(missing_ok=True)
+        except Exception as e:
+            logger.error(
+                "Failed to reset persisted job events",
+                evaluation_id=str(evaluation_id),
+                error=str(e),
+            )
+
     async def subscribe(
         self, evaluation_id: UUID, last_event_id: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
@@ -94,9 +107,9 @@ class JobEventLog:
         self._queues[eval_id_str].append(queue)
 
         try:
-            # First, yield cached events to catch up
-            # In a more robust implementation, we'd use last_event_id and the file on disk
-            for cached_event in self._cache[eval_id_str]:
+            # First, yield cached or persisted events to catch up after page refreshes.
+            history = self._cache[eval_id_str] or self.get_history(evaluation_id)
+            for cached_event in history:
                 yield cached_event
 
             # Then wait for new events

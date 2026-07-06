@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # Default LLM settings
     DEFAULT_LLM_PROVIDER: str = "openai"
     DEFAULT_LLM_MODEL: str = "gpt-4o-mini"
+    LLM_COMPLETION_TIMEOUT_SECONDS: float = 120.0
+    LLM_COMPLETION_RETRY_ATTEMPTS: int = 3
+    LLM_COMPLETION_RETRY_BASE_DELAY_SECONDS: float = 1.0
 
     # Evaluation settings
     EVAL_CHECKPOINT_INTERVAL: int = 5  # Checkpoint every N test cases

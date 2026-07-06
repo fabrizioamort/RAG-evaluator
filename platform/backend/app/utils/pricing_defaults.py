@@ -3,7 +3,7 @@
 from decimal import Decimal
 
 # Pricing per 1,000,000 tokens in USD
-# Based on current OpenAI pricing (as of late 2023/early 2024)
+# Based on current OpenRouter pricing (as july 2026)
 DEFAULT_PRICING = {
     "gpt-5,1": {
         "prompt": Decimal("1.25"),
@@ -36,6 +36,30 @@ DEFAULT_PRICING = {
     "gpt-3.5-turbo": {
         "prompt": Decimal("0.50"),
         "completion": Decimal("1.50"),
+    },
+    "deepseek/deepseek-v4-flash": {
+        "prompt": Decimal("0.09"),
+        "completion": Decimal("0.18"),
+    },
+    "deepseek/deepseek-v4-pro": {
+        "prompt": Decimal("0.435"),
+        "completion": Decimal("0.87"),
+    },
+    "openai/gpt-5.4-nano": {
+        "prompt": Decimal("0.20"),
+        "completion": Decimal("1.25"),
+    },
+    "openai/gpt-5.4-mini": {
+        "prompt": Decimal("0.75"),
+        "completion": Decimal("4.5"),
+    },
+    "openai/gpt-5.4": {
+        "prompt": Decimal("2.50"),
+        "completion": Decimal("15"),
+    },
+    "openai/gpt-5.5": {
+        "prompt": Decimal("5"),
+        "completion": Decimal("30"),
     },
 }
 
