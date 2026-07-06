@@ -14,6 +14,7 @@ from app.models.knowledge_base import KnowledgeBase
 from app.models.knowledge_base_version import KnowledgeBaseVersion
 from app.models.project import Project
 from app.schemas.knowledge_base import (
+    DocumentList,
     DocumentResponse,
     DocumentUploadResponse,
     KnowledgeBaseCreate,
@@ -487,6 +488,47 @@ async def upload_documents(
         uploaded=uploaded,
         failed=failed,
         total_size_bytes=total_size,
+    )
+
+
+@router.get(
+    "/knowledge-bases/{kb_id}/documents",
+    response_model=DocumentList,
+    summary="List knowledge base documents",
+    description="Retrieve paginated documents for a knowledge base.",
+    responses={404: {"description": "Knowledge base not found"}},
+)
+async def list_documents(
+    db: DbSession,
+    kb_id: UUID,
+    pagination: Pagination,
+    search: str | None = None,
+) -> DocumentList:
+    """List documents in a knowledge base."""
+    exists_result = await db.execute(select(KnowledgeBase.id).where(KnowledgeBase.id == kb_id))
+    if not exists_result.scalar_one_or_none():
+        raise NotFoundError(detail=f"Knowledge base with id {kb_id} not found")
+
+    query = select(Document).where(Document.knowledge_base_id == kb_id)
+    count_query = select(func.count(Document.id)).where(Document.knowledge_base_id == kb_id)
+
+    search_term = search.strip() if search else None
+    if search_term:
+        pattern = f"%{search_term}%"
+        query = query.where(Document.filename.ilike(pattern))
+        count_query = count_query.where(Document.filename.ilike(pattern))
+
+    total = (await db.execute(count_query)).scalar() or 0
+    result = await db.execute(
+        query.order_by(Document.created_at.desc()).offset(pagination.offset).limit(pagination.limit)
+    )
+    documents = result.scalars().all()
+
+    return DocumentList(
+        items=[_document_to_response(doc) for doc in documents],
+        total=total,
+        offset=pagination.offset,
+        limit=pagination.limit,
     )
 
 

@@ -6,7 +6,7 @@ from typing import Any, AsyncGenerator
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 from sse_starlette.sse import EventSourceResponse
 
@@ -15,6 +15,7 @@ from app.models.evaluation import Evaluation
 from app.models.evaluation_result import EvaluationResult
 from app.models.knowledge_base_index import KnowledgeBaseIndex
 from app.models.run_manifest import RunManifest
+from app.models.test_case import TestCase
 from app.models.test_set import TestSet
 from app.schemas.evaluation import (
     CostMetrics,
@@ -46,7 +47,7 @@ async def _get_evaluation_or_404(db: DbSession, evaluation_id: UUID) -> Evaluati
         .where(Evaluation.id == evaluation_id)
         .options(
             # selectinload(Evaluation.rag_config), # Removed as relationship removed
-            selectinload(Evaluation.index),  # Load index
+            selectinload(Evaluation.index).selectinload(KnowledgeBaseIndex.rag_config),
             selectinload(Evaluation.test_set).selectinload(TestSet.test_cases),
         )
     )
@@ -62,6 +63,13 @@ async def _get_evaluation_or_404(db: DbSession, evaluation_id: UUID) -> Evaluati
 
 def _evaluation_to_response(eval_model: Evaluation, result_count: int = 0) -> EvaluationResponse:
     """Convert Evaluation model to EvaluationResponse schema."""
+    index = eval_model.__dict__.get("index")
+    test_set = eval_model.__dict__.get("test_set")
+    rag_config = index.__dict__.get("rag_config") if index else None
+    config_snapshot = index.config_snapshot if index and isinstance(index.config_snapshot, dict) else {}
+    rag_type = rag_config.rag_type if rag_config else config_snapshot.get("rag_type")
+    rag_config_id = eval_model.rag_config_id or (index.rag_config_id if index else None)
+
     return EvaluationResponse(
         id=eval_model.id,
         name=eval_model.name,
@@ -70,7 +78,12 @@ def _evaluation_to_response(eval_model: Evaluation, result_count: int = 0) -> Ev
         knowledge_base_index_id=eval_model.knowledge_base_index_id,
         kb_version_id=eval_model.kb_version_id,
         test_set_id=eval_model.test_set_id,
+        rag_config_id=rag_config_id,
         run_manifest_id=eval_model.run_manifest_id,
+        test_set_name=test_set.name if test_set else None,
+        index_name=index.name if index else None,
+        rag_config_name=rag_config.name if rag_config else None,
+        rag_type=rag_type,
         status=eval_model.status,
         started_at=eval_model.started_at,
         completed_at=eval_model.completed_at,
@@ -273,6 +286,7 @@ async def get_evaluation_results(
     db: DbSession,
     evaluation_id: UUID,
     pagination: Pagination,
+    search: str | None = Query(default=None),
 ) -> EvaluationResultList:
     """Get paginated results for an evaluation."""
     # Verify evaluation exists
@@ -284,11 +298,22 @@ async def get_evaluation_results(
         .where(EvaluationResult.evaluation_id == evaluation_id)
         .options(selectinload(EvaluationResult.test_case))
     )
-
-    # Get total count
     count_query = select(func.count(EvaluationResult.id)).where(
         EvaluationResult.evaluation_id == evaluation_id
     )
+
+    search_term = search.strip() if search else None
+    if search_term:
+        pattern = f"%{search_term}%"
+        search_filter = or_(
+            EvaluationResult.generated_answer.ilike(pattern),
+            TestCase.question.ilike(pattern),
+            TestCase.expected_answer.ilike(pattern),
+        )
+        query = query.outerjoin(EvaluationResult.test_case).where(search_filter)
+        count_query = count_query.outerjoin(EvaluationResult.test_case).where(search_filter)
+
+    # Get total count
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
@@ -633,18 +658,39 @@ async def list_evaluations(
     project_id: UUID,
     pagination: Pagination,
     status: str | None = Query(default=None),
+    test_set_id: UUID | None = Query(default=None),
+    knowledge_base_index_id: UUID | None = Query(default=None),
+    rag_config_id: UUID | None = Query(default=None),
 ) -> EvaluationList:
     """List all evaluations in a project."""
     # Build query
-    query = select(Evaluation).where(Evaluation.project_id == project_id)
+    query = (
+        select(Evaluation)
+        .where(Evaluation.project_id == project_id)
+        .options(
+            selectinload(Evaluation.index).selectinload(KnowledgeBaseIndex.rag_config),
+            selectinload(Evaluation.test_set),
+        )
+    )
+    count_query = select(func.count(Evaluation.id)).where(Evaluation.project_id == project_id)
 
     if status:
         query = query.where(Evaluation.status == status)
-
-    # Get total count
-    count_query = select(func.count(Evaluation.id)).where(Evaluation.project_id == project_id)
-    if status:
         count_query = count_query.where(Evaluation.status == status)
+
+    if test_set_id:
+        query = query.where(Evaluation.test_set_id == test_set_id)
+        count_query = count_query.where(Evaluation.test_set_id == test_set_id)
+
+    if knowledge_base_index_id:
+        query = query.where(Evaluation.knowledge_base_index_id == knowledge_base_index_id)
+        count_query = count_query.where(Evaluation.knowledge_base_index_id == knowledge_base_index_id)
+
+    if rag_config_id:
+        query = query.join(Evaluation.index).where(KnowledgeBaseIndex.rag_config_id == rag_config_id)
+        count_query = count_query.join(Evaluation.index).where(
+            KnowledgeBaseIndex.rag_config_id == rag_config_id
+        )
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
@@ -656,9 +702,22 @@ async def list_evaluations(
     # Execute query
     result = await db.execute(query)
     evaluations = result.scalars().all()
+    evaluation_ids = [evaluation.id for evaluation in evaluations]
+    result_counts: dict[UUID, int] = {}
+    if evaluation_ids:
+        result_count_query = (
+            select(EvaluationResult.evaluation_id, func.count(EvaluationResult.id))
+            .where(EvaluationResult.evaluation_id.in_(evaluation_ids))
+            .group_by(EvaluationResult.evaluation_id)
+        )
+        result_count_rows = (await db.execute(result_count_query)).all()
+        result_counts = {evaluation_id: count for evaluation_id, count in result_count_rows}
 
     return EvaluationList(
-        items=[_evaluation_to_response(e) for e in evaluations],
+        items=[
+            _evaluation_to_response(e, result_count=result_counts.get(e.id, 0))
+            for e in evaluations
+        ],
         total=total,
         offset=pagination.offset,
         limit=pagination.limit,

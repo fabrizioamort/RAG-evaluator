@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
     ArrowLeft,
@@ -12,26 +12,43 @@ import {
     Clock,
     CheckCircle2,
     FileBox,
-    Layers
+    Layers,
+    Search
 } from 'lucide-react'
 import { api, KnowledgeBaseIndex } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { CreateIndexDialog } from '@/components/indexes/CreateIndexDialog'
 import { IndexCard } from '@/components/indexes/IndexCard'
 import { useToast } from '@/components/ui/toast-context'
+import { PaginationFooter } from '@/components/ui/PaginationFooter'
 
 export function KBDetail() {
     const { id } = useParams<{ id: string }>()
     const navigate = useNavigate()
+    const [searchParams, setSearchParams] = useSearchParams()
     const queryClient = useQueryClient()
     const [isUploading, setIsUploading] = useState(false)
     const { success, error } = useToast()
     const [indexes, setIndexes] = useState<KnowledgeBaseIndex[]>([])
     const [isIndexDialogOpen, setIsIndexDialogOpen] = useState(false)
+    const documentPageSize = 20
+    const documentSearch = searchParams.get('docSearch') || ''
+    const documentOffsetParam = Number(searchParams.get('docOffset') || '0')
+    const documentOffset = Number.isFinite(documentOffsetParam) && documentOffsetParam > 0 ? documentOffsetParam : 0
 
     const { data: kb, isLoading, isError } = useQuery({
         queryKey: ['knowledge-base', id],
         queryFn: () => api.knowledgeBases.get(id!),
+        enabled: !!id,
+    })
+
+    const { data: documentsData, isLoading: isLoadingDocuments } = useQuery({
+        queryKey: ['knowledge-base-documents', id, documentSearch, documentOffset],
+        queryFn: () => api.knowledgeBases.listDocuments(id!, {
+            limit: documentPageSize,
+            offset: documentOffset,
+            search: documentSearch || undefined,
+        }),
         enabled: !!id,
     })
 
@@ -53,6 +70,7 @@ export function KBDetail() {
         mutationFn: (docId: string) => api.knowledgeBases.deleteDocument(id!, docId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['knowledge-base', id] })
+            queryClient.invalidateQueries({ queryKey: ['knowledge-base-documents', id] })
             success('Document deleted', 'The document has been removed.')
         },
         onError: () => {
@@ -68,6 +86,7 @@ export function KBDetail() {
         try {
             const result = await api.knowledgeBases.uploadDocuments(id!, files)
             queryClient.invalidateQueries({ queryKey: ['knowledge-base', id] })
+            queryClient.invalidateQueries({ queryKey: ['knowledge-base-documents', id] })
             const uploadedCount = result.data.uploaded.length
             success('Upload complete', `${uploadedCount} document${uploadedCount !== 1 ? 's' : ''} uploaded.`)
         } catch (err) {
@@ -77,6 +96,32 @@ export function KBDetail() {
             setIsUploading(false)
             e.target.value = ''
         }
+    }
+
+    const updateDocumentSearch = (value: string) => {
+        const next = new URLSearchParams(searchParams)
+        if (value.trim()) {
+            next.set('docSearch', value)
+        } else {
+            next.delete('docSearch')
+        }
+        next.delete('docOffset')
+        setSearchParams(next)
+    }
+
+    const updateDocumentOffset = (nextOffset: number) => {
+        const next = new URLSearchParams(searchParams)
+        if (nextOffset > 0) {
+            next.set('docOffset', String(nextOffset))
+        } else {
+            next.delete('docOffset')
+        }
+        setSearchParams(next)
+    }
+
+    const handleDeleteDocument = (docId: string, filename: string) => {
+        if (!confirm(`Delete "${filename}"? This removes the document from the knowledge base.`)) return
+        deleteDocMutation.mutate(docId)
     }
 
     if (isLoading) {
@@ -103,7 +148,8 @@ export function KBDetail() {
     }
 
     const k = kb.data
-    const documents = k.documents || []
+    const documents = documentsData?.data.items || []
+    const documentTotal = documentsData?.data.total ?? k.document_count
 
     return (
         <div className="space-y-6 pb-12">
@@ -155,18 +201,32 @@ export function KBDetail() {
             <div className="grid gap-6 md:grid-cols-3">
                 <div className="md:col-span-2 space-y-6">
                     <div className="rounded-xl border border-border bg-card overflow-hidden">
-                        <div className="border-b border-border bg-muted/30 px-6 py-4">
+                        <div className="flex flex-col gap-3 border-b border-border bg-muted/30 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
                             <h3 className="font-semibold flex items-center gap-2">
                                 <FileBox className="h-4 w-4 text-muted-foreground" />
-                                Documents ({documents.length})
+                                Documents ({documentTotal})
                             </h3>
+                            <div className="relative w-full sm:w-72">
+                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <input
+                                    type="text"
+                                    value={documentSearch}
+                                    onChange={(event) => updateDocumentSearch(event.target.value)}
+                                    placeholder="Search filenames..."
+                                    className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm"
+                                />
+                            </div>
                         </div>
 
                         <div className="divide-y divide-border">
-                            {documents.length === 0 ? (
+                            {isLoadingDocuments ? (
+                                <div className="flex justify-center py-12">
+                                    <Loader2 className="h-6 w-6 animate-spin text-primary/50" />
+                                </div>
+                            ) : documents.length === 0 ? (
                                 <div className="py-12 text-center text-muted-foreground">
                                     <FileText className="h-10 w-10 mx-auto opacity-20 mb-3" />
-                                    <p>No documents uploaded yet.</p>
+                                    <p>{documentSearch ? 'No documents match your search.' : 'No documents uploaded yet.'}</p>
                                 </div>
                             ) : (
                                 documents.map((doc) => (
@@ -192,7 +252,7 @@ export function KBDetail() {
                                                 {doc.status}
                                             </div>
                                             <button
-                                                onClick={() => deleteDocMutation.mutate(doc.id)}
+                                                onClick={() => handleDeleteDocument(doc.id, doc.filename)}
                                                 className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
                                             >
                                                 <Trash2 className="h-4 w-4" />
@@ -202,6 +262,13 @@ export function KBDetail() {
                                 ))
                             )}
                         </div>
+                        <PaginationFooter
+                            total={documentTotal}
+                            offset={documentsData?.data.offset ?? documentOffset}
+                            limit={documentsData?.data.limit ?? documentPageSize}
+                            onPageChange={updateDocumentOffset}
+                            isLoading={isLoadingDocuments}
+                        />
                     </div>
                 </div>
 
@@ -221,9 +288,9 @@ export function KBDetail() {
                                 <span className="font-medium font-mono text-xs">v{k.current_version}</span>
                             </div>
                             <div className="flex justify-between items-center text-sm">
-                                <span className="text-muted-foreground">Total Size</span>
+                                <span className="text-muted-foreground">Documents</span>
                                 <span className="font-medium">
-                                    {(documents.reduce((acc, doc) => acc + doc.size_bytes, 0) / (1024 * 1024)).toFixed(2)} MB
+                                    {k.document_count}
                                 </span>
                             </div>
                         </div>
@@ -231,7 +298,7 @@ export function KBDetail() {
                         <button
                             onClick={() => setIsIndexDialogOpen(true)}
                             className="w-full mt-6 flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-md disabled:opacity-50"
-                            disabled={documents.length === 0}
+                            disabled={k.document_count === 0}
                         >
                             <Layers className="h-4 w-4" />
                             Create Index
@@ -260,7 +327,7 @@ export function KBDetail() {
                         <button
                             onClick={() => setIsIndexDialogOpen(true)}
                             className="mt-4 text-primary hover:underline text-sm"
-                            disabled={documents.length === 0}
+                            disabled={k.document_count === 0}
                         >
                             Create your first index
                         </button>

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { KnowledgeBaseIndex, api } from '../../api/client'
-import { Database, Trash2, Play, HardDrive, Cpu, FileText } from 'lucide-react'
+import { Database, Trash2, Play, HardDrive, Cpu, FileText, FolderKanban } from 'lucide-react'
 import { useState } from 'react'
 
 interface IndexCardProps {
@@ -48,13 +48,13 @@ export function IndexCard({ index, onDelete, onRunEvaluation }: IndexCardProps) 
   }
 
   return (
-    <div className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow">
+    <div className="rounded-lg border border-border bg-card p-4 transition-shadow hover:shadow-md">
       <div className="flex justify-between items-start mb-2">
         <div className="flex-1 min-w-0 mr-4">
-          <Link to={`/indexes/${index.id}`} className="font-medium text-lg text-blue-600 hover:underline truncate block">
+          <Link to={`/indexes/${index.id}`} className="block truncate text-lg font-medium text-primary hover:underline">
             {index.name}
           </Link>
-          <p className="text-sm text-gray-500 line-clamp-2">{index.description || 'No description'}</p>
+          <p className="line-clamp-2 text-sm text-muted-foreground">{index.description || 'No description'}</p>
         </div>
         <div className="flex space-x-2 flex-shrink-0">
           {index.status === 'ready' && onRunEvaluation && (
@@ -64,7 +64,7 @@ export function IndexCard({ index, onDelete, onRunEvaluation }: IndexCardProps) 
                 e.stopPropagation()
                 onRunEvaluation()
               }}
-              className="p-1 text-gray-400 hover:text-green-600"
+              className="p-1 text-muted-foreground hover:text-green-600"
               title="Run Evaluation"
             >
               <Play className="h-5 w-5" />
@@ -73,7 +73,7 @@ export function IndexCard({ index, onDelete, onRunEvaluation }: IndexCardProps) 
           <button
             onClick={handleDelete}
             disabled={isDeleting}
-            className="p-1 text-gray-400 hover:text-red-600 disabled:opacity-50"
+            className="p-1 text-muted-foreground hover:text-destructive disabled:opacity-50"
             title="Delete Index"
           >
             <Trash2 className="h-5 w-5" />
@@ -82,33 +82,44 @@ export function IndexCard({ index, onDelete, onRunEvaluation }: IndexCardProps) 
       </div>
 
       <div className="grid grid-cols-2 gap-4 text-sm mt-4">
-        <div className="flex items-center text-gray-600 min-w-0">
+        {index.project_name && index.project_id && (
+          <Link
+            to={`/projects/${index.project_id}`}
+            className="col-span-2 flex min-w-0 items-center text-muted-foreground hover:text-primary"
+          >
+            <FolderKanban className="h-4 w-4 mr-2 flex-shrink-0" />
+            <span className="truncate" title={index.project_name}>
+              Project: {index.project_name}
+            </span>
+          </Link>
+        )}
+        <div className="flex items-center text-muted-foreground min-w-0">
           <Database className="h-4 w-4 mr-2 flex-shrink-0" />
           <span className="truncate" title={index.knowledge_base_name}>
             KB: {index.knowledge_base_name}
           </span>
         </div>
-        <div className="flex items-center text-gray-600 min-w-0">
+        <div className="flex items-center text-muted-foreground min-w-0">
           <Cpu className="h-4 w-4 mr-2 flex-shrink-0" />
           <span className="truncate" title={index.rag_config_name}>
             RAG: {index.rag_config_name}
           </span>
         </div>
-        <div className="flex items-center text-gray-600">
+        <div className="flex items-center text-muted-foreground">
           <HardDrive className="h-4 w-4 mr-2 flex-shrink-0" />
           <span>{index.storage_type}</span>
         </div>
-        <div className="flex items-center text-gray-600">
+        <div className="flex items-center text-muted-foreground">
           <FileText className="h-4 w-4 mr-2 flex-shrink-0" />
           <span>{index.chunk_count} chunks</span>
         </div>
       </div>
 
-      <div className="mt-4 pt-3 border-t flex justify-between items-center text-xs text-gray-500">
-        <span className={`px-2 py-0.5 rounded-full ${index.status === 'ready' ? 'bg-green-100 text-green-800' :
-          index.status === 'building' ? 'bg-blue-100 text-blue-800' :
-            index.status === 'failed' ? 'bg-red-100 text-red-800' :
-              'bg-gray-100 text-gray-800'
+      <div className="mt-4 pt-3 border-t border-border flex justify-between items-center text-xs text-muted-foreground">
+        <span className={`px-2 py-0.5 rounded-full ${index.status === 'ready' ? 'bg-green-500/10 text-green-700' :
+          index.status === 'building' ? 'bg-blue-500/10 text-blue-700' :
+            index.status === 'failed' ? 'bg-red-500/10 text-red-700' :
+              'bg-muted text-muted-foreground'
           }`}>
           {index.status.charAt(0).toUpperCase() + index.status.slice(1)}
         </span>

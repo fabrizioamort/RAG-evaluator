@@ -45,6 +45,7 @@ class KnowledgeBaseIndexResponse(BaseModel):
     knowledge_base_name: str | None = None
     rag_config_name: str | None = None
     project_id: UUID | None = None
+    project_name: str | None = None
 
 
 class KnowledgeBaseIndexList(BaseModel):

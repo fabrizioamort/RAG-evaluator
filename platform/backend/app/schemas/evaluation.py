@@ -163,9 +163,12 @@ class EvaluationResponse(EvaluationBase, BaseResponseSchema):
     )
     kb_version_id: UUID | None = Field(default=None, description="KB version ID")
     test_set_id: UUID | None = Field(default=None, description="Test set ID")
-    # rag_config_id is deprecated/removed, but we might keep it for legacy if needed.
-    # We'll remove it to align with new plan.
+    rag_config_id: UUID | None = Field(default=None, description="RAG config ID")
     run_manifest_id: UUID | None = Field(default=None, description="Run manifest ID")
+    test_set_name: str | None = Field(default=None, description="Test set name")
+    index_name: str | None = Field(default=None, description="Index name")
+    rag_config_name: str | None = Field(default=None, description="RAG config name")
+    rag_type: str | None = Field(default=None, description="RAG implementation type")
 
     status: str = Field(description="Evaluation status")
     started_at: datetime | None = Field(default=None, description="Start time")

@@ -208,6 +208,7 @@ export interface KnowledgeBaseIndex {
   knowledge_base_name?: string
   rag_config_name?: string
   project_id?: string
+  project_name?: string
 }
 
 export interface KnowledgeBaseIndexCreate {
@@ -308,6 +309,10 @@ export interface Evaluation {
   knowledge_base_index_id: string | null
   test_set_id: string | null
   rag_config_id: string | null
+  test_set_name: string | null
+  index_name: string | null
+  rag_config_name: string | null
+  rag_type: string | null
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused'
   started_at: string | null
   completed_at: string | null
@@ -747,6 +752,8 @@ export const api = {
     },
     deleteDocument: (kbId: string, docId: string) =>
       apiClient.delete(`/knowledge-bases/${kbId}/documents/${docId}`),
+    listDocuments: (id: string, params?: { limit?: number; offset?: number; search?: string }) =>
+      apiClient.get<PaginatedList<Document>>(`/knowledge-bases/${id}/documents`, { params }),
     getStatus: (id: string) => apiClient.get(`/knowledge-bases/${id}/status`),
     // index method is deprecated/removed in favor of api.indexes.create
   },
@@ -817,11 +824,18 @@ export const api = {
     getLLMProviders: () => apiClient.get<LLMProviderInfo[]>('/llm-providers'),
   },
   evaluations: {
-    list: (projectId: string, params?: { limit?: number; offset?: number }) =>
+    list: (projectId: string, params?: {
+      limit?: number
+      offset?: number
+      status?: string
+      test_set_id?: string
+      knowledge_base_index_id?: string
+      rag_config_id?: string
+    }) =>
       apiClient.get<PaginatedList<Evaluation>>(`/projects/${projectId}/evaluations`, { params }),
     get: (id: string) => apiClient.get<Evaluation>(`/evaluations/${id}`),
     create: (data: EvaluationCreate) => apiClient.post<Evaluation>('/evaluations', data),
-    getResults: (id: string, params?: { limit?: number; offset?: number }) =>
+    getResults: (id: string, params?: { limit?: number; offset?: number; search?: string }) =>
       apiClient.get<PaginatedList<EvaluationResult>>(`/evaluations/${id}/results`, { params }),
     cancel: (id: string) => apiClient.post(`/evaluations/${id}/cancel`),
     pause: (id: string) => apiClient.post(`/evaluations/${id}/pause`),
