@@ -56,7 +56,18 @@ implementations.
 | `HYBRID_CHUNK_OVERLAP` | `100` | Chunk overlap for hybrid indexing. |
 | `HYBRID_FUSION_ALPHA` | `0.5` | Dense/sparse weighting where supported by the implementation. |
 | `HYBRID_INDEXING_BATCH_SIZE` | `16` | Batch size during hybrid indexing. |
-| `SPARSE_MODEL_NAME` | `prithvida/Splade_pp_en_v1` | Sparse embedding model used by FastEmbed. |
+| `SPARSE_MODEL_NAME` | `prithivida/Splade_PP_en_v1` | Sparse embedding model used by FastEmbed. |
+
+### Google Vertex AI Search
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `GOOGLE_VERTEX_PROJECT_ID` | unset/example value | Google Cloud project that owns the Vertex AI Search data store. |
+| `GOOGLE_VERTEX_LOCATION` | `global` | Vertex AI Search location: `global`, `us`, or `eu`. |
+| `GOOGLE_VERTEX_SA_KEY_PATH` | unset | Optional service-account JSON key path. Leave empty to use Application Default Credentials. |
+| `GOOGLE_VERTEX_DATA_STORE_ID` | unset | Existing data store ID for CLI reuse or explicit platform configuration. |
+| `GOOGLE_VERTEX_STAGING_BUCKET` | unset/example value | GCS bucket used to stage documents before Discovery Engine import. |
+| `GOOGLE_VERTEX_GENERATION_MODE` | `framework` | `framework` uses the standard LLM generation path; `google_grounded` uses Vertex AI Search grounded generation. |
 
 ### Neo4j And Graph RAG
 
@@ -181,6 +192,7 @@ Evaluation and playground requests may provide query-time overrides. Supported
 top-level overrides are:
 
 - `llm_model`: RAG generation or orchestration model.
+- `llm_provider`, `llm_base_url`, and `llm_reasoning_effort`: query-time generation endpoint controls.
 - `top_k`: retrieval count passed to query execution.
 - `parameters`: RAG-type-specific query-phase controls.
 
@@ -204,7 +216,7 @@ DATABASE_URL=sqlite+aiosqlite:///./storage/dev.db
 OPENAI_API_KEY=your_key
 QDRANT_URL=http://localhost:6333
 QDRANT_COLLECTION_NAME=hybrid_rag
-SPARSE_MODEL_NAME=prithvida/Splade_pp_en_v1
+SPARSE_MODEL_NAME=prithivida/Splade_PP_en_v1
 ```
 
 Start Qdrant:
@@ -227,6 +239,26 @@ Start Neo4j:
 ```powershell
 docker-compose up -d neo4j
 ```
+
+### Google Vertex AI Search
+
+Install the optional dependency group and configure Google Cloud credentials before
+building or querying this strategy.
+
+```powershell
+uv sync --extra google-vertex
+```
+
+```env
+GOOGLE_VERTEX_PROJECT_ID=your-gcp-project
+GOOGLE_VERTEX_LOCATION=global
+GOOGLE_VERTEX_STAGING_BUCKET=your-staging-bucket
+GOOGLE_VERTEX_GENERATION_MODE=framework
+# GOOGLE_VERTEX_SA_KEY_PATH=C:\path\to\service-account.json
+```
+
+Use `GOOGLE_VERTEX_DATA_STORE_ID` when you want the CLI or a platform RAG
+configuration to target an existing Vertex AI Search data store.
 
 ### OpenAI-Compatible Provider
 

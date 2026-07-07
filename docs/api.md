@@ -72,6 +72,7 @@ Create request:
 | POST | `/knowledge-bases/{kb_id}/archive` | Archive a knowledge base. |
 | POST | `/knowledge-bases/{kb_id}/restore` | Restore an archived knowledge base. |
 | POST | `/knowledge-bases/{kb_id}/documents` | Upload documents using `multipart/form-data` field `files`. |
+| GET | `/knowledge-bases/{kb_id}/documents` | List documents. Supports `limit`, `offset`, and filename `search`. |
 | DELETE | `/knowledge-bases/{kb_id}/documents/{doc_id}` | Delete a document. |
 | GET | `/knowledge-bases/{kb_id}/versions` | List knowledge base versions. |
 | GET | `/knowledge-bases/{kb_id}/status` | Get processing/indexing status. |
@@ -135,7 +136,7 @@ Create request:
   "llm_base_url": null,
   "parameters": {
     "qdrant_url": "http://localhost:6333",
-    "sparse_model_name": "prithvida/Splade_pp_en_v1"
+    "sparse_model_name": "prithivida/Splade_PP_en_v1"
   }
 }
 ```
@@ -145,10 +146,11 @@ Supported RAG types:
 | Type | Build-time parameters | Query-time parameters |
 | --- | --- | --- |
 | `vector_semantic` | `embedding_model`, `collection_name`, `persist_directory`, chunking controls | `llm_model`, `top_k` |
-| `vector_hybrid` | `embedding_model`, `sparse_model_name`, `collection_name`, `qdrant_url`, chunking controls | `llm_model`, `top_k` |
+| `vector_hybrid` | `embedding_model`, `embedding_dimension`, `sparse_model_name`, `collection_name`, `qdrant_url`, chunking controls | `llm_model`, `top_k` |
 | `graph_rag` | `embedding_model`, `extraction_model`, `neo4j_uri`, `neo4j_username`, `neo4j_password`, `vector_index_name` | `llm_model`, `top_k` |
 | `filesystem_rag` | `prepared_path`, `word_threshold` | `llm_model`, `max_iterations`, `max_tool_calls`, `max_file_reads` |
 | `rlm_rag` | `chunk_size`, `chunk_overlap`, `use_llm_summaries`, `use_llm_topics`, `max_topics_per_doc`, `worker_model`, prepared path | `llm_model`, `orchestrator_model`, `security_mode`, `max_repl_steps`, `repl_timeout`, `max_file_reads`, `max_read_bytes`, `max_read_lines`, `max_sub_calls`, `max_recursion_depth`, `small_corpus_threshold`, `top_k` |
+| `google_vertex_search` | `data_store_id`, `reuse_existing_data_store`, `location`, `staging_bucket` | `llm_model`, `top_k`, `num_previous_chunks`, `num_next_chunks`, `generation_mode` |
 
 Supported provider metadata currently includes OpenAI, OpenRouter, Anthropic, and
 Ollama. Provider support depends on configured API keys and local services.
@@ -227,7 +229,7 @@ Generation request:
 | POST | `/evaluations` | Start an evaluation against a ready index. |
 | GET | `/evaluations/{evaluation_id}` | Get evaluation summary. |
 | PATCH | `/evaluations/{evaluation_id}` | Update evaluation name, notes, or tags. |
-| GET | `/evaluations/{evaluation_id}/results` | List per-question results. |
+| GET | `/evaluations/{evaluation_id}/results` | List per-question results. Supports `limit`, `offset`, and `search`. |
 | GET | `/evaluations/{evaluation_id}/trace/{result_id}` | Get retrieval trace artifact for one result. |
 | GET | `/evaluations/{evaluation_id}/manifest` | Get reproducibility snapshot. |
 | GET | `/evaluations/{evaluation_id}/stream` | SSE stream for progress. |
@@ -236,7 +238,7 @@ Generation request:
 | POST | `/evaluations/{evaluation_id}/resume` | Resume a paused evaluation. |
 | POST | `/evaluations/{evaluation_id}/retry` | Retry a failed or cancelled evaluation. |
 | POST | `/evaluations/{evaluation_id}/set-baseline` | Mark a completed evaluation as project baseline. |
-| GET | `/projects/{project_id}/evaluations` | List evaluations in a project. Supports `status`. |
+| GET | `/projects/{project_id}/evaluations` | List evaluations in a project. Supports `status`, `test_set_id`, `knowledge_base_index_id`, `rag_config_id`, `limit`, and `offset`. |
 
 Create request:
 
@@ -252,17 +254,20 @@ Create request:
     "parameters": {}
   },
   "eval_judge_model": "gpt-5-mini",
+  "eval_judge_provider": "openai",
   "include_reason": true,
   "notes": "Initial full metric run",
   "tags": ["baseline"]
 }
 ```
 
-`query_overrides` may include `llm_model`, `top_k`, and query-phase entries in
-`parameters`. Build-phase overrides such as `embedding_model`, chunking, storage paths,
-sparse model, graph extraction model, or preparation controls are rejected for ready
-indexes. If `eval_judge_model` is omitted, the backend defaults the judge to the
+`query_overrides` may include `llm_model`, `llm_provider`, `llm_base_url`,
+`llm_reasoning_effort`, `top_k`, and query-phase entries in `parameters`. Build-phase
+overrides such as `embedding_model`, chunking, storage paths, sparse model, graph
+extraction model, Vertex data store settings, or preparation controls are rejected for
+ready indexes. If `eval_judge_model` is omitted, the backend defaults the judge to the
 effective RAG generation model.
+If `eval_judge_provider` is omitted, it defaults to the effective generation provider.
 
 Run manifests include the legacy `rag_config_snapshot` plus:
 

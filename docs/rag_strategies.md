@@ -55,6 +55,8 @@ Platform parameters:
 | `collection_name` | `rag_documents` | The platform replaces this with a generated per-index collection unless you provide one. |
 | `persist_directory` | empty | Leave blank in the platform to use managed index storage. |
 | `embedding_model` | `text-embedding-3-small` | Build-time model stored on the RAG configuration and index snapshot. |
+| `chunk_size` | `1000` | Build-time text chunk size. |
+| `chunk_overlap` | `200` | Build-time overlap between chunks. |
 
 Query-time settings:
 
@@ -89,7 +91,10 @@ Platform parameters:
 | `collection_name` | empty | Leave blank for platform-managed per-index Qdrant collections. |
 | `qdrant_url` | empty | Leave blank to use `QDRANT_URL`; set it for a custom Qdrant host. |
 | `embedding_model` | `text-embedding-3-small` | Dense embedding model used while building the index. |
-| `sparse_model_name` | `prithvida/Splade_pp_en_v1` | Sparse model used while building sparse vectors. |
+| `embedding_dimension` | `1536` | Dense vector dimension; use `3072` with `text-embedding-3-large`. |
+| `sparse_model_name` | `prithivida/Splade_PP_en_v1` | Sparse model used while building sparse vectors. |
+| `chunk_size` | `500` | Build-time text chunk size for platform indexes. |
+| `chunk_overlap` | `50` | Build-time overlap between chunks for platform indexes. |
 
 Query-time settings:
 
@@ -104,7 +109,7 @@ CLI environment:
 - `HYBRID_CHUNK_OVERLAP`
 - `HYBRID_FUSION_ALPHA`
 - `HYBRID_INDEXING_BATCH_SIZE`
-- `SPARSE_MODEL_NAME`
+- `SPARSE_MODEL_NAME` (default: `prithivida/Splade_PP_en_v1`)
 
 Start Qdrant locally:
 

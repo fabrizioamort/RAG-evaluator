@@ -42,7 +42,9 @@ Knowledge bases hold source documents. From the Knowledge Bases tab you can:
 - Build indexes for different RAG configurations.
 
 Document uploads use the backend storage service. Uploaded files are copied into
-`STORAGE_PATH/documents` and associated with the knowledge base.
+`STORAGE_PATH/documents` and associated with the knowledge base. The knowledge base
+detail page lists documents with pagination and filename search, so large uploads can
+be inspected without loading the full document set into one view.
 
 ## Indexes
 
@@ -61,7 +63,9 @@ Index states:
 | `archived` | Hidden from normal active workflows but retained for history. |
 
 Build progress is streamed from the backend with Server-Sent Events. Failed indexes can
-be retried. Indexes referenced by evaluations should usually be archived instead of
+be retried. The global Indexes page supports cross-project status filtering, project
+filtering, URL-backed search, pagination, and launching an evaluation directly from a
+ready index. Indexes referenced by evaluations should usually be archived instead of
 deleted.
 
 ## RAG Configurations
@@ -76,6 +80,7 @@ Available strategies:
 - Graph RAG (`graph_rag`)
 - Filesystem RAG (`filesystem_rag`)
 - RLM-RAG (`rlm_rag`)
+- Google Vertex AI Search (`google_vertex_search`)
 
 The form loads parameter metadata from the backend. For platform-managed indexes, leave
 storage fields blank unless you are intentionally reusing external storage.
@@ -139,6 +144,10 @@ Available metric names:
 The evaluation progress view streams updates while the backend runner executes. You can
 cancel, pause, resume, or retry evaluations depending on the current state.
 
+The project Evaluations tab supports URL-backed filtering by test set, RAG
+configuration, index, and status. Evaluation lists are paginated so large projects do
+not need to load every run at once.
+
 ## Result Analysis
 
 Completed evaluations include:
@@ -156,6 +165,10 @@ Completed evaluations include:
 Use low-scoring cases to diagnose whether the failure came from retrieval, generation,
 or test-set quality. Use retrieval traces to inspect which chunks were retrieved and in
 which order.
+
+Evaluation result lists are loaded page by page and can be searched by question,
+expected answer, or generated answer. The run manifest view separates the immutable
+build snapshot, query overrides, and effective configuration used for the run.
 
 ## Comparisons
 
