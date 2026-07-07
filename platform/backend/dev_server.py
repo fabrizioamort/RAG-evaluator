@@ -10,6 +10,11 @@ import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+from sqlalchemy.engine import make_url
+
+from app.config import settings
 
 APP_PATH = "app.main:app"
 HOST = "0.0.0.0"
@@ -187,6 +192,27 @@ def ensure_port_is_available(port: int) -> None:
     )
 
 
+def ensure_development_paths() -> None:
+    """Create local development directories needed before migrations run."""
+    try:
+        Path(settings.STORAGE_PATH).mkdir(parents=True, exist_ok=True)
+
+        if not settings.is_sqlite:
+            return
+
+        database = make_url(settings.DATABASE_URL).database
+        if not database or database == ":memory:" or database.startswith("file:"):
+            return
+
+        database_path = Path(database)
+        if not database_path.is_absolute():
+            database_path = Path.cwd() / database_path
+
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeError(f"Failed to create development storage directories: {exc}") from exc
+
+
 def launch_uvicorn() -> subprocess.Popen[bytes]:
     command = [
         sys.executable,
@@ -262,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         ensure_port_is_available(PORT)
+        ensure_development_paths()
         run_migrations()
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
