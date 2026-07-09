@@ -1,44 +1,37 @@
-# Retrieval is the ceiling — unless the retriever can think
+# Don't pick a RAG architecture. Measure it
 
-*Three RAG architectures, one legal benchmark, and an evaluation platform built to tell them apart.*
+*A reproducible RAG architecture case study on Isaacus' Legal RAG Bench: 4,876 passages from the Victorian Criminal Charge Book, 100 expert questions, gold passage labels, and a published paper arguing that retrieval sets the ceiling for legal QA.*
 
-In February, Isaacus published [Legal RAG Bench](https://isaacus.com/blog/legal-rag-bench) with a claim that is easy to nod along to and easy to underestimate: for legal question answering, retrieval quality is the ceiling. Put the right passage in front of the model and it usually answers well. Miss it, and no amount of model intelligence digs you out. Their numbers back it up — the best general-purpose embedder in their table, OpenAI's `text-embedding-3-large`, tops out at 52% retrieval accuracy at k=5, and correctness rises and falls with it. (Their own domain-tuned Kanon 2 embedder reaches roughly 86%, a +34-point jump — a domain embedder is the biggest single lever in the paper. But you cannot always fine-tune an embedder for your corpus, and you can always change the architecture. That is the axis this piece is about.)
+*Disclosure: This article was drafted with AI assistance and fully reviewed, fact-checked, and edited by the author. The technical decisions, analysis, and conclusions are mine.*
 
-I wanted to ask something the paper doesn't. The paper varies the embedding model and holds the retrieval *architecture* fixed: FAISS over the passages, one passage per document, top-5. Sensible for an embedding study. But that is not the choice you actually make in production. You don't get to pick "the embedding model" in isolation. You pick an architecture — plain dense vector search, a hybrid dense-plus-sparse setup, or, increasingly, an agent that reads files the way a junior associate reads a binder. Same data, same embeddings, same generator, same judge. Does the *architecture* move the ceiling?
+Every team building retrieval-augmented generation hits the same fork. What RAG architecture is best for your use case? Do you need plain dense vector search? Add a sparse retriever and fuse? Or skip the index and let an agent read files the way a junior associate reads a binder? The internet's answer is vibes and blog posts benchmarked on someone else's corpus. The honest answer is "it depends on your corpus and your use case" — which is useless advice unless you can *measure* it, on your data, under controlled conditions, in a way you still trust three weeks later.
 
-Short version: two of the three architectures landed exactly where the paper says they should, pinned to their retrieval rate. The third climbed over the ceiling and then sent me a bill for it.
+That measurement problem is what [RAG Evaluator](https://github.com/fabrizioamort/RAG-evaluator) is for. I used Legal RAG Bench not as a leaderboard, but as a calibration harness: external gold labels, a published retrieval baseline, and rule-application questions hard enough to separate architectures. This article is the platform's first full case study: three retrieval architectures, one legal benchmark, everything held fixed except the architecture. The case study produced three findings I did not fully expect — hybrid search *losing* to plain dense, a measurement bug that would have shipped a wrong conclusion, and an agentic retriever moving into the same retrieval-access range as the paper's domain-tuned embedder through trace-driven engineering rather than model changes. Each finding exists because of a specific platform capability, and that is the real point of this piece: the findings are the demo.
 
-Here is the headline, holding everything fixed except the architecture:
+Here is the headline result, and then I'll show the machinery that produced it:
 
-| System | Retrieval mode | Retrieval | Correct | Grounded | Abstained | Avg latency |
-|---|---|---|---|---|---|---|
-| vector-search (Chroma) | dense | **52.0%** hit@5 | 49.0% | 65.0% | 18.0% | 6.2s |
-| hybrid (Qdrant + SPLADE) | dense + sparse | 41.0% hit@5 | 46.4% | 52.6% | 33.0% | 9.1s |
-| filesystem (agent) | agentic file reads | 59.0% gold | **75.0%** | 77.3% | 2.3% | 198.7s |
+| System | Retrieval mode | Retrieval | Correct | Grounded | Abstained | Avg latency | Cost/question |
+|---|---|---|---|---|---|---|---|
+| vector-search (Chroma) | dense | 53.0% hit@5 | 61.0% | 70.0% | 18.0% | 6.2s | $0.0002 |
+| hybrid (Qdrant + SPLADE) | dense + sparse | 41.0% hit@5 | 39.0% | 51.0% | 30.0% | 7.1s | $0.0002 |
+| filesystem (agent) | agentic file reads | **88.0%** gold | **82.0%** | 87.0% | 0.0% | 192.0s | $0.0150 |
 
-*Retrieval metrics cover all 100 questions. Correctness, groundedness, and abstention cover the cases that completed generation and judging: 100/100 for dense, 97/100 for hybrid, 88/100 for the agent (which is slow enough that 12 timed out). Phase 1 numbers; caveats are at the bottom and they matter.*
+*All three runs completed generation and judging on all 100 questions. Retrieval is hit@5 on the gold passage id for the vector systems, and gold access — did the agent actually read the gold passage during its run — for the agent. Phase 1 numbers; the honest-limits section at the bottom matters.*
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/legal-rag-retrieval-vs-correctness-dark.png">
-  <img alt="Grouped bar chart of retrieval vs judged correctness for the three architectures. Dense: 52% retrieval, 49% correct. Hybrid: 41% retrieval, 46.4% correct. Agent: 59% gold access, 75% correct — 16 points above its own retrieval rate." src="../images/legal-rag-retrieval-vs-correctness.png">
+  <source media="(prefers-color-scheme: dark)" srcset="../images/legal-rag-retrieval-vs-correctness-v1-dark.png">
+  <img alt="Grouped bar chart of retrieval vs judged correctness for the three architectures. Dense: 53% retrieval, 61% correct. Hybrid: 41% retrieval, 39% correct. Agent: 88% gold access, 82% correct — the agent's retrieval bar sits 35 points above dense." src="../images/legal-rag-retrieval-vs-correctness-v1.png">
 </picture>
 
-The rest of this piece is how I got those numbers, why I trust them, and the one finding that genuinely surprised me. But first I want to talk about the thing that made the experiment cheap to run and hard to fool: the platform.
+## The platform workflow
 
-## Why a platform, and not a script
+I could have run this comparison as a benchmark script — a `for` loop over 100 questions, a FAISS index, a CSV at the end. That is how many comparisons get done, and it is exactly why many of them are not reproducible a week later: the embedding model lives in one variable, the chunk size in another, the judge prompt in a third, and when someone challenges your table you cannot say with confidence which knobs were set to what.
 
-I could have written this as a benchmark script. A `for` loop over 100 questions, a FAISS index, a CSV at the end. That is how most of these comparisons get done, and it is exactly why most of them are not reproducible a week later. The embedding model lives in one variable, the chunk size in another, the judge prompt in a third, and three weeks from now you cannot say with confidence which knobs were set to what when you generated the table you are about to publish.
+RAG Evaluator is a web platform (FastAPI + React, with a CLI sharing the same core) that turns a RAG experiment into a managed workflow. From a user's point of view, you start with a Knowledge Base: the corpus, imported once and versioned. Then you create RAG Configs for the architectures you want to test — dense vector search, hybrid dense+sparse retrieval, or filesystem/agentic retrieval — and build an isolated Index from each config. You attach a Test Set, run Evaluations, inspect the per-question traces, compare completed runs side by side, and use trend views to see whether an iteration improved the system or just moved the error somewhere else.
 
-So this ran on the evaluation platform I have been building instead, and the workflow is the point. Every run is made of persistent, inspectable entities:
+The user story is simple; the architecture is built around two constraints.
 
-- a **Knowledge Base** (the 4,876 passages, imported once, versioned — `kb_version_id` and all),
-- a **RAG Config** per architecture (`vector_semantic`, `vector_hybrid`, `filesystem_rag`),
-- an **isolated Index** built from that config, frozen with a full `config_snapshot`,
-- a **Test Set** (the 100 expert questions, each carrying its gold `relevant_passage_id`),
-- an **Evaluation** that runs a ready index against the test set and stores every retrieval trace,
-- a **Comparison** that lines the finished evaluations up side by side and exports the tables in this article.
-
-The reason that structure matters is not tidiness. It is that the snapshot is frozen at build time and travels with the result. When I export the comparison, the manifest comes with it. I do not have to remember that the hybrid index used `text-embedding-3-large` at 3,072 dimensions with `chunk_size=8000`, `chunk_overlap=0`, and `prithivida/Splade_PP_en_v1` for the sparse side. It is in the file:
+**First: every run is made of persistent, inspectable entities, and the configuration is frozen with the result.** A versioned Knowledge Base holds the corpus; a RAG Config per architecture (`vector_semantic`, `vector_hybrid`, `filesystem_rag`) builds an isolated Index, frozen with a full `config_snapshot`; an Evaluation runs a Test Set against a ready index and stores every retrieval trace; a Comparison lines finished evaluations up side by side and exports the tables in this article. When I export a comparison, the manifest travels with it. I do not have to remember that the hybrid index used `text-embedding-3-large` at 3,072 dimensions with `chunk_size=8000` and `prithivida/Splade_PP_en_v1` on the sparse side. It is in the file:
 
 ```json
 {
@@ -54,88 +47,99 @@ The reason that structure matters is not tidiness. It is that the snapshot is fr
 }
 ```
 
-The other thing a platform buys you is that the same RAG classes run everywhere. The UI does not shell out to a CLI. React talks to FastAPI, FastAPI calls the same `BaseRAG` implementations the command line would. So when I compare "Chroma dense" to "the agent," I am comparing the actual retrieval code, not two re-implementations that happen to share a name.
+**Second: the same RAG classes run everywhere.** The UI does not shell out to a CLI. React talks to FastAPI, FastAPI calls the same `BaseRAG` implementations the command line would. When I compare "Chroma dense" to "the agent," I am comparing the actual retrieval code, not two re-implementations that happen to share a name.
 
-## The benchmark, and why it bites
+<picture>
+  <img alt="Legal RAG comparison screenshot" src="../images/legal-rag-comparison.png">
+</picture>
 
-Legal RAG Bench is small and mean. 4,876 passages from the Victorian Criminal Charge Book. 100 questions written by people who know the material. One gold supporting passage per question, and a long-form reference answer. The official harness indexes one passage as one document — no chunking games — and measures whether the gold passage id shows up in the top 5 retrieved. That is `hit@5`, and it is the cleanest number in the whole exercise because no LLM judge touches it.
+The export makes the result reproducible enough to argue with: corpus version, index snapshot, RAG config, test set, generation policy, judge, retrieval traces, per-question latency, per-question cost, and the aggregate comparison table all travel together.
 
-To stay honest against the paper I matched that exactly: `chunk_size=8000`, `chunk_overlap=0`, and a post-build assertion that the index contains 4,876 chunks. One passage, one chunk. If that count is not 4,876, you are measuring a different experiment and you should stop.
+Everything else in this article — the calibration that caught a bug, the traces that rebuilt the agent, the cost accounting — is these two ideas earning their keep.
 
-What makes legal QA specifically nasty is that the questions are rule-application, not keyword lookup. The corpus states a general rule; the question is a named hypothetical ("Emma is charged with..."). The right passage rarely shares vocabulary with the question. This detail is going to come back and explain almost everything below.
+## The case study: a benchmark that bites back
 
-## The number that was wrong, and how I knew
+To test the platform I wanted a benchmark with external ground truth, a published baseline to calibrate against, and a domain hard enough to separate the architectures. Isaacus introduced [Legal RAG Bench](https://isaacus.com/blog/legal-rag-bench) on February 20, 2026, and the accompanying arXiv paper by Abdur-Rahman Butler and Umar Butler followed on March 2, 2026. The benchmark contains 4,876 passages from the Victorian Criminal Charge Book, 100 expert-written questions, one gold supporting passage per question, and a long-form reference answer. The official harness indexes one passage as one document — no chunking games — and measures whether the gold passage id shows up in the top 5 retrieved. That is `hit@5`, the cleanest number in the whole exercise because no LLM judge touches it.
+
+The paper's claim is that for legal QA, retrieval quality is the ceiling: their best general-purpose embedder, OpenAI's `text-embedding-3-large`, tops out at 52% retrieval at k=5, and correctness rises and falls with it. (Their domain-tuned Kanon 2 embedder reaches roughly 86% — a +34-point jump, the biggest lever in their study. Hold that number; it comes back.) The paper varies the embedding model and holds the retrieval *architecture* fixed. This case study does the opposite — and that is precisely the kind of question a platform is for, because "same everything except the architecture" is a controlled experiment, and controlled experiments die of configuration drift when run by hand.
+
+What makes legal QA specifically nasty: the questions are rule-application, not keyword lookup. The corpus states a general rule; the question is a named hypothetical ("Emma is charged with..."). The right passage rarely shares vocabulary with the question. This detail will come back and explain almost everything below.
+
+**The setup, stated plainly.** One Knowledge Base version, three isolated indexes. To stay honest against the paper: `chunk_size=8000`, `chunk_overlap=0`, and a post-build assertion that the index holds exactly 4,876 chunks — one passage, one chunk, or you are measuring a different experiment. `text-embedding-3-large` at 3,072 dimensions for both vector systems (the agent uses no embeddings); `deepseek/deepseek-v4-flash` via OpenRouter at temperature 0 as both generator and judge; `top_k=5` for the vector systems; the agent gets a budget instead — 40 reasoning iterations, 80 tool calls, 40 file reads per question. Generation is closed-book: the prompt licenses the model to *apply* rules from the retrieved context, but if the context holds no relevant rule it must abstain with a fixed sentence.
+
+Two disclosures before any results. The same model generated *and* judged — consistent across all three architectures, but a model grading its own homework is a known bias, so read correctness as directional, not as the paper's fixed GPT-5.2 verdict. And closed-book tethers correctness to what the retriever surfaced, which is a feature for comparing retrievers fairly and a difference from the paper, which is effectively open-book.
+
+## The platform caught a measurement bug
 
 My first calibration run reported `hit@5` of 38%. The paper says 52% for the same embedding model. A 14-point gap is not a rounding error, and it is exactly the kind of result that, published unexamined, makes you look either lucky or wrong.
 
-The platform let me prove which. I replayed the paper's pipeline offline against the vectors already sitting in Chroma — re-embedded a stored passage and got cosine 1.0000 against its own stored vector (same embedding space, good), then ran both a brute-force cosine top-5 and Chroma's native HNSW query. Both returned 52%. Dead on the paper.
+The platform let me prove which. Because the vectors, the traces, and the per-question retrievals were all stored, I could replay the paper's pipeline offline against the index as-built: re-embed a stored passage (cosine 1.0000 against its own stored vector — same embedding space), then run both a brute-force cosine top-5 and Chroma's native HNSW query. Both returned 52%. Dead on the paper. So retrieval was never the problem — my *measurement* was. The id-extraction step was emitting more than one id per retrieved chunk, so the five real passages landed at list positions 1, 3, 5, 7, 9, and a rank-≤5 check could not see the last two. One fix later, `hit@5` read 52% — and `gold_accessed`, a membership check immune to the interleaving, had been quietly right the whole time, telling me the two numbers should have agreed.
 
-So retrieval was never the problem. The problem was my *measurement*. The id-extraction step was emitting more than one id per retrieved chunk — the real passage id, plus a synthetic doc hash, plus the raw context text — so for top-5 the five real passages were landing at list positions 1, 3, 5, 7, 9. `hit@5` checks rank ≤ 5, so it could not see the fourth and fifth passage. The fix was one id per chunk, in rank order. `hit@5` went 38% → 52%, and `gold_accessed` (a membership check, immune to the interleaving) had been right at 52% the whole time, quietly telling me the two numbers should have agreed.
+A script would have printed 38% and I would have written a confident, wrong article about this stack underperforming the paper. An evaluation you cannot audit is an opinion with decimals. (Footnote for the careful reader: on the final rebuilt index used for the runs here, the same measurement reads 53% — a one-question wobble around the paper's 52%, the noise floor of a 100-question set.)
 
-I am telling this story because it is the entire argument for doing this on instrumented infrastructure. A script would have printed 38% and I would have written a worse, wronger article about how this stack underperforms the paper. The traces, the stored vectors, and the offline replay are what turned a wrong conclusion into a fixed bug.
+## Finding 1: hybrid lost to plain dense
 
-## Setup, stated plainly
+Conventional wisdom says dense-plus-sparse with reciprocal rank fusion is a strict upgrade — semantic matching *and* exact-term matching, fused. On this corpus it went the other way: 41% hit@5 against dense's 53%. Adding SPLADE made retrieval worse.
 
-Everything below holds these fixed:
+My theory — labelled a theory because I did not chase it all the way down: legal questions are vocabulary-poor relative to their answers. The named hypothetical does not lexically resemble the doctrinal passage that resolves it, so a sparse retriever happily surfaces passages sharing legal boilerplate ("evidence," "jury," "charge") without sharing the specific rule, and RRF dilutes a strong dense signal with that noise. The per-case signals add a second insult: hybrid also did less with the gold passages it *did* find — 26 of its 41 gold hits became correct answers (63% conversion) against dense's 44 of 53 (83%), because the sparse side wraps even a successful retrieval in lexically-similar-but-wrong distractors.
 
-- **Corpus:** the same 4,876 passages, one Knowledge Base version, built into three isolated indexes.
-- **Embeddings:** `text-embedding-3-large` at 3,072 dimensions for both vector systems.
-- **Generator and judge:** `deepseek/deepseek-v4-flash` via OpenRouter, temperature 0.
-- **Retrieval depth:** `top_k=5` for the vector systems.
-- **Generation policy:** closed-book. The prompt licenses the model to *apply* rules from the retrieved context to the question's scenario, but if the context holds no relevant rule it abstains with a fixed sentence. This is deliberate, and it is the second thing that explains the results.
+The transferable lesson is narrower than "hybrid is bad": hybrid is a bet that lexical overlap signals relevance, and legal QA is close to the worst place to make that bet. Which is exactly why this decision should be measured per-corpus instead of inherited from a blog post — on a corpus where the bet pays, the same experiment would show it.
 
-Two honest disclosures up front, because they change how you should read the table. First, the same model generated *and* judged. That is consistent across all three architectures — every run faces the identical judge — but a model grading its own homework is a known bias, so treat correctness and groundedness as directional, not as the paper's fixed GPT-5.2 verdict. Second, closed-book caps correctness near the retrieval rate by construction. That is a feature for comparing retrievers fairly and a difference from the paper, which is effectively open-book.
+## Finding 2: passive retrievers are governed by retrieval — and the gold id undercounts the evidence
 
-## Result 1: hybrid lost to plain dense
+The paper's thesis reproduces cleanly on the hybrid row: 41% retrieval, 39% correct, pinned. The chain is mechanical and the abstention column shows it: when the top 5 holds no usable rule and the prompt is closed-book, an honest model abstains — hybrid abstained 30 times to dense's 18. A 12-point retrieval gap between dense and hybrid became a 22-point correctness gap. Swapping the retriever never changed the model; it changed how often the model was handed the answer.
 
-This is the one I did not expect. Conventional wisdom says dense-plus-sparse hybrid with reciprocal rank fusion is a strict upgrade over dense alone — you get semantic matching *and* exact-term matching, fused. On this corpus it went the other way: hybrid retrieved the gold passage 41% of the time against dense's 52%. Adding SPLADE made retrieval worse.
+One wrinkle matters before reading the dense row: the benchmark has one official gold passage, but the corpus sometimes states the same legal rule in more than one place.
 
-I have a theory, and I am labelling it a theory because I did not chase it all the way down. Legal questions are vocabulary-poor relative to their answers — the named hypothetical does not lexically resemble the doctrinal passage that resolves it. A sparse retriever rewards shared terms, so it happily surfaces passages that share legal vocabulary ("evidence," "jury," "charge") without sharing the specific rule, and RRF then dilutes a strong dense signal with that noisier sparse one. On a corpus where lexical overlap tracked relevance, sparse would earn its keep. Here it pulled the wrong way. The lesson I am taking is narrower and more useful than "hybrid is bad": hybrid is a bet that lexical overlap signals relevance, and legal QA is close to the worst place to make that bet.
+The dense row carries a result a strict ceiling reading says should not happen: 53% retrieval, 61% correct — eight points above its own hit rate under a closed-book prompt. The platform's per-case signals explain it without magic. Seventeen of dense's correct answers came on questions where the gold passage was never retrieved, and in 21 cases the judge found the answer supported by a *different* retrieved passage than the official gold one. The Charge Book restates the same rule in more than one place — a charge document here, a commentary section there — so a single blessed gold id undercounts the evidence actually available in a top-5. The ceiling is real, but it is an *evidence* ceiling, not a gold-id ceiling, and `hit@5` against one gold passage is a lower bound on it. That distinction is invisible in a CSV with one accuracy column; it took per-question retrieval traces and an alternate-evidence signal to see.
 
-## Result 2: the passive retrievers are pinned to their ceiling
+## Finding 3: the agent moved the ceiling
 
-Look at the two vector rows again. Dense: 52% retrieval, 49% correct. Hybrid: 41% retrieval, 46% correct. Correctness sits within a few points of retrieval in both cases. The paper's thesis, reproduced on my bench: passive retrieval *is* the ceiling.
+The filesystem RAG treats the corpus as a filesystem — passages regrouped into documents, each with a generated summary and a BM25 index built at prep time — and it reads: prefetch, grep, pull the promising documents, read full text, decide whether it has enough. No top-5. Its retrieval metric is `gold_accessed`: did it actually read the gold passage. **88%.**
 
-The abstention column shows the mechanism. Hybrid abstained 32 times, dense 18, the agent twice. Abstention is almost the mirror image of retrieval quality — when the right passage isn't in the top 5 and the prompt is closed-book, an honest model says "I cannot answer this from the provided context" rather than confabulate. So the worst retriever (hybrid, 41%) abstains the most (32) and scores the lowest (46%). The chain is mechanical: bad retrieval → forced abstention → capped correctness. Swapping dense for hybrid did not change the model. It changed how often the model was handed the answer, and everything downstream followed.
+Against dense's 53% that is +35 points. The more interesting reference is the paper's own table: Isaacus needed Kanon 2, their domain-tuned legal embedder, to reach roughly 86% retrieval — the biggest lever in their study. This is not an apples-to-apples metric match, because the agent's `gold_accessed` is not rank-limited `hit@5`; I treat the comparison as directional. Still, the agent moved into the same retrieval-access range with no embeddings at all: BM25, file listings, summaries, and the ability to keep reading.
 
-## Result 3: the agent climbed over the ceiling
+Here is the part that matters for the platform story: **that number did not come from the model, and it was not the first number.** The first full agent run scored 59% gold access. What took it to 88% was reading traces and fixing what they showed, over two rounds:
 
-Now the filesystem RAG, and the reason this article has the title it does.
+- BM25 returning five overlapping windows of the *same* passage, crowding the gold one out at rank 7 → dedupe by passage.
+- The agent landing in the right section and satisficing on a sibling passage while the gold one sat unread in its own search results → a mandated sibling sweep before finalizing.
+- Questions asking about "double jeopardy" when the corpus only ever says "punished more than once for the same act" → a statutory-vocabulary reformulation rule.
+- An answer emitted after a single file read → a minimum-evidence guard.
 
-The agentic retriever does not get a top-5 budget. It treats the corpus as a filesystem — passages regrouped into documents, each with a generated summary — and it reads. It does a lexical prefetch, pulls the most promising documents, reads their full text, and decides whether it has enough. Its retrieval metric isn't `hit@5` (there is no fixed-length ranked list to score), so I report `gold_accessed`: did it actually read the gold passage. That was 59% — already better than either vector system's hit rate.
+Same model, same corpus, same budget — 29 points of retrieval, all of it engineering. That is the precise sense in which the ceiling moved. For a passive index, retrieval quality is a property you *buy* when you pick an embedder. For an agent, it is a surface you can *work* — provided your evaluation stack shows you where it fails. An earlier trace in the same vein: a question whose answer is "view" (the statute's collective term for a "demonstration, experiment or inspection") got answered "Inspection" because the agent had only been shown a lossy document *summary*; the trace showed right document, wrong granularity, and the fix was injecting focused full-text excerpts for top candidates. You do not debug that from an accuracy column.
 
-But here is the part that breaks the paper's framing. The agent's **correctness was 75%, sixteen points above its 59% gold-access rate.** And that is not an artifact of the 12 timeouts: score every timeout as a failure and the agent still answers 66 of 100 correctly — seventeen points above dense's 49%, and still above its own gold-access rate. A passive retriever cannot do that; its correctness is bounded by what landed in the top 5. The agent can, for two reasons. It reads *full documents*, not the lossy summaries or single chunks the vector systems live on, so when the corpus states the answer in a passage adjacent to the official gold one, it still gets there. And it almost never abstains (2 times out of 88) because it can keep digging until it finds something to stand on. Retrieval stopped being a fixed ceiling and became a budget the agent could spend.
+Correctness followed retrieval, as the paper says it should: 82%, twenty-one points above dense, with the tightest gold-to-correct conversion of the three (79 of 88, 90%). And the abstention column reads zero — not rare, zero in 100, because an agent that can keep digging almost always finds something to stand on. It mostly converted that stubbornness into successes — 80 answers both correct *and* grounded, versus dense's 61 — but an agent that never says "I don't know" is one confident-wrong answer away from a production incident. Its 13 ungrounded answers are the number I would watch, not its accuracy.
 
-The same property is a liability worth naming. An agent that almost never says "I don't know" is one confident-wrong answer away from a problem. Here it mostly converted abstentions into successes — 64 answers both correct *and* grounded, versus dense's 49 — but its 18 ungrounded answers are the number I would watch in production, not its accuracy.
+## The bill, itemized
 
-## The cost of thinking
+The platform tracks latency and provider-reported token costs per question, which turns "the agent is expensive" from a feeling into a line item. The agent averaged 192 seconds per question against 6–7 for the vector systems — thirty times slower, worst single question almost 35 minutes. It consumed 15.9 million prompt tokens across the run against roughly 180 thousand for each vector system: about 70× the cost per question, $0.015 against $0.0002.
 
-Nothing is free, and the agent's bill is latency. 198 seconds per question against 6 to 9 for the vector systems. Call it thirty times slower, slow enough that 12 of the 100 cases timed out before finishing. That reframes the whole comparison as an operational decision rather than a leaderboard:
+And yet: $0.015 is a cent and a half. The entire 100-question agent run cost $1.50 on a cheap model. The premium is enormous in relative terms and almost nothing in absolute ones — which is exactly what makes this an operational decision rather than a leaderboard:
 
-- **High-volume, latency-sensitive, cost-sensitive** (a search box, an autocomplete, anything user-facing and synchronous): dense vector search. It is fast, it is cheap, and on this benchmark it matched the paper.
-- **High-value, low-volume, accuracy-critical** (a memo a lawyer will actually rely on, where three minutes and a few cents are nothing against being wrong): the agent earns its latency.
-- **Hybrid:** I would not reach for it on legal text after this. Sparse retrieval is a bet on lexical overlap, and this domain does not pay it out.
+- **High-volume, latency-sensitive, synchronous** (a search box, anything user-facing): dense vector search. Fast, cheap, and on this benchmark it tracked the paper.
+- **High-value, low-volume, accuracy-critical** (a memo a lawyer will rely on, where three minutes and a cent and a half are nothing against being wrong): the agent earns its latency.
+- **Hybrid on this kind of legal rule-application QA:** I would not default to it without measuring first. Sparse retrieval is a bet on lexical overlap, and this domain did not pay it out.
 
-## What the traces showed that the table couldn't
+<!-- screenshot: per-question retrieval trace from the legal-bench agent run goes here -->
 
-Two qualitative finds, both surfaced by reading retrieval traces, which is the part a CSV will never give you.
+## Honest limits
 
-The first is why I trust the agent's reading over the vector systems' chunks. One question's answer is "view" — the statute says a court may order a "demonstration, experiment or inspection," collectively called a *view*. An early agent run found the right document but only injected its *summary*, latched onto the narrower subtype, and answered "Inspection." The trace showed exactly that: right document, wrong granularity, because the summary was lossy. The fix was to inject focused full-text excerpts alongside summaries for top candidates. You cannot debug that from an accuracy column. You debug it by reading what the retriever actually put in front of the model.
+- **Self-judge.** One model generated and judged. Consistent across architectures, biased in absolute terms. A fixed-judge rerun is the Phase 2 I would do before quoting these as final.
+- **Closed-book policy.** It tethers correctness to retrieved evidence and makes the vector numbers strict. The paper is effectively open-book, recovering retrieval misses from parametric legal knowledge. That gap is policy, not pipeline.
+- **Phase 1 model.** `deepseek-v4-flash`, chosen for cost, is not the paper's GPT-5.2. Retrieval numbers are model-independent and calibrate cleanly; generation numbers are directional.
+- **Gold access is not hit@5.** The agent's 88% counts a read of the gold passage at any point in its run; the vector systems face a rank-≤5 test. The comparison to Kanon 2's ~86% is directional, not a strict win claim — though the correctness column, which is metric-neutral, points the same way.
+- **Not a replication.** This is Legal RAG Bench used as a controlled harness on one stack, with the paper as a calibration reference. The one number I put up against the paper directly is dense `hit@5` — 53.0% on the final index, 52.0% on the calibration run, against their 52%.
+- **Phase 2 work.** The next validation pass is a fixed independent judge and a cost-focused agent rerun, so the directional result becomes a stronger benchmark claim.
 
-The second is why correctness reads the way it does. Early on, the vector systems were abstaining even when the gold passage *was* retrieved. The trace proved it — gold at rank 2 of 5, model refused anyway — and the cause was an over-extractive prompt that read "the specific answer isn't literally in this passage" and gave up, even though the passage held the rule the question asked to apply. Rewriting the prompt to license rule-application (the closed-book policy above) fixed the false refusals without licensing open-book guessing. That distinction — abstain when the rule is absent, answer when it is present but must be applied — is the difference between a faithful legal assistant and a useless one, and it is invisible without traces.
+## The real takeaway
 
-## Caveats, because the numbers deserve them
+The finding I lead with, though, is the method. The paper is right that retrieval is the ceiling — for retrievers that take what they're given. Hand the corpus to a retriever that can read, reason, and read again, and the ceiling stops being a property of your embedding model and becomes a surface you can work: 59% to 88% gold access without touching the model. But you only get to work that surface if you can see it, and you only trust the result if the whole experiment — corpus version, index config, prompts, judge, traces, costs — is pinned down well enough to survive an argument. That is what the platform is for. If you are standing at the dense-vs-hybrid-vs-agent fork, don't take my numbers. Clone the harness and run yours.
 
-- **Self-judge.** One model generated and judged. Consistent across architectures, but biased in absolute terms. The fixed-judge rerun (a strong, separate judge for every run) is the Phase 2 I would do before quoting these as final.
-- **Closed-book policy.** It caps correctness near the retrieval rate by design and makes the vector numbers strict. The paper is effectively open-book; it recovers retrieval misses from the model's parametric legal knowledge. That gap is policy, not pipeline.
-- **Phase 1 model.** `deepseek-v4-flash`, chosen for cost, is not the paper's GPT-5.2. The retrieval numbers are model-independent and calibrate cleanly; the generation numbers are directional.
-- **Not a replication.** This is Legal RAG Bench used as a controlled harness to compare architectures on one stack, with the paper as a calibration reference. The one number I will stand behind against the paper is dense `hit@5` = 52.0%, which matches.
-- **Incomplete agent run.** 88 of 100 agent cases completed; the rest timed out. Scored conservatively — every timeout counted as a failure — the agent still leads at 66% correct, but the incompleteness is a real artifact of the latency, not a footnote I want to hide.
+## References
 
-## What I'd change next
+- [Isaacus, "Introducing Legal RAG Bench", February 20, 2026](https://isaacus.com/blog/legal-rag-bench)
+- [Abdur-Rahman Butler and Umar Butler, "Legal RAG Bench: an end-to-end benchmark for legal RAG", arXiv, March 2, 2026](https://arxiv.org/abs/2603.01710)
 
-A fixed strong judge for every run, which is the cleanest single upgrade to credibility. A proper BM25/full-text index for the filesystem agent so its prefetch stops leaning on hand-tuned lexical weights. A reranker on the dense path, which is the obvious lever the paper leaves on the table. And an open-book toggle as a first-class config knob, so "answer from context only" versus "answer from context, fall back to your own legal knowledge" becomes a measured variable instead of a buried prompt decision.
+---
 
-But the finding I would lead with is the one in the title. The paper is right that retrieval is the ceiling — for retrievers that take what they're given. Hand the same corpus and the same models to a retriever that can read, reason, and read again, and the ceiling turns into a budget. It is slower, it occasionally times out, and you have to watch it for overconfidence. It is also the only one of the three that answered three out of four legal questions correctly. On the kind of question where being right is the entire point, that trade looks a lot less like a luxury and a lot more like the job.
-
-*The numbers, config snapshots, and per-question traces in this piece were generated and exported by the evaluation platform; every table here is a direct export, manifest included.*
+*Fabrizio Amort is a GenAI Architect specializing in RAG evaluation systems and agentic AI. [RAG Evaluator](https://github.com/fabrizioamort/RAG-evaluator) is an open-source platform for designing, testing, and comparing RAG architectures on real corpora. The numbers, config snapshots, and per-question traces in this piece were generated and exported by the platform; every table is a direct export, manifest included. Code, docs, and the full comparison export live in the repo.*

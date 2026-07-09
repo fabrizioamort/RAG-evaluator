@@ -20,6 +20,13 @@ engine.
 - Query ready indexes in the playground before running a full evaluation.
 - Use the CLI for repeatable local experiments and report generation.
 
+## Case Study
+
+- [Legal RAG Bench architecture comparison](docs/articles/legal-rag-bench-architecture-comparison.md):
+  a reproducible case study comparing dense, hybrid, and agentic RAG on Isaacus'
+  Legal RAG Bench, with config snapshots, retrieval traces, latency, cost, and
+  side-by-side evaluation results exported from the platform.
+
 ## Supported RAG Strategies
 
 | Key | Strategy | Backend | Best fit |
