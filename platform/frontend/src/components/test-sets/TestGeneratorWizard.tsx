@@ -13,6 +13,8 @@ import {
 import { api, TestGenerationConfig } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { DialogShell } from '@/components/ui/DialogShell'
+import { ModelSelector } from '@/components/llm/ModelSelector'
+import { defaultModelForProvider } from '@/lib/llm-models'
 
 interface TestGeneratorWizardProps {
     testSetId: string
@@ -43,6 +45,7 @@ export function TestGeneratorWizard({
     const [selectedKb, setSelectedKb] = useState<string>('')
     const [targetCount, setTargetCount] = useState(20)
     const [questionsPerChunk, setQuestionsPerChunk] = useState(2)
+    const [llmProvider, setLlmProvider] = useState('openai')
     const [llmModel, setLlmModel] = useState('gpt-4o-mini')
     const [skipSemanticCheck, setSkipSemanticCheck] = useState(false)
     const [difficultyDistribution, setDifficultyDistribution] = useState(DEFAULT_DIFFICULTY_DISTRIBUTION)
@@ -62,6 +65,14 @@ export function TestGeneratorWizard({
         enabled: isOpen,
     })
 
+    // Fetch LLM providers so users can pick e.g. Vertex AI Gemini alongside OpenAI
+    const { data: providersData, isLoading: isLoadingProviders } = useQuery({
+        queryKey: ['llm-providers'],
+        queryFn: () => api.ragConfigs.getLLMProviders(),
+        enabled: isOpen,
+    })
+    const providers = providersData?.data || []
+
     // Start generation mutation
     const startGenerationMutation = useMutation({
         mutationFn: (config: TestGenerationConfig) => api.testSets.generate(testSetId, config),
@@ -78,6 +89,7 @@ export function TestGeneratorWizard({
             setSelectedKb('')
             setTargetCount(20)
             setQuestionsPerChunk(2)
+            setLlmProvider('openai')
             setLlmModel('gpt-4o-mini')
             setSkipSemanticCheck(false)
             setDifficultyDistribution(DEFAULT_DIFFICULTY_DISTRIBUTION)
@@ -85,11 +97,18 @@ export function TestGeneratorWizard({
         }
     }, [isOpen])
 
+    const handleProviderChange = (nextProvider: string) => {
+        setLlmProvider(nextProvider)
+        const nextModel = defaultModelForProvider(providers, nextProvider)
+        if (nextModel) setLlmModel(nextModel)
+    }
+
     const handleStart = async () => {
         const config: TestGenerationConfig = {
             knowledge_base_id: selectedKb,
             target_count: targetCount,
             questions_per_chunk: questionsPerChunk,
+            llm_provider: llmProvider,
             llm_model: llmModel,
             skip_semantic_check: skipSemanticCheck,
             difficulty_distribution: difficultyDistribution,
@@ -134,7 +153,8 @@ export function TestGeneratorWizard({
     const kbs = kbsData?.data.items || []
     const templates = templatesData?.data.items || []
     const selectedKbData = kbs.find(kb => kb.id === selectedKb)
-    const isLoading = isLoadingKbs || isLoadingTemplates
+    const selectedProviderInfo = providers.find(p => p.name === llmProvider)
+    const isLoading = isLoadingKbs || isLoadingTemplates || isLoadingProviders
 
     const steps: { id: Step; label: string; icon: React.ElementType }[] = [
         { id: 'kb', label: 'Source', icon: Database },
@@ -346,22 +366,18 @@ export function TestGeneratorWizard({
                                             />
                                         </div>
 
-                                        {/* LLM Model */}
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-semibold">LLM Model</label>
-                                            <select
-                                                value={llmModel}
-                                                onChange={(e) => setLlmModel(e.target.value)}
-                                                className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                                            >
-                                                <option value="gpt-5.1">GPT-5.1</option>
-                                                <option value="gpt-5-mini">GPT-5 Mini</option>
-                                                <option value="gpt-5-nano">GPT-5 Nano</option>
-                                                <option value="gpt-4o">GPT-4o</option>
-                                                <option value="gpt-4-turbo">GPT-4 Turbo</option>
-                                                <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
-                                                <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
-                                            </select>
+                                        {/* LLM Provider + Model */}
+                                        <div className="grid gap-4 sm:grid-cols-2">
+                                            <ModelSelector
+                                                providers={providers}
+                                                provider={llmProvider}
+                                                model={llmModel}
+                                                onProviderChange={handleProviderChange}
+                                                onModelChange={setLlmModel}
+                                                providerLabel="LLM Provider"
+                                                modelLabel="LLM Model"
+                                                modelPlaceholder="Enter a model id"
+                                            />
                                         </div>
 
                                         {/* Difficulty Distribution */}
@@ -500,6 +516,10 @@ export function TestGeneratorWizard({
                                             <div className="flex justify-between items-center p-4">
                                                 <span className="text-sm text-muted-foreground">Target Questions</span>
                                                 <span className="text-sm font-semibold">{targetCount}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center p-4">
+                                                <span className="text-sm text-muted-foreground">LLM Provider</span>
+                                                <span className="text-sm font-semibold">{selectedProviderInfo?.display_name || llmProvider}</span>
                                             </div>
                                             <div className="flex justify-between items-center p-4">
                                                 <span className="text-sm text-muted-foreground">LLM Model</span>

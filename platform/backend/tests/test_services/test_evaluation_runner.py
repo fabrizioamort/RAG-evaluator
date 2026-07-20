@@ -416,4 +416,4 @@ async def test_evaluation_runner_ready_index_loads_without_prepare(
     mock_adapter.load_rag_for_index_query.assert_called_once()
     mock_adapter.prepare_documents.assert_not_called()
     mock_adapter.query_with_trace.assert_awaited_once_with(mock_rag, "What is indexed?", 11)
-    mock_init_metrics.assert_called_once_with("gpt-judge", "openai", None, ANY)
+    mock_init_metrics.assert_called_once_with("gpt-judge", "openai", None, ANY, None, None)

@@ -13,9 +13,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from openai import OpenAI
-
+from rag_evaluator.common.gcp_token_provider import prepend_google_prefix
 from rag_evaluator.common.llm_utils import is_reasoning_model
+from rag_evaluator.common.openai_client import (
+    is_vertex_ai_provider,
+    make_client,
+)
+from rag_evaluator.config import settings
 
 from .exceptions import CircuitOpenError
 
@@ -225,12 +229,27 @@ class LLMClient:
         self.config = config
         self.token_usage = token_usage
 
-        # Initialize OpenAI-compatible client (endpoint resolved from config,
-        # falling back to the OPENAI_API_KEY env var).
-        api_key = config.llm_api_key or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("No API key set (config.llm_api_key or OPENAI_API_KEY)")
-        self.client = OpenAI(api_key=api_key, base_url=config.llm_base_url)
+        # Initialize OpenAI-compatible client via the shared factory so that
+        # provider-specific endpoints (OpenAI, OpenRouter, Vertex AI Gemini via
+        # OpenAI-compat) are handled centrally.
+        provider = getattr(config, "llm_provider", "openai")
+        if is_vertex_ai_provider(provider):
+            self.client = make_client(
+                api_key=None,
+                base_url=None,
+                timeout=settings.openai_timeout,
+                provider=provider,
+            )
+        else:
+            api_key = config.llm_api_key or os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("No API key set (config.llm_api_key or OPENAI_API_KEY)")
+            self.client = make_client(
+                api_key=api_key,
+                base_url=config.llm_base_url,
+                timeout=settings.openai_timeout,
+                provider=provider,
+            )
 
         # Circuit breaker
         self._circuit = CircuitBreaker(CircuitConfig(
@@ -469,8 +488,13 @@ class LLMClient:
         max_tokens: int,
         max_tokens_param: str,
     ):
+        resolved_model = (
+            prepend_google_prefix(model)
+            if is_vertex_ai_provider(getattr(self.config, "llm_provider", None))
+            else model
+        )
         params: dict[str, Any] = {
-            "model": model,
+            "model": resolved_model,
             "messages": messages,
             max_tokens_param: max_tokens,
         }

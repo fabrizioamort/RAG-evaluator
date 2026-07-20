@@ -145,11 +145,15 @@ class _SafeDeepEvalLLMCore:
         provider_name: str | None = None,
         base_url: str | None = None,
         api_key: str | None = None,
+        vertex_project: str | None = None,
+        vertex_location: str | None = None,
     ) -> None:
         self.model_name = model_name
         self.provider_name = provider_name
         self.base_url = base_url
         self.api_key = api_key
+        self.vertex_project = vertex_project
+        self.vertex_location = vertex_location
         self.provider = LLMProviderService()
 
     def get_model_name(self) -> str:
@@ -182,6 +186,10 @@ class _SafeDeepEvalLLMCore:
             completion_kwargs["response_format"] = {"type": "json_object"}
 
         try:
+            if self.vertex_project:
+                completion_kwargs["vertex_project"] = self.vertex_project
+            if self.vertex_location:
+                completion_kwargs["vertex_location"] = self.vertex_location
             response = await self.provider.completion(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
@@ -218,7 +226,7 @@ class _SafeDeepEvalLLMCore:
             logger.debug("SafeDeepEvalLLM.a_generate successful", content_preview=content[:200])
             return content
         except Exception as e:
-            logger.error("SafeDeepEvalLLM.a_generate failed", error=str(e))
+            logger.exception("SafeDeepEvalLLM.a_generate failed", error=repr(e))
             raise
 
 
@@ -313,6 +321,8 @@ class EvaluationRunner:
         provider: str | None = None,
         base_url: str | None = None,
         api_key: str | None = None,
+        vertex_project: str | None = None,
+        vertex_location: str | None = None,
     ) -> List[Any]:
         """Initialize DeepEval metrics based on evaluation configuration."""
         include_reason = settings.EVAL_INCLUDE_REASON
@@ -355,6 +365,8 @@ class EvaluationRunner:
             provider_name=provider,
             base_url=base_url,
             api_key=api_key,
+            vertex_project=vertex_project,
+            vertex_location=vertex_location,
         )
 
         metrics: List[Any] = []
@@ -515,6 +527,8 @@ class EvaluationRunner:
                             judge_provider,
                             endpoint.base_url,
                             endpoint.api_key,
+                            endpoint.vertex_project,
+                            endpoint.vertex_location,
                         )
                         return idx, success, error_message
 
@@ -576,6 +590,8 @@ class EvaluationRunner:
                         judge_provider,
                         endpoint.base_url,
                         endpoint.api_key,
+                        endpoint.vertex_project,
+                        endpoint.vertex_location,
                     )
                     if not success:
                         failed_case_indices.append(i)
@@ -647,6 +663,8 @@ class EvaluationRunner:
         judge_provider: str | None,
         judge_base_url: str | None,
         judge_api_key: str | None,
+        judge_vertex_project: str | None = None,
+        judge_vertex_location: str | None = None,
     ) -> tuple[bool, str | None]:
         """Process a single test case."""
         start_time = time.time()
@@ -672,7 +690,12 @@ class EvaluationRunner:
             # case so async evaluation cannot mix scores or reasons across
             # concurrent cases.
             metrics = self._initialize_metrics(
-                judge_model, judge_provider, judge_base_url, judge_api_key
+                judge_model,
+                judge_provider,
+                judge_base_url,
+                judge_api_key,
+                judge_vertex_project,
+                judge_vertex_location,
             )
             scores: Dict[str, Any] = {}
             metric_results: list[dict[str, Any]] = []
@@ -798,11 +821,11 @@ class EvaluationRunner:
 
         except Exception as e:
             error_message = f"Test case {i} failed: {str(e)}"
-            logger.error(
+            logger.exception(
                 "Error processing test case",
                 i=i,
                 test_case_id=str(test_case.id),
-                error=str(e),
+                error=repr(e),
             )
             await self.event_log.log_event(
                 self.evaluation_id,

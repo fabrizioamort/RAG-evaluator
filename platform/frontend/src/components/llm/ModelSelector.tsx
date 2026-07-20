@@ -30,7 +30,12 @@ export function ModelSelector({
     const selectedProviderInfo = providers.find(p => p.name === provider)
     const knownModels = selectedProviderInfo?.models || []
     const isKnownModel = Boolean(model) && knownModels.includes(model)
-    const selectValue = isKnownModel ? model : CUSTOM_VALUE
+    // Providers that accept free-form model names (e.g. Vertex AI, where new
+    // Gemini variants ship faster than catalog updates) default to the Custom
+    // input so users can type any model id without picking "Custom" first.
+    const acceptsFreeform = Boolean(selectedProviderInfo?.accepts_freeform_model)
+    const selectValue = isKnownModel && !acceptsFreeform ? model : CUSTOM_VALUE
+    const requiresGcpProject = Boolean(selectedProviderInfo?.requires_gcp_project)
 
     return (
         <>
@@ -45,6 +50,11 @@ export function ModelSelector({
                         <option key={p.name} value={p.name}>{p.display_name}</option>
                     ))}
                 </select>
+                {requiresGcpProject && (
+                    <p className="text-xs text-muted-foreground">
+                        Authenticated via Application Default Credentials (ADC) — configured server-side.
+                    </p>
+                )}
             </div>
 
             <div className={modelClassName || 'space-y-1.5'}>
@@ -63,7 +73,9 @@ export function ModelSelector({
                     {knownModels.map(m => (
                         <option key={m} value={m}>{m}</option>
                     ))}
-                    <option value={CUSTOM_VALUE}>Custom</option>
+                    <option value={CUSTOM_VALUE}>
+                        {acceptsFreeform ? 'Custom (type any model id)' : 'Custom'}
+                    </option>
                 </select>
                 {selectValue === CUSTOM_VALUE && (
                     <input

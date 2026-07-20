@@ -1,6 +1,10 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// Default to same-origin (empty string) so calls hit "/api/v1/..." on the
+// current host and are handled by the nginx reverse proxy in prod or the Vite
+// dev-server proxy locally. Set VITE_API_URL at build time only when the
+// frontend and backend are served from different origins with no proxy.
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? ''
 
 export const apiClient = axios.create({
   baseURL: `${API_BASE_URL}/api/v1`,
@@ -290,6 +294,8 @@ export interface LLMProviderInfo {
   requires_api_key: boolean
   supports_base_url: boolean
   supports_embeddings: boolean
+  requires_gcp_project?: boolean
+  accepts_freeform_model?: boolean
 }
 
 export interface SummaryMetrics {
@@ -482,6 +488,9 @@ export interface TestGenerationConfig {
   difficulty_distribution?: Record<string, number>
   template_ids?: string[]
   llm_model?: string
+  llm_provider?: string
+  embedding_model?: string
+  embedding_provider?: string
   skip_semantic_check?: boolean
 }
 

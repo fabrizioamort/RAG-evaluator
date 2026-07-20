@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str | None = None
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 
+    # Google Vertex AI (Gemini) — ADC-based auth (no API key)
+    GOOGLE_CLOUD_PROJECT: str | None = None
+    GOOGLE_CLOUD_LOCATION: str = "us-central1"
+    VERTEX_GEMINI_MODEL: str = "gemini-2.5-pro"
+    VERTEX_GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-2"
+
     # Default LLM settings
     DEFAULT_LLM_PROVIDER: str = "openai"
     DEFAULT_LLM_MODEL: str = "gpt-4o-mini"

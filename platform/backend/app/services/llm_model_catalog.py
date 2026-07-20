@@ -47,12 +47,39 @@ MODEL_CATALOG: dict[str, list[ModelInfo]] = {
         ModelInfo("mistral"),
         ModelInfo("phi3"),
     ],
+    "vertex_ai": [
+        ModelInfo("gemini-2.5-pro"),
+        ModelInfo("gemini-2.5-flash"),
+        ModelInfo("gemini-2.5-flash-lite"),
+    ],
+}
+
+
+# Embedding model catalog — separate from MODEL_CATALOG so the UI can render
+# generation and embedding model pickers independently. Providers that don't
+# expose embeddings simply have no entry here.
+EMBEDDING_MODEL_CATALOG: dict[str, list[ModelInfo]] = {
+    "openai": [
+        ModelInfo("text-embedding-3-small"),
+        ModelInfo("text-embedding-3-large"),
+        ModelInfo("text-embedding-ada-002"),
+    ],
+    "vertex_ai": [
+        ModelInfo("gemini-embedding-2"),
+        ModelInfo("gemini-embedding-001"),
+        ModelInfo("text-embedding-005"),
+    ],
 }
 
 
 def get_models(provider: str) -> list[str]:
     """Return known model names for a provider."""
     return [model.name for model in MODEL_CATALOG.get(provider, [])]
+
+
+def get_embedding_models(provider: str) -> list[str]:
+    """Return known embedding model names for a provider."""
+    return [model.name for model in EMBEDDING_MODEL_CATALOG.get(provider, [])]
 
 
 def get_model_capabilities(provider: str) -> dict[str, dict[str, bool]]:

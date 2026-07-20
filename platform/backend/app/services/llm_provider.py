@@ -71,11 +71,18 @@ class LLMProviderService:
         OpenRouter exposes an OpenAI-compatible endpoint. Routing it through
         LiteLLM's generic OpenAI-compatible adapter avoids provider-specific
         optional params that newer OpenAI clients reject.
+
+        For Vertex AI Gemini, LiteLLM requires the ``vertex_ai/`` prefix on the
+        model name; ADC handles auth via ``vertex_project``/``vertex_location``
+        kwargs propagated through ``**kwargs``.
         """
         provider_name = (provider or "").lower()
         if provider_name == "openrouter" and base_url:
             openrouter_model = normalize_model_for_provider(provider, model)
             return f"openai/{openrouter_model}"
+
+        if provider_name in ("vertex_ai", "gemini", "google_vertex_ai") and "/" not in model:
+            return f"vertex_ai/{model}"
 
         if provider and "/" not in model:
             return f"{provider}/{model}"
@@ -237,7 +244,11 @@ class LLMProviderService:
                         await asyncio.sleep(delay)
                     continue
 
-                logger.error("LLM completion failed", error=str(e), model=full_model)
+                logger.exception(
+                    "LLM completion failed",
+                    error=repr(e),
+                    model=full_model,
+                )
                 raise
 
         raise RuntimeError("LLM completion failed without raising an exception")
@@ -263,7 +274,10 @@ class LLMProviderService:
             Standardized embedding response
         """
         full_model = model
-        if provider and "/" not in model:
+        provider_name = (provider or "").lower()
+        if provider_name in ("vertex_ai", "gemini", "google_vertex_ai") and "/" not in model:
+            full_model = f"vertex_ai/{model}"
+        elif provider and "/" not in model:
             full_model = f"{provider}/{model}"
 
         start_time = time.time()

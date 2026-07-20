@@ -25,7 +25,7 @@ from rag_evaluator.common.indexing import (
     storage_id,
 )
 from rag_evaluator.common.llm_utils import get_safe_llm_params
-from rag_evaluator.common.openai_client import llm_client
+from rag_evaluator.common.openai_client import llm_client, resolve_llm_model
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievalTrace,
@@ -439,7 +439,7 @@ Question: {question}
 
 Answer:"""
 
-        model = self.config.llm_model or settings.openai_model
+        model = resolve_llm_model(self.config, self.config.llm_model or settings.openai_model)
         completion_params = get_safe_llm_params(
             model,
             temperature=0.0,

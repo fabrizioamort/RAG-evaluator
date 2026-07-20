@@ -184,6 +184,15 @@ class TestGenerationConfig(BaseSchema):
         default=None, description="Template IDs to use for generation"
     )
     llm_model: str = Field(default="gpt-4o-mini", description="LLM model for generation")
+    llm_provider: str = Field(default="openai", description="LLM provider for generation")
+    embedding_model: str | None = Field(
+        default=None,
+        description="Embedding model for semantic duplicate check; auto-derived from llm_provider if omitted",
+    )
+    embedding_provider: str | None = Field(
+        default=None,
+        description="Embedding provider; auto-derived from llm_provider if omitted",
+    )
     skip_semantic_check: bool = Field(default=False, description="Skip semantic duplicate checking")
 
 

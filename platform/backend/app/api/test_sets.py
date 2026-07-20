@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession, Pagination
+from app.config import settings
 from app.models.knowledge_base import KnowledgeBase
 from app.models.project import Project
 from app.models.test_case import TestCase
@@ -29,6 +30,7 @@ from app.schemas.test_set import (
     TestSetUpdate,
     TestSetWithCases,
 )
+from app.services.provider_resolver import is_vertex_ai_provider
 from app.services.test_generator_service import (
     GenerationConfig,
     get_test_generator_service,
@@ -37,6 +39,25 @@ from app.utils.logging_config import get_logger
 
 router = APIRouter(tags=["Test Sets"])
 logger = get_logger(__name__)
+
+
+def _derive_embedding_config(llm_provider: str) -> tuple[str, str]:
+    """Pick an embedding (model, provider) that matches the generation provider.
+
+    Vertex AI ships its own embedding models via the same LiteLLM path, so we
+    keep the two providers aligned unless the caller overrides them on the
+    request. Anthropic has no first-party embeddings — fall back to OpenAI and
+    log so the operator knows they still need OPENAI_API_KEY.
+    """
+    if is_vertex_ai_provider(llm_provider):
+        return settings.VERTEX_GEMINI_EMBEDDING_MODEL, "vertex_ai"
+    if (llm_provider or "").lower() == "anthropic":
+        logger.warning(
+            "Anthropic has no native embeddings; falling back to OpenAI text-embedding-3-small",
+            llm_provider=llm_provider,
+        )
+        return "text-embedding-3-small", "openai"
+    return "text-embedding-3-small", "openai"
 
 
 def _test_set_to_response(test_set: TestSet) -> TestSetResponse:
@@ -647,6 +668,14 @@ async def start_generation(
     await db.commit()
     await db.refresh(job)
 
+    # Derive embedding (model, provider) so semantic duplicate detection uses a
+    # provider consistent with the generation LLM unless the caller overrides.
+    default_emb_model, default_emb_provider = _derive_embedding_config(
+        generation_config.llm_provider
+    )
+    embedding_model = generation_config.embedding_model or default_emb_model
+    embedding_provider = generation_config.embedding_provider or default_emb_provider
+
     # Convert to service config
     service_config = GenerationConfig(
         target_count=generation_config.target_count,
@@ -654,6 +683,9 @@ async def start_generation(
         difficulty_distribution=generation_config.difficulty_distribution,
         template_ids=generation_config.template_ids,
         llm_model=generation_config.llm_model,
+        llm_provider=generation_config.llm_provider,
+        embedding_model=embedding_model,
+        embedding_provider=embedding_provider,
         skip_semantic_check=generation_config.skip_semantic_check,
     )
 

@@ -130,9 +130,37 @@ Common settings:
 | `GOOGLE_VERTEX_SA_KEY_PATH` | Optional service-account key path; falls back to Application Default Credentials. |
 | `GOOGLE_VERTEX_DATA_STORE_ID`, `GOOGLE_VERTEX_STAGING_BUCKET` | Vertex AI Search data store ID and GCS staging bucket for document import. |
 | `GOOGLE_VERTEX_GENERATION_MODE` | `framework` (default LLM pipeline) or `google_grounded` (Vertex grounded generation). |
+| `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` | GCP project and region for Vertex AI Gemini via the OpenAI-compat endpoint (falls back to `GOOGLE_VERTEX_PROJECT_ID` / `GOOGLE_VERTEX_LOCATION`). |
+| `VERTEX_GEMINI_MODEL`, `VERTEX_GEMINI_EMBEDDING_MODEL` | Default Gemini generation/embedding models when `LLM_PROVIDER=vertex_ai`. |
+| `JUDGE_PROVIDER`, `JUDGE_MODEL` | Override the DeepEval judge provider/model (defaults to the generation provider/model). |
 | `DEEPEVAL_ASYNC_MODE` | Set to `False` for conservative sequential judging. |
 
 See [Configuration](guides/configuration.md) for the full list.
+
+### Using Google Vertex AI Gemini
+
+The CLI can route generation, embeddings, and the DeepEval judge to Gemini via
+Vertex AI's OpenAI-compatible endpoint. Auth uses Application Default
+Credentials (ADC) — no API key is required.
+
+```powershell
+# One-time: authenticate ADC (dev) or attach a service account (Cloud Run / GKE)
+gcloud auth application-default login
+
+$env:GOOGLE_CLOUD_PROJECT = "your-gcp-project"
+$env:GOOGLE_CLOUD_LOCATION = "us-central1"
+
+# Point the core CLI at Vertex AI Gemini
+$env:LLM_PROVIDER = "vertex_ai"
+$env:VERTEX_GEMINI_MODEL = "gemini-2.5-flash"
+
+uv run rag-eval evaluate --rag-type vector_semantic
+```
+
+Under the hood the shared OpenAI client is pointed at
+`https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project}/locations/{location}/endpoints/openapi`
+and a short-lived bearer token is refreshed automatically. Model names without a
+publisher prefix are auto-namespaced to `google/<name>` (Vertex requirement).
 
 ## Legal RAG Bench Converter
 

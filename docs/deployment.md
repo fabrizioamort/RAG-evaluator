@@ -122,6 +122,35 @@ CORS_ORIGINS=["https://rag-eval.example.com"]
 
 See [Configuration](guides/configuration.md) for the full reference.
 
+## Google Cloud (Vertex AI Gemini)
+
+Vertex AI Gemini uses Application Default Credentials (ADC) — no API keys are
+stored in the platform. Auth resolves in this order:
+
+1. `GOOGLE_APPLICATION_CREDENTIALS` (service-account JSON path), if set.
+2. User credentials from `gcloud auth application-default login` (dev only).
+3. The metadata-server credentials of the attached service account (Cloud Run,
+   GKE, Compute Engine).
+
+Prefer option 3 in production. Grant the runtime service account:
+
+- `roles/aiplatform.user` — required to call Gemini generation/embedding.
+- `roles/discoveryengine.viewer` — required only when using
+  `google_vertex_search` as a RAG retriever.
+
+Environment variables:
+
+```env
+GOOGLE_CLOUD_PROJECT=your-gcp-project
+GOOGLE_CLOUD_LOCATION=us-central1        # us-central1, europe-west4, ...
+VERTEX_GEMINI_MODEL=gemini-2.5-pro
+VERTEX_GEMINI_EMBEDDING_MODEL=gemini-embedding-2
+```
+
+The core CLI talks to
+`https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project}/locations/{location}/endpoints/openapi`;
+the platform backend uses LiteLLM's native `vertex_ai/*` path (same ADC).
+
 ## Database Migrations
 
 Run backend migration commands from `platform/backend`:

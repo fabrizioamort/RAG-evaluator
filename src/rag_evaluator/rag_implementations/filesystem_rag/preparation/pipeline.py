@@ -18,6 +18,8 @@ from typing import Any
 
 from openai import OpenAI
 
+from rag_evaluator.common.base_rag import RAGConfig
+from rag_evaluator.common.openai_client import llm_client, resolve_llm_model
 from rag_evaluator.config import settings
 from rag_evaluator.rag_implementations.filesystem_rag.preparation.analyzer import (
     DocumentAnalysis,
@@ -89,6 +91,7 @@ class PreparationPipeline:
         use_llm_synthesis: bool = False,
         preserve_originals: bool = True,
         force_analysis_method: str | None = None,
+        config: RAGConfig | None = None,
     ) -> None:
         """Initialize the preparation pipeline.
 
@@ -99,6 +102,9 @@ class PreparationPipeline:
             use_llm_synthesis: Whether to use LLM for corpus overview synthesis
             preserve_originals: Whether to copy original files to _original/
             force_analysis_method: Force "heuristic" or "llm" for all documents
+            config: Optional RAGConfig; when provided, the pipeline routes LLM
+                calls through the shared ``openai_client`` (supports Vertex AI
+                Gemini via the OpenAI-compat endpoint).
         """
         self.input_path = Path(input_path)
         self.output_path = Path(output_path)
@@ -106,6 +112,7 @@ class PreparationPipeline:
         self.use_llm_synthesis = use_llm_synthesis
         self.preserve_originals = preserve_originals
         self.force_analysis_method = force_analysis_method
+        self._config = config
 
         self._client: OpenAI | None = None
         self._metrics = PreparationMetrics()
@@ -115,14 +122,23 @@ class PreparationPipeline:
         self._document_infos: list[DocumentInfo] = []
 
     def _get_client(self) -> OpenAI:
-        """Get or create OpenAI client."""
+        """Get or create the LLM client used for analysis/synthesis."""
         if self._client is None:
-            self._client = OpenAI(
-                api_key=settings.openai_api_key,
-                base_url=settings.openai_base_url,
-                timeout=settings.openai_timeout,
-            )
+            if self._config is not None:
+                self._client = llm_client(self._config)
+            else:
+                self._client = OpenAI(
+                    api_key=settings.openai_api_key,
+                    base_url=settings.openai_base_url,
+                    timeout=settings.openai_timeout,
+                )
         return self._client
+
+    def _resolved_model(self, default: str) -> str:
+        """Resolve the fully-qualified model name for LLM calls in this pipeline."""
+        if self._config is not None:
+            return resolve_llm_model(self._config, self._config.llm_model or default)
+        return default
 
     def run(self) -> dict[str, Any]:
         """Execute the complete preparation pipeline.
@@ -221,6 +237,7 @@ class PreparationPipeline:
         print("Step 3/8: Analyzing documents...")
 
         client = self._get_client() if self.force_analysis_method != "heuristic" else None
+        model = self._resolved_model("gpt-4o-mini")
 
         for processed in self._processed_documents:
             analysis = analyze_document(
@@ -228,6 +245,7 @@ class PreparationPipeline:
                 force_method=self.force_analysis_method,
                 word_threshold=self.word_threshold,
                 client=client,
+                model=model,
             )
             self._analyses.append(analysis)
 
@@ -288,6 +306,7 @@ class PreparationPipeline:
             use_llm_synthesis=self.use_llm_synthesis,
             preserve_originals=self.preserve_originals,
             client=client,
+            model=self._resolved_model("gpt-4o-mini"),
         )
         print()
 

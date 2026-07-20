@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Always resolve .env relative to the project root, regardless of working directory
@@ -81,6 +81,42 @@ class Settings(BaseSettings):
     google_vertex_generation_mode: str = Field(
         default="framework",
         description="Generation mode: 'framework' (default LLM pipeline) or 'google_grounded'",
+    )
+
+    # Google Vertex AI (Gemini) LLM Configuration
+    # ADC-based auth: set GOOGLE_APPLICATION_CREDENTIALS or run `gcloud auth application-default login`.
+    # The GEMINI wrapper sets GOOGLE_GENAI_USE_VERTEXAI=true at import time.
+    google_cloud_project: str | None = Field(
+        default=None,
+        description="GCP project for Vertex AI Gemini (falls back to GOOGLE_VERTEX_PROJECT_ID)",
+        validation_alias=AliasChoices("GOOGLE_CLOUD_PROJECT", "GOOGLE_VERTEX_PROJECT_ID"),
+    )
+    google_cloud_location: str = Field(
+        default="us-central1",
+        description="GCP region for Vertex AI Gemini (falls back to GOOGLE_VERTEX_LOCATION)",
+        validation_alias=AliasChoices("GOOGLE_CLOUD_LOCATION", "GOOGLE_VERTEX_LOCATION"),
+    )
+    vertex_gemini_model: str = Field(
+        default="gemini-2.5-pro",
+        description="Default Vertex AI Gemini generation model",
+        validation_alias="VERTEX_GEMINI_MODEL",
+    )
+    vertex_gemini_embedding_model: str = Field(
+        default="gemini-embedding-2",
+        description="Default Vertex AI Gemini embedding model",
+        validation_alias="VERTEX_GEMINI_EMBEDDING_MODEL",
+    )
+
+    # DeepEval Judge Configuration (falls back to generation provider/model)
+    judge_provider: str | None = Field(
+        default=None,
+        description="DeepEval judge provider (openai, vertex_ai). Defaults to generation provider.",
+        validation_alias="JUDGE_PROVIDER",
+    )
+    judge_model: str | None = Field(
+        default=None,
+        description="DeepEval judge model. Defaults to generation model.",
+        validation_alias="JUDGE_MODEL",
     )
 
     # Evaluation Configuration

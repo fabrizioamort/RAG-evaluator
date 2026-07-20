@@ -25,6 +25,7 @@ def generate_corpus_overview(
     output_path: Path,
     use_llm: bool = False,
     client: OpenAI | None = None,
+    model: str | None = None,
 ) -> str:
     """Generate the corpus overview file.
 
@@ -44,7 +45,7 @@ def generate_corpus_overview(
     meta_dir.mkdir(parents=True, exist_ok=True)
 
     if use_llm and client:
-        content = _generate_corpus_overview_llm(documents, client)
+        content = _generate_corpus_overview_llm(documents, client, model=model)
     else:
         content = _generate_corpus_overview_heuristic(documents)
 
@@ -144,8 +145,11 @@ Include sections: ## Description, ## Scope, ## Quick Navigation, ## Key Statisti
 def _generate_corpus_overview_llm(
     documents: list[DocumentInfo],
     client: OpenAI,
+    model: str | None = None,
 ) -> str:
     """Generate corpus overview using LLM synthesis."""
+    if model is None:
+        model = "gpt-4o-mini"
     # Build document info summary
     doc_summaries: list[str] = []
     for doc_info in documents[:20]:  # Limit to first 20 docs to control cost
@@ -160,10 +164,10 @@ def _generate_corpus_overview_llm(
 
     try:
         kwargs: dict[str, Any] = {
-            "model": "gpt-4o-mini",
+            "model": model,
             "messages": [{"role": "user", "content": prompt}],
         }
-        kwargs = get_safe_llm_params("gpt-4o-mini", temperature=0.3, **kwargs)
+        kwargs = get_safe_llm_params(model, temperature=0.3, **kwargs)
 
         response = client.chat.completions.create(**kwargs)
 
@@ -386,6 +390,7 @@ def synthesize_all(
     use_llm_synthesis: bool = False,
     preserve_originals: bool = True,
     client: OpenAI | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """Generate all synthesis files for the prepared filesystem.
 
@@ -405,7 +410,7 @@ def synthesize_all(
 
     # Generate meta files
     overview = generate_corpus_overview(
-        documents, output_path, use_llm=use_llm_synthesis, client=client
+        documents, output_path, use_llm=use_llm_synthesis, client=client, model=model
     )
     nav_guide = generate_navigation_guide(output_path)
     stats = generate_statistics(documents, output_path, preparation_time, preparation_cost)

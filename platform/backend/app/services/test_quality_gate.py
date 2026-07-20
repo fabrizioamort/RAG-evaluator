@@ -12,7 +12,6 @@ from typing import Any
 
 import numpy as np
 
-from app.config import settings
 from app.services.llm_provider import LLMProviderService
 from app.utils.logging_config import get_logger
 
@@ -63,12 +62,18 @@ class TestQualityGateService:
         self,
         llm_service: LLMProviderService | None = None,
         config: QualityConfig | None = None,
+        embedding_model: str | None = None,
+        embedding_provider: str | None = None,
     ) -> None:
         """Initialize quality gate service.
 
         Args:
             llm_service: LLM service for embeddings (lazy-loaded if not provided)
             config: Quality configuration settings
+            embedding_model: Embedding model id used for semantic duplicate check.
+                Defaults to `text-embedding-3-small` for backwards compatibility.
+            embedding_provider: Provider that serves the embedding model. Defaults
+                to `openai`.
         """
         self._llm_service = llm_service
         self.config = config or QualityConfig()
@@ -76,8 +81,8 @@ class TestQualityGateService:
         # State for tracking existing questions
         self._existing_questions: set[str] = set()
         self._existing_embeddings: list[np.ndarray] = []
-        self._embedding_model = settings.DEFAULT_LLM_MODEL
-        self._embedding_provider = settings.DEFAULT_LLM_PROVIDER
+        self._embedding_model = embedding_model or "text-embedding-3-small"
+        self._embedding_provider = embedding_provider or "openai"
 
     @property
     def llm_service(self) -> LLMProviderService:
@@ -275,9 +280,9 @@ class TestQualityGateService:
         if question_embedding is None:
             try:
                 response = await self.llm_service.get_embedding(
-                    model="text-embedding-3-small",
+                    model=self._embedding_model,
                     input_text=question,
-                    provider="openai",
+                    provider=self._embedding_provider,
                 )
                 question_embedding = np.array(response.embedding)
             except Exception as e:
@@ -397,9 +402,9 @@ class TestQualityGateService:
         if not skip_semantic_check:
             try:
                 response = await self.llm_service.get_embedding(
-                    model="text-embedding-3-small",
+                    model=self._embedding_model,
                     input_text=question,
-                    provider="openai",
+                    provider=self._embedding_provider,
                 )
                 self._existing_embeddings.append(np.array(response.embedding))
             except Exception as e:
@@ -504,9 +509,9 @@ class TestQualityGateService:
             # Get embeddings for semantic duplicate detection
             try:
                 response = await self.llm_service.get_embedding(
-                    model="text-embedding-3-small",
+                    model=self._embedding_model,
                     input_text=question,
-                    provider="openai",
+                    provider=self._embedding_provider,
                 )
                 self._existing_embeddings.append(np.array(response.embedding))
             except Exception as e:
@@ -544,6 +549,8 @@ class TestQualityGateService:
 def get_quality_gate_service(
     llm_service: LLMProviderService | None = None,
     config: QualityConfig | None = None,
+    embedding_model: str | None = None,
+    embedding_provider: str | None = None,
 ) -> TestQualityGateService:
     """Create a quality gate service instance.
 
@@ -553,8 +560,15 @@ def get_quality_gate_service(
     Args:
         llm_service: Optional LLM service.
         config: Optional quality configuration.
+        embedding_model: Optional embedding model id (default: text-embedding-3-small).
+        embedding_provider: Optional embedding provider (default: openai).
 
     Returns:
         New TestQualityGateService instance.
     """
-    return TestQualityGateService(llm_service=llm_service, config=config)
+    return TestQualityGateService(
+        llm_service=llm_service,
+        config=config,
+        embedding_model=embedding_model,
+        embedding_provider=embedding_provider,
+    )

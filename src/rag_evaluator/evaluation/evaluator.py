@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from rag_evaluator.common.base_rag import BaseRAG
+from rag_evaluator.common.openai_client import is_vertex_ai_provider
 from rag_evaluator.config import settings
 
 # DeepEval is imported lazily to avoid import-time side effects during pytest collection.
@@ -18,6 +19,7 @@ FaithfulnessMetric: Any | None = None
 GEval: Any | None = None
 LLMTestCase: Any | None = None
 LLMTestCaseParams: Any | None = None
+DeepEvalBaseLLM: Any | None = None
 
 
 def _ensure_deepeval_loaded() -> None:
@@ -35,6 +37,7 @@ def _ensure_deepeval_loaded() -> None:
     global GEval
     global LLMTestCase
     global LLMTestCaseParams
+    global DeepEvalBaseLLM
 
     if all(
         symbol is not None
@@ -48,6 +51,7 @@ def _ensure_deepeval_loaded() -> None:
             GEval,
             LLMTestCase,
             LLMTestCaseParams,
+            DeepEvalBaseLLM,
         )
     ):
         return
@@ -69,6 +73,7 @@ def _ensure_deepeval_loaded() -> None:
     from deepeval.metrics import (
         GEval as DeepEvalGEval,
     )
+    from deepeval.models import DeepEvalBaseLLM as _DeepEvalBaseLLM
     from deepeval.test_case import (
         LLMTestCase as DeepEvalLLMTestCase,
     )
@@ -94,6 +99,70 @@ def _ensure_deepeval_loaded() -> None:
         LLMTestCase = DeepEvalLLMTestCase
     if LLMTestCaseParams is None:
         LLMTestCaseParams = DeepEvalLLMTestCaseParams
+    if DeepEvalBaseLLM is None:
+        DeepEvalBaseLLM = _DeepEvalBaseLLM
+
+
+def _make_vertex_openai_compat_judge(model_name: str) -> Any:
+    """Build a DeepEval judge wrapping the Vertex AI OpenAI-compat endpoint.
+
+    DeepEval's built-in judges only accept a model name string when the OpenAI
+    client picks up the endpoint from ``OPENAI_API_KEY`` / ``OPENAI_BASE_URL``.
+    Vertex AI requires a short-lived ADC bearer token that must be refreshed on
+    every call, so we wrap our shared factory instead.
+    """
+    _ensure_deepeval_loaded()
+    assert DeepEvalBaseLLM is not None
+
+    from rag_evaluator.common.base_rag import RAGConfig
+    from rag_evaluator.common.openai_client import llm_client, resolve_llm_model
+
+    judge_config = RAGConfig(name="deepeval-judge", llm_provider="vertex_ai", llm_model=model_name)
+    resolved_model = resolve_llm_model(judge_config)
+
+    class _VertexOpenAICompatJudge(DeepEvalBaseLLM):  # type: ignore[misc, valid-type]
+        def load_model(self) -> Any:
+            return llm_client(judge_config)
+
+        def generate(self, prompt: str, schema: Any = None) -> Any:
+            client = self.load_model()
+            kwargs: dict[str, Any] = {
+                "model": resolved_model,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            if schema is not None:
+                kwargs["response_format"] = {"type": "json_object"}
+            response = client.chat.completions.create(**kwargs)
+            text = response.choices[0].message.content or ""
+            if schema is not None:
+                try:
+                    return schema.model_validate_json(text)
+                except AttributeError:
+                    return schema.parse_raw(text)
+            return text
+
+        async def a_generate(self, prompt: str, schema: Any = None) -> Any:
+            return self.generate(prompt, schema=schema)
+
+        def get_model_name(self) -> str:
+            return f"Vertex AI ({resolved_model})"
+
+    return _VertexOpenAICompatJudge()
+
+
+def _build_judge_model() -> Any:
+    """Return the judge model for DeepEval metrics.
+
+    - Default (OpenAI-compatible): returns the model name string; DeepEval builds
+      the OpenAI client itself using ``OPENAI_API_KEY``/``OPENAI_BASE_URL``.
+    - Vertex AI Gemini: returns a custom ``DeepEvalBaseLLM`` that routes calls
+      through the shared OpenAI-compat client with ADC bearer token refresh.
+    """
+    judge_provider = settings.judge_provider or ""
+    if is_vertex_ai_provider(judge_provider):
+        model_name = settings.judge_model or settings.vertex_gemini_model
+        return _make_vertex_openai_compat_judge(model_name)
+    return settings.judge_model or settings.openai_model
 
 
 class RAGEvaluator:
@@ -137,13 +206,14 @@ class RAGEvaluator:
         assert GEval is not None
         assert LLMTestCaseParams is not None
 
+        judge_model = _build_judge_model()
         metrics: list[Any] = []
 
         if "faithfulness" in self.selected_metrics:
             metrics.append(
                 FaithfulnessMetric(
                     threshold=settings.eval_faithfulness_threshold,
-                    model=settings.openai_model,
+                    model=judge_model,
                     include_reason=settings.eval_include_reason,
                     async_mode=settings.deepeval_async_mode,
                 )
@@ -153,7 +223,7 @@ class RAGEvaluator:
             metrics.append(
                 AnswerRelevancyMetric(
                     threshold=settings.eval_answer_relevancy_threshold,
-                    model=settings.openai_model,
+                    model=judge_model,
                     include_reason=settings.eval_include_reason,
                     async_mode=settings.deepeval_async_mode,
                 )
@@ -163,7 +233,7 @@ class RAGEvaluator:
             metrics.append(
                 ContextualPrecisionMetric(
                     threshold=settings.eval_contextual_precision_threshold,
-                    model=settings.openai_model,
+                    model=judge_model,
                     include_reason=settings.eval_include_reason,
                     async_mode=settings.deepeval_async_mode,
                 )
@@ -173,7 +243,7 @@ class RAGEvaluator:
             metrics.append(
                 ContextualRecallMetric(
                     threshold=settings.eval_contextual_recall_threshold,
-                    model=settings.openai_model,
+                    model=judge_model,
                     include_reason=settings.eval_include_reason,
                     async_mode=settings.deepeval_async_mode,
                 )
@@ -201,7 +271,7 @@ class RAGEvaluator:
                         "Score 1.0 if the semantic meaning is the same, even if the phrasing differs slightly.",
                     ],
                     threshold=settings.eval_g_eval_threshold,
-                    model=settings.openai_model,
+                    model=judge_model,
                     async_mode=settings.deepeval_async_mode,
                 )
             )

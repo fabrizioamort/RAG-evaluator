@@ -149,3 +149,17 @@ class LLMProviderInfo(BaseSchema):
         default=False,
         description="Whether the provider exposes OpenAI-compatible embeddings",
     )
+    requires_gcp_project: bool = Field(
+        default=False,
+        description=(
+            "Whether the provider needs GOOGLE_CLOUD_PROJECT/LOCATION configured "
+            "server-side (e.g. Vertex AI via ADC)"
+        ),
+    )
+    accepts_freeform_model: bool = Field(
+        default=False,
+        description=(
+            "Whether the UI should let users type any model name (combobox) "
+            "instead of enforcing the catalog list"
+        ),
+    )

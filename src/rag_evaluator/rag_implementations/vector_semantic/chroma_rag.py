@@ -18,7 +18,12 @@ from rag_evaluator.common.indexing import (
     stable_hash,
     storage_id,
 )
-from rag_evaluator.common.openai_client import embedding_client, llm_client
+from rag_evaluator.common.openai_client import (
+    embedding_client,
+    llm_client,
+    resolve_embedding_model,
+    resolve_llm_model,
+)
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievalTrace,
@@ -102,7 +107,9 @@ class ChromaSemanticRAG(BaseRAG):
         Returns:
             Embedding vector
         """
-        model = self.config.embedding_model or settings.embedding_model
+        model = resolve_embedding_model(
+            self.config, self.config.embedding_model or settings.embedding_model
+        )
         response = self.embedding_client.embeddings.create(model=model, input=text)
         # Track embedding tokens
         if hasattr(response, "usage") and response.usage:
@@ -410,7 +417,7 @@ Answer:"""
         # Call OpenAI API
         from rag_evaluator.common.llm_utils import get_safe_llm_params
 
-        model = self.config.llm_model or settings.openai_model
+        model = resolve_llm_model(self.config, self.config.llm_model or settings.openai_model)
         completion_params = get_safe_llm_params(
             model,
             temperature=0.0,

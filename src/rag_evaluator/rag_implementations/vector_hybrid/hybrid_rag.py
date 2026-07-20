@@ -18,7 +18,12 @@ from rag_evaluator.common.indexing import (
     discover_source_documents,
     stable_hash,
 )
-from rag_evaluator.common.openai_client import embedding_client, llm_client
+from rag_evaluator.common.openai_client import (
+    embedding_client,
+    llm_client,
+    resolve_embedding_model,
+    resolve_llm_model,
+)
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievalTrace,
@@ -169,7 +174,9 @@ class HybridSearchRAG(BaseRAG):
         Returns:
             Dense embedding vector (1536 dimensions)
         """
-        model = self.config.embedding_model or settings.embedding_model
+        model = resolve_embedding_model(
+            self.config, self.config.embedding_model or settings.embedding_model
+        )
         response = self.embedding_client.embeddings.create(
             model=model,
             input=text,
@@ -220,7 +227,9 @@ class HybridSearchRAG(BaseRAG):
         texts = [chunk.page_content for chunk in batch_chunks]
 
         # Batch dense embeddings (OpenAI-compatible)
-        model = self.config.embedding_model or settings.embedding_model
+        model = resolve_embedding_model(
+            self.config, self.config.embedding_model or settings.embedding_model
+        )
         dense_response = self.embedding_client.embeddings.create(
             model=model,
             input=texts,
@@ -629,7 +638,7 @@ Answer:"""
         # Call OpenAI API
         from rag_evaluator.common.llm_utils import get_safe_llm_params
 
-        model = self.config.llm_model or settings.openai_model
+        model = resolve_llm_model(self.config, self.config.llm_model or settings.openai_model)
         completion_params = get_safe_llm_params(
             model,
             temperature=0.0,

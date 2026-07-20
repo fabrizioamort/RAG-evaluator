@@ -111,6 +111,10 @@ class GenerationConfig:
     temperature: float = 0.7
     max_tokens: int = 2000
 
+    # Embedding settings for semantic duplicate detection
+    embedding_model: str = "text-embedding-3-small"
+    embedding_provider: str = "openai"
+
     # Quality gate settings
     skip_semantic_check: bool = False
 
@@ -225,6 +229,16 @@ class TestGeneratorService:
         await self.db.commit()
 
         try:
+            # Ensure the quality gate is configured with the embedding provider
+            # requested for this run. If a caller injected a custom gate we keep it;
+            # otherwise instantiate one bound to config.embedding_{model,provider}.
+            if self._quality_gate is None:
+                self._quality_gate = get_quality_gate_service(
+                    llm_service=self.llm_service,
+                    embedding_model=config.embedding_model,
+                    embedding_provider=config.embedding_provider,
+                )
+
             # Load existing questions from test set to avoid duplicates
             existing_questions = await self._get_existing_questions(job.test_set_id)
             await self.quality_gate.add_existing_questions(existing_questions)

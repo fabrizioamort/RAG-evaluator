@@ -17,7 +17,7 @@ from typing import Any
 from rag_evaluator.common.base_rag import BaseRAG, RAGConfig
 from rag_evaluator.common.indexing import CheckpointStore, discover_source_documents
 from rag_evaluator.common.llm_utils import get_safe_llm_params
-from rag_evaluator.common.openai_client import llm_client
+from rag_evaluator.common.openai_client import llm_client, resolve_llm_model
 from rag_evaluator.common.provider_interfaces import (
     GeneratedAnswer,
     RetrievalTrace,
@@ -157,6 +157,7 @@ class FilesystemRAG(BaseRAG):
             use_llm_synthesis=self.use_llm_synthesis,
             preserve_originals=True,
             force_analysis_method=self.force_analysis_method,
+            config=self.config,
         )
 
         result = pipeline.run()
@@ -208,7 +209,7 @@ class FilesystemRAG(BaseRAG):
 
         self._agent = FilesystemRAGAgent(
             prepared_path=self.prepared_path,
-            llm_model=self.llm_model,
+            llm_model=resolve_llm_model(self.config, self.llm_model),
             max_iterations=self.max_iterations,
             max_tool_calls=self.max_tool_calls,
             max_file_reads=self.max_file_reads,

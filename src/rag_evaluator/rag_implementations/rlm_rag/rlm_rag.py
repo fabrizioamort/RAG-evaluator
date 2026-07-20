@@ -88,6 +88,7 @@ class RLMConfig:
     orchestrator_reasoning_effort: str | None = None
 
     # === Endpoint (OpenAI-compatible) ===
+    llm_provider: str = "openai"
     llm_base_url: str | None = None
     llm_api_key: str | None = None
 
@@ -168,6 +169,8 @@ def rlm_config_from_rag_config(config: RAGConfig) -> RLMConfig:
         params["llm_base_url"] = config.llm_base_url
     if config.llm_api_key and "llm_api_key" not in params:
         params["llm_api_key"] = config.llm_api_key
+    if config.llm_provider and "llm_provider" not in params:
+        params["llm_provider"] = config.llm_provider
 
     field_names = {field.name for field in fields(RLMConfig)}
     rlm_params = {key: value for key, value in params.items() if key in field_names}

@@ -394,7 +394,13 @@ class RAGAdapterService:
             physical_id=index.physical_id,
         )
 
-        return rag_class(**kwargs)
+        try:
+            return rag_class(**kwargs)
+        except ImportError as exc:
+            raise ValueError(
+                f"RAG type '{rag_type}' requires an optional dependency that is not installed. "
+                f"{exc}"
+            ) from exc
 
     def build_effective_config(
         self,

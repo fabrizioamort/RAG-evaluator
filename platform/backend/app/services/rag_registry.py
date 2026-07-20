@@ -99,4 +99,15 @@ class RAGRegistry:
                 supports_base_url=True,
                 supports_embeddings=True,
             ),
+            LLMProviderInfo(
+                name="vertex_ai",
+                display_name="Google Vertex AI (Gemini)",
+                models=get_models("vertex_ai"),
+                model_capabilities=get_model_capabilities("vertex_ai"),
+                requires_api_key=False,
+                supports_base_url=False,
+                supports_embeddings=True,
+                requires_gcp_project=True,
+                accepts_freeform_model=True,
+            ),
         ]

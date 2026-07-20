@@ -38,6 +38,16 @@ engine.
 | `rlm_rag` | Recursive language-model RAG | Local prepared files + Python tools | Large corpora that benefit from programmatic exploration |
 | `google_vertex_search` | Managed search with automatic chunking/embedding | Google Vertex AI Search (Discovery Engine) | Offloading indexing/retrieval infrastructure to a managed Google service |
 
+## Supported LLM Providers
+
+Generation, embeddings, and DeepEval judging can be pointed at any of:
+
+- OpenAI (and OpenAI-compatible endpoints via `OPENAI_BASE_URL` — e.g. OpenRouter, vLLM)
+- OpenRouter, DeepSeek, Anthropic, Ollama (local)
+- **Google Vertex AI Gemini** via the Vertex OpenAI-compatible endpoint with
+  Application Default Credentials (ADC). No API key required — see
+  [deployment.md](docs/deployment.md#google-cloud-vertex-ai-gemini) for setup.
+
 ## Quick Start
 
 The most reliable development setup is to run the databases with Docker and run the

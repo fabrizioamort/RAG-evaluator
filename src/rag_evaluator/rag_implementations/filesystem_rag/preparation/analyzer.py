@@ -673,6 +673,7 @@ def analyze_document(
     force_method: str | None = None,
     word_threshold: int = 1000,
     client: OpenAI | None = None,
+    model: str | None = None,
 ) -> DocumentAnalysis:
     """Analyze a document using hybrid approach.
 
@@ -703,4 +704,4 @@ def analyze_document(
     if method == "heuristic":
         return heuristic_analysis(doc)
     else:
-        return llm_analysis(doc, client=client)
+        return llm_analysis(doc, client=client, model=model)

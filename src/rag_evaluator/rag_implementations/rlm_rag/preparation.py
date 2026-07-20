@@ -15,6 +15,10 @@ from typing import TYPE_CHECKING, Any
 
 from openai import OpenAI
 
+from rag_evaluator.common.gcp_token_provider import prepend_google_prefix
+from rag_evaluator.common.openai_client import is_vertex_ai_provider, make_client
+from rag_evaluator.config import settings
+
 if TYPE_CHECKING:
     from rag_evaluator.common.token_tracker import TokenUsage
 
@@ -218,12 +222,26 @@ class DocumentProcessor:
 
     @property
     def client(self) -> OpenAI:
-        """Lazy-initialize OpenAI client."""
+        """Lazy-initialize OpenAI-compatible client (via shared factory)."""
         if self._client is None:
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY not set")
-            self._client = OpenAI(api_key=api_key)
+            provider = getattr(self.config, "llm_provider", "openai")
+            if is_vertex_ai_provider(provider):
+                self._client = make_client(
+                    api_key=None,
+                    base_url=None,
+                    timeout=settings.openai_timeout,
+                    provider=provider,
+                )
+            else:
+                api_key = self.config.llm_api_key or os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY not set")
+                self._client = make_client(
+                    api_key=api_key,
+                    base_url=self.config.llm_base_url,
+                    timeout=settings.openai_timeout,
+                    provider=provider,
+                )
         return self._client
 
     def prepare(
@@ -553,8 +571,13 @@ class DocumentProcessor:
             temp_candidates = [None] if default_temp_only else [temperature, None]
             for temp_value in temp_candidates:
                 try:
+                    resolved_model = (
+                        prepend_google_prefix(model)
+                        if is_vertex_ai_provider(getattr(self.config, "llm_provider", None))
+                        else model
+                    )
                     params = {
-                        "model": model,
+                        "model": resolved_model,
                         "messages": messages,
                         max_param: max_tokens,
                     }
@@ -630,12 +653,26 @@ class SimpleContextRAG:
 
     @property
     def client(self) -> OpenAI:
-        """Lazy-initialize OpenAI client."""
+        """Lazy-initialize OpenAI-compatible client (via shared factory)."""
         if self._client is None:
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY not set")
-            self._client = OpenAI(api_key=api_key)
+            provider = getattr(self.config, "llm_provider", "openai")
+            if is_vertex_ai_provider(provider):
+                self._client = make_client(
+                    api_key=None,
+                    base_url=None,
+                    timeout=settings.openai_timeout,
+                    provider=provider,
+                )
+            else:
+                api_key = self.config.llm_api_key or os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY not set")
+                self._client = make_client(
+                    api_key=api_key,
+                    base_url=self.config.llm_base_url,
+                    timeout=settings.openai_timeout,
+                    provider=provider,
+                )
         return self._client
 
     def _load_documents(self) -> None:
@@ -690,8 +727,13 @@ class SimpleContextRAG:
         context = "\n\n---\n\n".join(context_parts)
 
         # Generate answer
+        resolved_model = (
+            prepend_google_prefix(self.config.orchestrator_model)
+            if is_vertex_ai_provider(getattr(self.config, "llm_provider", None))
+            else self.config.orchestrator_model
+        )
         response = self.client.chat.completions.create(
-            model=self.config.orchestrator_model,
+            model=resolved_model,
             messages=[
                 {
                     "role": "system",
