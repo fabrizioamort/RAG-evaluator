@@ -13,8 +13,8 @@ an evaluation.
 | `vector_semantic` | ChromaDB | Dense vector similarity | Fast baseline, simple setup, strong semantic matching | Can miss exact terms, IDs, and acronyms |
 | `vector_hybrid` | Qdrant | Dense + sparse vectors with fusion | Good for technical docs and exact terminology | Requires Qdrant and sparse model loading |
 | `graph_rag` | Neo4j | Vector entry points plus graph traversal | Useful for relationships and multi-hop reasoning | LLM graph extraction can be slower and more expensive |
-| `filesystem_rag` | Local prepared files | ReAct-style agent with file tools | Good for large corpora and research-style queries | Agent behavior is slower and less deterministic than vector search |
-| `rlm_rag` | Local prepared files | Recursive language-model agent with Python tools | Strong for large corpora that need programmatic exploration | Executes generated Python; choose security mode carefully |
+| `filesystem_rag` | Local prepared files | BM25 prefetch plus ReAct file navigation | Inspectable lexical index and flexible, evidence-driven source reading | More latency and model-dependent behavior than fixed top-k search |
+| `rlm_rag` | Local prepared files | Generated-Python exploration, or direct context for small corpora | Useful for experiments with programmatic corpus exploration | Generated code is not safely sandboxed; several configured limits are not yet enforced |
 | `google_vertex_search` | Google Vertex AI Search (Discovery Engine) | Managed search with automatic parsing, chunking, and embedding | Offloads indexing and retrieval infrastructure to a managed Google service | Requires a GCP project, GCS staging bucket, and the `google-vertex` extra |
 
 ## Shared Platform Behavior
@@ -166,95 +166,119 @@ testing a new corpus.
 
 Type key: `filesystem_rag`
 
-Filesystem RAG converts documents into a navigable directory structure with summaries,
-indexes, and line-numbered source files. An agent uses file tools such as listing,
-reading, searching, and finding files to gather context before answering.
+Filesystem RAG recursively converts TXT, PDF, and DOCX sources to Markdown, analyzes each
+document, and builds an inspectable prepared directory. Its primary deterministic search
+artifact is a local section-level BM25 index. Topic, entity, question-seed, and timeline
+files provide additional browsing paths.
+
+At query time, the system routes the question as a known-item or exploratory search,
+prefetches BM25 and question-seed candidates, and gives them to a ReAct-style agent. The
+agent can search, grep, list, and selectively read source line ranges before answering.
+Retrieval and generation happen in the same loop, and the public `top_k` is ignored.
 
 Best for:
 
-- Larger corpora where loading many chunks into a prompt is inefficient.
-- Broad research questions.
-- Cases where source navigation and summaries are useful for debugging.
+- Larger corpora where a fixed context window is too restrictive.
+- Broad or multi-document research questions.
+- Exact-term retrieval combined with adaptive source navigation.
+- Experiments where a human-readable index and detailed retrieval trace matter.
 
 Prepared structure:
 
 ```text
 prepared_path/
-  _meta/
+  _meta/                       # Overview, navigation guide, statistics
   _index/
-  _summaries/
-  documents/
+    passages/bm25.json         # Section-level lexical index
+    topics/                    # Topic-to-document navigation
+    entities/                  # Entity-to-document navigation
+    questions/                 # Generated question-to-document hints
+    temporal/                  # Extracted timeline
+  _summaries/                  # Per-document navigation summaries
+  documents/                   # Converted Markdown + metadata JSON
+  _original/                   # Copied sources
 ```
+
+Documents below `word_threshold` use heuristic analysis; documents at or above it use
+LLM analysis, with heuristic fallback on provider or JSON errors. This affects summaries,
+topics, entities, question seeds, and the analysis text included in BM25 records.
 
 Platform parameters:
 
-| Parameter | Default | Notes |
-| --- | --- | --- |
-| `llm_model` | `gpt-4o-mini` | Usually controlled by the RAG configuration LLM model. |
-| `prepared_path` | `data/prepared/filesystem_rag` | The platform uses managed storage under `storage/indexes`. |
-| `word_threshold` | `1000` | Lower values use the LLM more during preparation. |
-| `max_iterations` | `10` | Maximum agent reasoning loops. |
-| `max_tool_calls` | `20` | Maximum tool calls per query. |
-| `max_file_reads` | `10` | Maximum file reads per query. |
+| Parameter | Phase | Default | Notes |
+| --- | --- | --- | --- |
+| `prepared_path` | Build | managed | The platform assigns an isolated directory under `storage/indexes`. |
+| `word_threshold` | Build | `1000` | Lower values cause more documents to use LLM analysis. |
+| `llm_model` | Query/top level | `gpt-4o-mini` | Agent model; also used for LLM analysis while building a new index. |
+| `max_iterations` | Query | `10` | Maximum model turns in the ReAct loop. |
+| `max_tool_calls` | Query | `20` | Maximum tool calls per query. |
+| `max_file_reads` | Query | `10` | Maximum uncached file reads per query. |
 
-`prepared_path` and `word_threshold` are build-time settings. `llm_model`,
-`max_iterations`, `max_tool_calls`, and `max_file_reads` are query-time settings that
-can be changed for a run against a ready index.
+Build-time changes require a new index. The model and execution budgets can be overridden
+for a ready index. Agent paths are model-dependent, so compare quality together with
+latency, token usage, files read, and tool counts.
+
+See [Filesystem RAG: indexing and retrieval internals](../src/rag_evaluator/rag_implementations/filesystem_rag/FILESYSTEM_RAG.md)
+for source discovery, analysis, every generated artifact, BM25 scoring, deterministic
+prefetch, tool semantics, answer safeguards, and trace behavior.
 
 ## RLM-RAG
 
 Type key: `rlm_rag`
 
-RLM-RAG is a recursive language-model approach for large corpora. It prepares documents
-into a filesystem and lets an LLM orchestrator write Python exploration code. The agent
-can call a smaller worker model for summaries, topic extraction, and recursive document
-analysis.
+RLM-RAG is an RLM-inspired experiment that prepares a document catalog, summaries,
+section metadata, and a topic map. For corpora above `small_corpus_threshold`, an
+orchestrator model writes Python to inspect those artifacts, read or grep documents, and
+optionally delegate analysis to a worker model. For corpora at or below the threshold, it
+uses a separate simple-context path: the first `top_k` catalog documents are truncated
+and sent directly to the orchestrator without relevance ranking.
 
 Best for:
 
-- Large corpora where static top-k retrieval is too shallow.
-- Questions that benefit from programmatic filtering, grouping, or iteration.
-- Experiments with recursive language-model retrieval.
+- Research into programmatic filtering, grouping, and iterative corpus exploration.
+- Questions where generated code can test several search or aggregation strategies.
+- Controlled, trusted experiments comparing agentic retrieval designs.
 
-Security modes:
+It is not currently the best choice for untrusted or multi-tenant content. Both `lite`
+and `full` agent security modes execute generated Python, and neither runtime is a
+hardened sandbox.
 
-| Mode | Use case | Behavior |
-| --- | --- | --- |
-| `lite` | Trusted local corpora | Faster in-process execution. |
-| `full` | Less trusted document content | Subprocess isolation, stricter path controls, and prompt-injection wrapping. |
+Current security modes:
+
+| Mode | Current behavior |
+| --- | --- |
+| `lite` | Executes code in the application process with persistent variables. Fast, but the configured REPL timeout is not enforced and namespace restrictions are not a security boundary. |
+| `full` | Executes each block in a killable subprocess, but the subprocess currently lacks the `fs`, worker-call, and budget objects required for normal exploration. Injection wrapping is defined in code but not wired into agent initialization. Treat this mode as experimental, not complete isolation. |
 
 Platform parameters:
 
-| Parameter | Default | Notes |
-| --- | --- | --- |
-| `security_mode` | `lite` | Use `full` for stricter isolation. |
-| `orchestrator_model` | RAG config model | Main reasoning and code-generation model. |
-| `worker_model` | `gpt-5-nano` | Worker model for summaries and sub-calls. |
-| `max_repl_steps` | `15` | Maximum Python exploration steps. |
-| `repl_timeout` | `5.0` | Timeout per Python step in seconds. |
-| `max_file_reads` | `12` | Maximum file reads per query. |
-| `max_read_bytes` | `50000` | Maximum bytes returned by a file read. |
-| `max_read_lines` | `1000` | Maximum lines returned by a file read. |
-| `max_sub_calls` | `8` | Maximum recursive worker calls. |
-| `max_recursion_depth` | `2` | Maximum nested worker-call depth. |
-| `small_corpus_threshold` | `10` | Uses a simple-context fallback at or below this document count. |
-| `chunk_size` | `1000` | Preparation chunk size. |
-| `chunk_overlap` | `200` | Preparation chunk overlap. |
-| `use_llm_summaries` | `true` | Generate summaries during preparation. |
-| `use_llm_topics` | `true` | Extract topics during preparation. |
-| `max_topics_per_doc` | `5` | Maximum topics per source document. |
+| Parameter | Phase | Default | Notes |
+| --- | --- | --- | --- |
+| `prepared_path` | Build | managed | Isolated prepared RLM directory. |
+| `worker_model` | Build | `gpt-5-nano` | Builds summaries/topics and serves worker sub-calls. |
+| `chunk_size` | Build | `1000` | Included in manifest invalidation, but current preparation does not chunk content. |
+| `chunk_overlap` | Build | `200` | Included in manifest invalidation, but current preparation does not chunk content. |
+| `use_llm_summaries` | Build | `true` | Enables worker-generated summaries. |
+| `use_llm_topics` | Build | `true` | Enables worker-generated topics. |
+| `max_topics_per_doc` | Build | `5` | Maximum topic labels per document. |
+| `orchestrator_model` | Query | RAG config model | Main reasoning, code-generation, and answer model. |
+| `security_mode` | Query | `lite` | Selects in-process or experimental subprocess execution. |
+| `max_repl_steps` | Query | `15` | Maximum orchestrator exploration turns. |
+| `repl_timeout` | Query | `5.0` | Enforced only by the subprocess REPL. |
+| `max_file_reads` | Query | `12` | Enforced for helper reads in lite agent mode. |
+| `max_read_bytes` | Query | `50000` | Implemented as a character limit, despite the name. |
+| `max_read_lines` | Query | `1000` | Configured but not currently enforced. |
+| `max_sub_calls` | Query | `8` | Displayed in budget status but not currently enforced. |
+| `max_recursion_depth` | Query | `2` | Limits nested entry into worker-call logic. |
+| `small_corpus_threshold` | Query | `10` | Chooses simple-context or generated-code agent mode. |
 
-RLM-RAG can be powerful, but it is intentionally more complex than the baseline
-retrievers. Use the playground to inspect outputs before committing to large evaluation
-runs.
+`top_k` affects only simple-context mode and is ignored in agent mode. If `llm_model` is
+overridden without an explicit `orchestrator_model`, the platform uses the new generation
+model as the effective orchestrator.
 
-RLM-RAG build-time parameters are the preparation controls: `chunk_size`,
-`chunk_overlap`, `use_llm_summaries`, `use_llm_topics`, `max_topics_per_doc`, and
-`worker_model`. Query-time parameters include `llm_model`, `orchestrator_model`,
-`security_mode`, execution limits, read limits, recursion limits, and
-`small_corpus_threshold`. If you override `llm_model` and do not explicitly set
-`orchestrator_model`, the platform uses the overridden generation model as the effective
-orchestrator model.
+See [RLM-RAG: indexing and retrieval internals](../src/rag_evaluator/rag_implementations/rlm_rag/RLM_RAG.md)
+for exact source-processing rules, manifest behavior, both query algorithms, filesystem
+APIs, worker calls, traces, configuration gaps, and the current security limitations.
 
 ## Google Vertex AI Search
 

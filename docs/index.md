@@ -19,6 +19,8 @@ Evaluator Platform.
 | --- | --- |
 | [Architecture](ARCHITECTURE.md) | System layout, data flow, and component boundaries |
 | [RAG Strategies](rag_strategies.md) | Built-in RAG implementations and when to use each one |
+| [Filesystem RAG internals](../src/rag_evaluator/rag_implementations/filesystem_rag/FILESYSTEM_RAG.md) | Filesystem RAG indexing, BM25 prefetch, agent tools, and traces |
+| [RLM-RAG internals](../src/rag_evaluator/rag_implementations/rlm_rag/RLM_RAG.md) | RLM preparation, simple/agent query modes, generated Python, and limitations |
 | [Metrics](metrics.md) | Faithfulness, relevancy, precision, recall, and G-Eval correctness |
 | [Evaluation Guide](guides/evaluation-guide.md) | Test design, metric selection, and result interpretation |
 
