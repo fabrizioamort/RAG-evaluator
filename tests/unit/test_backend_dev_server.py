@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import unittest
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -8,14 +9,23 @@ from unittest.mock import Mock, patch
 
 
 def load_dev_server_module():
-    module_path = Path("platform/backend/dev_server.py")
+    module_path = Path(__file__).resolve().parents[2] / "platform" / "backend" / "dev_server.py"
     spec = spec_from_file_location("backend_dev_server", module_path)
     if spec is None or spec.loader is None:
         raise AssertionError(f"Unable to load module from {module_path}")
 
-    module = module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    backend_path = str(module_path.parent)
+    path_was_present = backend_path in sys.path
+    if not path_was_present:
+        sys.path.insert(0, backend_path)
+
+    try:
+        module = module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        if not path_was_present:
+            sys.path.remove(backend_path)
 
 
 class DevServerTests(unittest.TestCase):
