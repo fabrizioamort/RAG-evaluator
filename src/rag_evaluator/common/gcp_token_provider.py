@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import threading
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 import httpx
 
@@ -44,6 +44,15 @@ _SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 _REFRESH_THRESHOLD_SECONDS = 300  # 5 minutes
 
 
+class _Credentials(Protocol):
+    """Subset of google-auth credentials used by :class:`GCPTokenProvider`."""
+
+    token: str | None
+    expiry: datetime | None
+
+    def refresh(self, request: object) -> None: ...
+
+
 def require_google_auth() -> None:
     """Raise ImportError with an actionable message if google-auth is missing."""
     if not GOOGLE_AUTH_AVAILABLE:
@@ -64,7 +73,10 @@ class GCPTokenProvider:
     def __init__(self) -> None:
         require_google_auth()
         assert _google_auth_default is not None  # narrowing for mypy
-        self._creds, self._detected_project = _google_auth_default(scopes=[_SCOPE])
+        self._creds, self._detected_project = cast(
+            tuple[_Credentials, str | None],
+            _google_auth_default(scopes=[_SCOPE]),
+        )
         self._lock = threading.Lock()
 
     @classmethod
