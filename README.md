@@ -5,8 +5,6 @@ RAG Evaluator is an open source platform for comparing Retrieval Augmented Gener
 and a CLI for local or CI workflows, both backed by the same Python RAG and evaluation
 engine.
 
-![RAG Evaluator dashboard](docs/images/hero-screenshot.png)
-
 ## What It Does
 
 - Organize RAG experiments by project.
